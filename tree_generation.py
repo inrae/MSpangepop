@@ -32,12 +32,13 @@ def msprime_map(df):
 # input_fai = samtools FAI of FASTA where variants will be generated
 # pop_size = population size
 # mut_rate = mutation rate
-def msprime_vcf(input_fai, pop_size, mut_rate):
+# n = sample size / number of indiv
+def msprime_vcf(input_fai, pop_size, mut_rate, n):
     df = pd.read_table(input_fai, header=None, usecols=[0,1], names =["name", "length"])
     rate_map=msprime_map(df)
 
     ts = msprime.sim_ancestry(
-		samples=3,
+		samples=n,
 		recombination_rate=rate_map,
 		population_size=pop_size,
 		# random_seed=123456
@@ -66,7 +67,7 @@ def msprime_vcf(input_fai, pop_size, mut_rate):
     names=df["name"].to_list()
 
     for i in range(len(ts_chroms)):
-        filename="output_chr.vcf"
+        filename="msprime_output_chr.vcf"
         if i==0:
             with open(filename, "w") as vcf_file:
                 ts_chroms[i].write_vcf(vcf_file, contig_id=names[i])
@@ -80,7 +81,7 @@ def msprime_vcf(input_fai, pop_size, mut_rate):
     print(len(ts_chroms))
 
 
-file = "/home/sukanya/tests/02_data/hackathon_Ztritici/CHR8/g1.chr8.fasta.fai"
-file2="/home/sukanya/tests/tuto/VISOR/GCF_000001735.4_TAIR10.1_genomic.fna.fai"
+# file = "/home/sukanya/tests/02_data/hackathon_Ztritici/CHR8/g1.chr8.fasta.fai"
+# file2="/home/sukanya/tests/tuto/VISOR/GCF_000001735.4_TAIR10.1_genomic.fna.fai"
 
-msprime_vcf(file2, 1000, 1e-8)
+# msprime_vcf(file2, 1000, 1e-8)
