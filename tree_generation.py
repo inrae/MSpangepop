@@ -2,15 +2,6 @@ import pandas as pd
 import math, msprime
 import numpy as np
 
-file = "/home/sukanya/tests/02_data/hackathon_Ztritici/CHR8/g1.chr8.fasta.fai"
-file2="/home/sukanya/tests/tuto/VISOR/GCF_000001735.4_TAIR10.1_genomic.fna.fai"
-
-
-df = pd.read_table(file2, header=None, usecols=[0,1], names =["name", "length"])
-# print(df)
-
-
-
 def chrom_pos(df):
     l=df["length"].to_list()
 
@@ -21,7 +12,6 @@ def chrom_pos(df):
     
     for i in range(1,n*2-3, 2):
         map_positions.insert(i+1, map_positions[i]+1)
-
     return(map_positions)
 
 
@@ -30,30 +20,34 @@ def chrom_rate(df):
     n=len(df)
     r_chrom = 1e-8
     r_break = math.log(2)
-
     li = np.resize([r_chrom,r_break], (n*2-1))
     return(li)
 
 def msprime_map(df):
     map_positions=chrom_pos(df)
     rates=chrom_rate(df)
-    
     rate_map=msprime.RateMap(position=map_positions, rate=rates)
     return(rate_map)
 
-def msprime_vcf(input_file):
-    df = pd.read_table(input_file, header=None, usecols=[0,1], names =["name", "length"])
+# input_fai = samtools FAI of FASTA where variants will be generated
+# pop_size = population size
+# mut_rate = mutation rate
+def msprime_vcf(input_fai, pop_size, mut_rate):
+    df = pd.read_table(input_fai, header=None, usecols=[0,1], names =["name", "length"])
     rate_map=msprime_map(df)
-
 
     ts = msprime.sim_ancestry(
 		samples=3,
 		recombination_rate=rate_map,
-		population_size=1000,
-		random_seed=123456)
+		population_size=pop_size,
+		# random_seed=123456
+        )
 
 	# avec des mutations
-    mutated_ts = msprime.sim_mutations(ts, rate=1e-8, random_seed=5678, discrete_genome=False)
+    mutated_ts = msprime.sim_mutations(
+        ts, rate=mut_rate, 
+        # random_seed=5678, 
+        discrete_genome=False)
 
     ts_chroms = []
 
@@ -85,4 +79,8 @@ def msprime_vcf(input_file):
 
     print(len(ts_chroms))
 
-msprime_vcf(file2)
+
+file = "/home/sukanya/tests/02_data/hackathon_Ztritici/CHR8/g1.chr8.fasta.fai"
+file2="/home/sukanya/tests/tuto/VISOR/GCF_000001735.4_TAIR10.1_genomic.fna.fai"
+
+msprime_vcf(file2, 1000, 1e-8)
