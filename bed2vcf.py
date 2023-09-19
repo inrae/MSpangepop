@@ -32,15 +32,13 @@ def set_ref_alt(ref, alt, row, vcf_df):
 # output file is a VCF
 # (currently, not all variant supported by VISOR are included)
 # TODO : missing VISOR variant type : SNP, MNP and 4 types of tandem repeat
-def get_seq(vcf_df, bed_df, fa_dict):
+
+# vcf_df : msprime VCF
+# bed_def : VISOR BED
+# fa_dict : FASTA where variants will be generated
+def get_seq(vcf_df, bed_df, fa_dict, output_file):
 	# number of variants
 	n = len(vcf_df)
-	
-	# alternative and reference sequences
-	# alt = []
-	# ref = []
-	# new variants to add
-	rows_to_add = []
 
 	for i in range(n):
 		# pour chaque SV du BED
@@ -177,11 +175,9 @@ def get_seq(vcf_df, bed_df, fa_dict):
 	# adjust variant start position to include reference
 	vcf_df["POS"] = vcf_df["POS"] - 1 ### Attention aux translocation avec le nouveau start ?
 
-	# print(df)
-
 	# output VCF
-	vcf_df.to_csv("out_test.vcf", sep="\t", header=False, index=False)
+	vcf_df.to_csv(output_file, sep="\t", header=False, index=False)
 
 
 
-vcf_header="##source=VISOR BED to VCF\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tSAMPLE"
+# vcf_header="##source=VISOR BED to VCF\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tSAMPLE"
