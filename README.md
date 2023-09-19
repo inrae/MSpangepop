@@ -6,7 +6,7 @@ Depuis le script `main.py`:
     - input : BED pour VISOR, VCF msprime, FASTA, nom du fichier output
     - output : VCF
 
-`test.py` pour créer les arbres correspondants aux chromosomes. Prend un samtools FAI en entrée, donne un fichier trees et un fichier VCF.
+`tree_generation.py` pour créer les arbres correspondants aux chromosomes. Prend un samtools FAI en entrée, donne un fichier trees et un fichier VCF.
 
 `fusion.py` pour fusionner le VCF de msprime, le BED de VISOR et obtenir un VCF final utilisable pour vg.
 
