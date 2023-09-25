@@ -1,6 +1,7 @@
 import pandas as pd
 import re, random
 from Bio import SeqIO
+from Bio.Seq import Seq
 
 # read FASTA as a BioSeq dictionary
 # (not directly loaded in memory)
@@ -15,9 +16,10 @@ def is_reverse(s):
 	return(s=="reverse")
 
 def reverse(s):
-	return(str(s)[::-1])
+	seq = Seq(str(s))
+	return(seq.reverse_complement())
 
-def deletion(ref_seq, alt_seq, rowx):
+def deletion(ref_seq, alt_seq):
 	ref = str(ref_seq) + str(alt_seq)
 	alt = str(ref_seq)
 	
