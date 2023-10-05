@@ -1,5 +1,5 @@
 import pandas as pd
-import re, random, json
+import re, random, json, os
 import numpy as np
 
 from Bio import SeqIO
@@ -79,18 +79,19 @@ def get_seq(vcf_df, bed_df, fa_dict, output_file):
 		
 		fa_seq = fa_dict[chr]
 
-		alt_seq = fa_seq.seq[start-1:end]
+		
 		ref_seq = fa_seq.seq[start-2]
 		
 		# DEL
 		if t == "deletion":
 			end = get_random_len("DEL")
-
+			alt_seq = fa_seq.seq[start-1:end]
 			ref = str(ref_seq) + str(alt_seq)
 			alt = str(ref_seq)
 
 		# INS
 		elif t == "insertion":
+			end = get_random_len("INS")
 			# générer la séquence insérée
 			alt_seq = DNA(end-start)
 			ref = str(ref_seq)
@@ -98,6 +99,8 @@ def get_seq(vcf_df, bed_df, fa_dict, output_file):
 			
 		# INV
 		elif t == "inversion":
+			end = get_random_len("INV")
+			alt_seq = fa_seq.seq[start-1:end]
 			ref = str(ref_seq) + str(alt_seq)
 			# reverse alternative sequence
 			alt_seq = reverse(alt_seq)
@@ -106,6 +109,8 @@ def get_seq(vcf_df, bed_df, fa_dict, output_file):
 		# DUP
 		# there are 2 duplication types
 		elif re.search("duplication", t):
+			end = get_random_len("DUP")
+			alt_seq = fa_seq.seq[start-1:end]
 			# get number of copies (minus 1 since it is already in the genome)
 			cp = int(sv[4])-1
 			# make copy of sequence
@@ -119,6 +124,10 @@ def get_seq(vcf_df, bed_df, fa_dict, output_file):
 		# TRA
 		# there are 3 translocation types
 		elif re.search("translocation", t):
+			# TODO choisir la distribution utilisée
+			end = get_random_len("INV")
+			alt_seq = fa_seq.seq[start-1:end]
+
 			# get information field
 			infos = sv[4]
 			# retrieve each info
@@ -205,7 +214,9 @@ def get_seq(vcf_df, bed_df, fa_dict, output_file):
 	vcf_df["POS"] = vcf_df["POS"] - 1 ### Attention aux translocation avec le nouveau start ?
 
 	# output VCF
-	vcf_df.to_csv(output_file, sep="\t", header=False, index=False)
+	if not os.path.exists("results"):
+		os.mkdir("results")
+	vcf_df.to_csv("results/" + output_file, sep="\t", header=False, index=False)
 
 
 
