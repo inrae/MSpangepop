@@ -155,12 +155,13 @@ def get_seq(vcf_df, bed_df, fa_dict, output_file):
 				ref2 = str(fasta_seq_trans.seq[trans_start])
 				alt2 = ref2 + str(fasta_seq.seq[start+1:end])
 			
-			# new_vcf_var = vcf_df.iloc[i].tolist()
-			# new_vcf_var[0] = trans_chr
-			# new_vcf_var[1] = trans_start
-			# new_vcf_var[3] = ref2
-			# new_vcf_var[4] = alt2
-	
+			new_vcf_var = vcf_df.iloc[i].tolist()
+			new_vcf_var[0] = trans_chr
+			new_vcf_var[1] = trans_start+1
+			new_vcf_var[3] = ref2
+			new_vcf_var[4] = alt2
+			vcf_df.loc[len(vcf_df)] = new_vcf_var
+
 		set_ref_alt(ref, alt, i, vcf_df)
 
 	# remove unnecessary columns for VCF
