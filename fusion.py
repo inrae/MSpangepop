@@ -19,12 +19,12 @@ def read_BED(input_file):
 	df = pd.read_table(input_file, header=None, names=colnames)
 	return(df)
 
-def replace_bed_col(input_BED, input_VCF, len_SV):
+def replace_bed_col(input_BED, input_VCF):
 	vcf = read_vcf(input_VCF)
 	bed = read_BED(input_BED)
 	if len(bed) == len(vcf):
 		bed["chr"] = vcf["CHROM"]
 		bed["start"] = vcf["POS"]
 		# piocher dans une distribution de taille de SV --> modéliser sur la distrib humain, etc
-		bed["end"] = vcf["POS"] + len_SV
+		# bed["end"] = vcf["POS"] + len_SV
 	return(bed)
