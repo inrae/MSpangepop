@@ -53,7 +53,7 @@ def get_random_len(svtype):
 				interval = df["size_interval"].iloc[i]
 				interval = json.loads(interval)
 				s = np.random.uniform(interval[0], interval[1], 1).round()
-	return(s[0])
+	return(int(s[0]))
 
 # get the sequence of each variants in BED
 # output file is a VCF
@@ -64,154 +64,110 @@ def get_random_len(svtype):
 # bed_def : VISOR BED
 # fa_dict : FASTA where variants will be generated
 def get_seq(vcf_df, bed_df, fa_dict, output_file):
-	# number of variants
+	print(bed_df)
+# number of variants
 	n = len(vcf_df)
 
 	for i in range(n):
-		# pour chaque SV du BED
-		sv = bed_df.iloc[i]
-		# pour récupérer la séquence
-		chr = sv[0]
-		start = sv[1]
-		end = sv[2]
-		# le type de SV
-		t = sv[3]
-		
-		fa_seq = fa_dict[chr]
+		sv_info = bed_df.iloc[i]
+		chr_name = sv_info[0]
+		start = sv_info[1]
+		start = start-1 # pour ajuster à l'index python
+		sv_type = sv_info[3]
 
-		
-		ref_seq = fa_seq.seq[start-2]
-		
-		# DEL
-		if t == "deletion":
-			end = get_random_len("DEL")
-			alt_seq = fa_seq.seq[start-1:end]
-			ref = str(ref_seq) + str(alt_seq)
-			alt = str(ref_seq)
+		fasta_seq = fa_dict[chr_name]
 
-		# INS
-		elif t == "insertion":
-			end = get_random_len("INS")
-			# générer la séquence insérée
-			alt_seq = DNA(end-start)
-			ref = str(ref_seq)
-			alt = str(ref_seq) + str(alt_seq)
-			
-		# INV
-		elif t == "inversion":
-			end = get_random_len("INV")
-			alt_seq = fa_seq.seq[start-1:end]
-			ref = str(ref_seq) + str(alt_seq)
-			# reverse alternative sequence
-			alt_seq = reverse(alt_seq)
-			alt = str(ref_seq) + str(alt_seq)
+		if sv_type == "deletion":
+			end = start + get_random_len("DEL")
+			ref = str(fasta_seq.seq[start:end])
+			alt = str(fasta_seq.seq[start])
 
-		# DUP
-		# there are 2 duplication types
-		elif re.search("duplication", t):
-			end = get_random_len("DUP")
-			alt_seq = fa_seq.seq[start-1:end]
-			# get number of copies (minus 1 since it is already in the genome)
-			cp = int(sv[4])-1
-			# make copy of sequence
-			sv_seq = str(alt_seq)*cp
-			if t == "inverted tandem duplication":
-				# reverse alternative sequence
-				sv_seq = reverse(sv_seq)
-			ref = str(ref_seq)
-			alt = str(ref_seq) + str(sv_seq)
-			
-		# TRA
-		# there are 3 translocation types
-		elif re.search("translocation", t):
-			# TODO choisir la distribution utilisée
-			end = get_random_len("INV")
-			alt_seq = fa_seq.seq[start-1:end]
+		elif sv_type == "insertion":
+			end = start + get_random_len("INS")
+			alt_seq = DNA(end)
+			ref = str(fasta_seq.seq[start])
+			alt = ref + str(alt_seq)
 
-			# get information field
-			infos = sv[4]
-			# retrieve each info
-			info = infos.split(":")
-			tr_start = int(info[2])
-			tr_chr = info[1]
+		elif sv_type == "inversion":
+			end = start + get_random_len("INV")
+			ref = str(fasta_seq.seq[start:end])
+			alt = str(fasta_seq.seq[start]) + reverse(str(fasta_seq.seq[start+1:end]))
 
-			fa_seq2 = fa_dict[tr_chr]
-
-			if info[3] == "reverse":
-				# reverse alternative sequence
+		elif re.search("duplication", sv_type):
+			end = start + get_random_len("DUP")
+			ref = str(fasta_seq.seq[start])
+			alt_seq1 = str(fasta_seq.seq[start+1:end])
+			cp = int(sv_info[4])-1
+			# multiplication pour obtenir les copies
+			alt_seq = alt_seq1*cp
+			if sv_type =="inverted tandem duplication":
 				alt_seq = reverse(alt_seq)
 			
-			if t == "translocation cut-paste":
-				# cut-paste = INS + DEL
-				# DEL at the "cut" (reference) position
-				ref = str(ref_seq) + str(alt_seq)
-				alt = str(ref_seq)
+			alt = ref + alt_seq
 
-				# dupliquer la ligne pour ajouter une insertion
-				# new row
-				new_row = vcf_df.iloc[i].tolist()
-				
-				# récupère le bon chr
-				# translocation start
-				
-				
-				new_row[0] = tr_chr
-				
-				# translocation position
-				new_row[1] = tr_start-2 #???
-				# INS at the "paste" position
-				ref_seq2 = fa_seq2.seq[tr_start-2]
-				alt_seq2 = str(ref_seq2) + str(alt_seq)
-
-				new_row[3] = ref_seq2
-				new_row[4] = alt_seq2
-
-				# vcf_df = vcf_df.append(new_row, ignore_index = True)
-				vcf_df.loc[len(vcf_df)] = new_row
-				# rows_to_add.append(new_sv)
-				
-			elif t == "reciprocal translocation":
-				# à partir de la position de réf
-				# translocation 1
-				tr_seq = fa_seq.seq[tr_start-1:tr_start+len(alt_seq)]
-
-				ref = str(ref_seq) + str(alt_seq)
-				alt = str(ref_seq) + str(tr_seq)
-				
-				
-				# translocation 2
-				# à partir de la position de alt
-				ref_tr_seq = fa_seq2.seq[tr_start-2]
-				ref_seq2 = str(ref_tr_seq) + str(tr_seq)
-
-				if info[4] == "reverse":
-					# reverse alternative sequence
-					alt_seq = reverse(alt_seq)
-	
-				alt_seq2 = str(ref_tr_seq) + str(alt_seq)
-				# new row
-				new_row = vcf_df.iloc[i].tolist()
-				new_row[0] = tr_chr
-				new_row[1] = tr_start-2 #???
-				new_row[3] = ref_seq2
-				new_row[4] = alt_seq2
-
-				# vcf_df = vcf_df.append(new_row, ignore_index = True)
-				vcf_df.loc[len(vcf_df)] = new_row
-
-			else :
-				ref_seq = fa_seq2.seq[tr_start-2]
-				ref = str(ref_seq)
-
-				alt = str(ref_seq) + str(alt_seq)
+		elif re.search("translocation", sv_type):
+			# TODO choisir la distribution utilisée
+			l = get_random_len("INS")
+			end = start + l
 			
-			set_ref_alt(ref, alt, i, vcf_df)
+			# informations sur la translocation
+			trans_info = sv_info[4]
+			print(trans_info, type(trans_info))
+			infos = trans_info.split(":")
+			trans_start = int(infos[2])-1
+			trans_end = trans_start + l
+			trans_chr = infos[1]
+
+			# translocation réciproque
+			if sv_type == "reciprocal translocation":
+				ref = str(fasta_seq.seq[start:end])
+				fasta_seq_trans = fa_dict[trans_chr]
+				ref2 = str(fasta_seq_trans.seq[trans_start:trans_end])
+				
+				if infos[3] == "reverse":
+					alt = str(fasta_seq.seq[start]) + reverse(str(fasta_seq_trans.seq[trans_start+1:trans_end]))
+				else :
+					alt = str(fasta_seq.seq[start]) + str(fasta_seq_trans.seq[trans_start+1:trans_end])
+
+				if infos[4] == "reverse":
+					alt2 = str(fasta_seq_trans.seq[trans_start]) + reverse(str(fasta_seq.seq[start+1:end]))
+				else:
+					alt2 = str(fasta_seq_trans.seq[trans_start]) + str(fasta_seq.seq[start+1:end])
+			
+			# couper-coller
+			elif sv_type == "translocation cut-paste":
+				# délétion
+				ref = str(fasta_seq.seq[start:end])
+				alt = str(fasta_seq.seq[start])
+				
+				# insertion
+				ref2 = str(fasta_seq_trans.seq[trans_start])
+				if infos[3] == "reverse":
+					alt2 = ref2 + reverse(str(fasta_seq.seq[start+1:end]))
+				else :
+					alt2 = ref2 + str(fasta_seq.seq[start+1:end])
+
+			# copier-coller
+			else:
+				ref = str(fasta_seq.seq[start])
+				alt = vcf_df["ALT"].iloc[i]
+
+				ref2 = str(fasta_seq_trans.seq[trans_start])
+				alt2 = ref2 + str(fasta_seq.seq[start+1:end])
+			
+			# new_vcf_var = vcf_df.iloc[i].tolist()
+			# new_vcf_var[0] = trans_chr
+			# new_vcf_var[1] = trans_start
+			# new_vcf_var[3] = ref2
+			# new_vcf_var[4] = alt2
+	
+		set_ref_alt(ref, alt, i, vcf_df)
 
 	# remove unnecessary columns for VCF
 	vcf_df["ID"] = "."
 
 	# adjust variant start position to include reference
-	vcf_df["POS"] = vcf_df["POS"] - 1 ### Attention aux translocation avec le nouveau start ?
+	# vcf_df["POS"] = vcf_df["POS"] - 1 ### Attention aux translocation avec le nouveau start ?
 
 	# output VCF
 	if not os.path.exists("results"):
