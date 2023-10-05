@@ -1,5 +1,7 @@
 import pandas as pd
-import re, random
+import re, random, json
+import numpy as np
+
 from Bio import SeqIO
 from Bio.Seq import Seq
 
@@ -9,26 +11,49 @@ def read_fa(input_file):
 	record_dict = SeqIO.index(input_file, "fasta")
 	return record_dict
 
+# génère une séquence pour insertion
 def DNA(length):
     return ''.join(random.choice('CGTA') for _ in range(length))
 
+# check if reverse
 def is_reverse(s):
 	return(s=="reverse")
 
+# reverse sequence
 def reverse(s):
 	seq = Seq(str(s))
 	return(seq.reverse_complement())
 
+# create deletion by switching alt and ref seq
 def deletion(ref_seq, alt_seq):
 	ref = str(ref_seq) + str(alt_seq)
 	alt = str(ref_seq)
-	
 	return(ref,alt)
 
 def set_ref_alt(ref, alt, row, vcf_df):
 	vcf_df.at[row, "REF"] = ref
 	vcf_df.at[row, "ALT"] = alt
 
+def get_random_len(svtype):
+	# INV
+	if svtype == "INV":
+		rng = np.random.default_rng()
+		r = rng.random()
+		if r > 0.17:
+			s = np.random.uniform(250, 6000,1).round()
+		else:
+			s = np.random.uniform(6000, 45000,1).round()
+	# INS, DEL, DUP, CNV
+	else:
+		df = pd.read_csv("sv_distributions/size_distrib" + svtype + ".tsv", sep="\t")
+		pb = df["pb"].tolist()
+		li = np.random.multinomial(1, pb)
+		for i in range(len(li)):	
+			if li[i] != 0:
+				interval = df["size_interval"].iloc[i]
+				interval = json.loads(interval)
+				s = np.random.uniform(interval[0], interval[1], 1).round()
+	return(s[0])
 
 # get the sequence of each variants in BED
 # output file is a VCF
@@ -59,6 +84,8 @@ def get_seq(vcf_df, bed_df, fa_dict, output_file):
 		
 		# DEL
 		if t == "deletion":
+			end = get_random_len("DEL")
+
 			ref = str(ref_seq) + str(alt_seq)
 			alt = str(ref_seq)
 
