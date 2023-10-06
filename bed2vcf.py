@@ -174,7 +174,3 @@ def get_seq(vcf_df, bed_df, fa_dict, output_file):
 	if not os.path.exists("results"):
 		os.mkdir("results")
 	vcf_df.to_csv("results/" + output_file, sep="\t", header=False, index=False)
-
-
-
-# vcf_header="##source=VISOR BED to VCF\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tSAMPLE"

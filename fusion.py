@@ -1,13 +1,21 @@
 # fusionner le VCF de msprime (position, génotype) et le BED de VISOR
 # pour obtenir un BED avec tous les variants
 # récupérer les variants et les génotypes msprime
-import io
+import io, os, shutil
 import pandas as pd
 
 def read_vcf(input_file):
 	with open(input_file, "r") as txt:
 		t = txt.read()
 	txt.close()
+
+	# write header for later
+	if not os.path.exists("results"):
+		os.mkdir("results")
+	f = open("results/vcf_header.txt", "w")
+	f.write(''.join(t.splitlines(keepends=True)[:6]))
+	f.close()
+
 	# remove VCF header for dataframe
 	t = ''.join(t.splitlines(keepends=True)[5:])
 	df = pd.read_table(io.StringIO(t))
@@ -25,6 +33,10 @@ def replace_bed_col(input_BED, input_VCF):
 	if len(bed) == len(vcf):
 		bed["chr"] = vcf["CHROM"]
 		bed["start"] = vcf["POS"]
-		# piocher dans une distribution de taille de SV --> modéliser sur la distrib humain, etc
-		# bed["end"] = vcf["POS"] + len_SV
 	return(bed)
+
+def merge_final_vcf(header_file, content_file, merged_file):
+    with open(merged_file, 'wb') as outfile:
+        for filename in [header_file, content_file]:
+            with open(filename, 'rb') as infile:
+                shutil.copyfileobj(infile, outfile)
