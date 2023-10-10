@@ -65,7 +65,7 @@ def get_seq(vcf_df, bed_df, fa_dict, output_file):
 		start = start-1 # pour ajuster à l'index python
 		sv_type = sv_info[3]
 
-		fasta_seq = fa_dict[chr_name]
+		fasta_seq = fa_dict[chr_name].upper()
 
 		if sv_type == "deletion":
 			end = start + get_random_len("DEL")
@@ -111,7 +111,7 @@ def get_seq(vcf_df, bed_df, fa_dict, output_file):
 			# translocation réciproque
 			if sv_type == "reciprocal translocation":
 				ref = str(fasta_seq.seq[start:end])
-				fasta_seq_trans = fa_dict[trans_chr]
+				fasta_seq_trans = fa_dict[trans_chr].upper()
 				ref2 = str(fasta_seq_trans.seq[trans_start:trans_end])
 				
 				if infos[3] == "reverse":
