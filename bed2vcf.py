@@ -67,7 +67,11 @@ def get_seq(vcf_df, bed_df, fa_dict, output_file):
 
 		fasta_seq = fa_dict[chr_name].upper()
 
-		if sv_type == "deletion":
+		if sv_type == "SNP":
+			ref = str(fasta_seq.seq[start:end])
+			alt = sv_info[4]
+
+		elif sv_type == "deletion":
 			end = start + get_random_len("DEL")
 			ref = str(fasta_seq.seq[start:end])
 			alt = str(fasta_seq.seq[start])
