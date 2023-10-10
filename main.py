@@ -15,10 +15,14 @@ def main(bed, vcf, fasta, output_file):
 bed = "test/mini_random.bed"
 vcf = "test/output.vcf"
 fasta = "/home/sukanya/tests/02_data/hackathon_Ztritici/CHR8/ztIPO323.chr8.fasta"
-# n = 200
 
-output_file="60_tritici.vcf"
+output_file="tritici_test"
 main(bed, vcf, fasta, output_file)
+
+header_file="results/vcf_header.txt"
+content_file = "results/" + output_file + ".vcf"
+merged_file="results/" + output_file + "_final.vcf"
+merge_final_vcf(header_file, content_file, merged_file)
 
 ### generate msprime population VCF
 # fai = "ztIPO323.chr8.fasta.fai"
