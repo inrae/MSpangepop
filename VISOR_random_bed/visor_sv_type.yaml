@@ -1,10 +1,4 @@
-# possiblevariants<-c('deletion', 'insertion', 'inversion', 'tandem duplication', 'inverted tandem duplication', 'translocation copy-paste', 
-# 'translocation cut-paste' ,  'reciprocal translocation', 'SNP', 'MNP', 'tandem repeat contraction', 
-# 'tandem repeat expansion', 'perfect tandem repetition', 'approximate tandem repetition')
-
-# type de SV
-# pourcentage (sur le nombre de SV)
-# --> récupérer sous forme de dictionnaire ? à convertir en str pour le script randomregion.r
+# type de SV possible dans le script randomregion.r de VISOR
 deletion: 0
 insertion: 0
 inversion: 0
