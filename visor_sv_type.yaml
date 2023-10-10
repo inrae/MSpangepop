@@ -14,8 +14,8 @@ translocation copy-paste: 0
 translocation cut-paste : 0
 reciprocal translocation: 0
 SNP: 0
-MNP: 0
-tandem repeat contraction: 0
-tandem repeat expansion: 0
-perfect tandem repetition: 0
-approximate tandem repetition: 0
+# MNP: 0
+# tandem repeat contraction: 0
+# tandem repeat expansion: 0
+# perfect tandem repetition: 0
+# approximate tandem repetition: 0
