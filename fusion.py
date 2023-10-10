@@ -1,15 +1,23 @@
 # fusionner le VCF de msprime (position, génotype) et le BED de VISOR
 # pour obtenir un BED avec tous les variants
 # récupérer les variants et les génotypes msprime
-import io
+import io, os, shutil
 import pandas as pd
 
 def read_vcf(input_file):
 	with open(input_file, "r") as txt:
 		t = txt.read()
 	txt.close()
+
+	# write header for later
+	if not os.path.exists("results"):
+		os.mkdir("results")
+	f = open("results/vcf_header.txt", "w")
+	f.write(''.join(t.splitlines(keepends=True)[:6]))
+	f.close()
+
+	# remove VCF header for dataframe
 	t = ''.join(t.splitlines(keepends=True)[5:])
-	
 	df = pd.read_table(io.StringIO(t))
 	df = df.rename(columns={"#CHROM" : "CHROM"})
 	return(df)
@@ -19,18 +27,16 @@ def read_BED(input_file):
 	df = pd.read_table(input_file, header=None, names=colnames)
 	return(df)
 
-def replace_bed_col(input_BED, input_VCF, len_SV):
+def replace_bed_col(input_BED, input_VCF):
 	vcf = read_vcf(input_VCF)
 	bed = read_BED(input_BED)
 	if len(bed) == len(vcf):
 		bed["chr"] = vcf["CHROM"]
 		bed["start"] = vcf["POS"]
-		bed["end"] = vcf["POS"] + len_SV
 	return(bed)
 
-# étape 1 : vérifier que les 2 tableaux font la même taille
-# 2 : prendre les positions du VCF + taille = end
-# 3 : remplacer les colonnes start end par les positions VCF
-# 4 : enlever le breakpoint ?
-# 5 avec le fasta, récupérer les séquences de variants
-# 6 : créer le nouveau VCF -> reprendre le VCF msprime et coller les bon variants à la place
+def merge_final_vcf(header_file, content_file, merged_file):
+    with open(merged_file, 'wb') as outfile:
+        for filename in [header_file, content_file]:
+            with open(filename, 'rb') as infile:
+                shutil.copyfileobj(infile, outfile)

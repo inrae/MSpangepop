@@ -14,3 +14,5 @@ Depuis le script `main.py`:
 - ajouter l'entête au VCF final (reprendre celui du VCF de msprime)
 - donner le nombre de variants dans le VCF msprime --> pour créer un BED avec le même nombre de variants
 - ajouter les types de variants manquants dans le script `bed2vcf.py`
+
+Le dossier `sv_distributions` contient les distributions de taille de SV (intervalle de 100 bp). Les données viennent de [An integrated map of structural variation in 2,504 human genomes](https://www.nature.com/articles/nature15394).

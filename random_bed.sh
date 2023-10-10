@@ -1,4 +1,4 @@
-# create random BED
+### create random BED
 
 refFAI="ztIPO323.chr8.fasta.fai"
 
