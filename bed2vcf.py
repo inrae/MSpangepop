@@ -35,24 +35,14 @@ def set_ref_alt(ref, alt, row, vcf_df):
 	vcf_df.at[row, "ALT"] = alt
 
 def get_random_len(svtype):
-	# INV
-	if svtype == "INV":
-		rng = np.random.default_rng()
-		r = rng.random()
-		if r > 0.17:
-			s = np.random.uniform(250, 6000,1).round()
-		else:
-			s = np.random.uniform(6000, 45000,1).round()
-	# INS, DEL, DUP, CNV
-	else:
-		df = pd.read_csv("sv_distributions/size_distrib" + svtype + ".tsv", sep="\t")
-		pb = df["pb"].tolist()
-		li = np.random.multinomial(1, pb)
-		for i in range(len(li)):	
-			if li[i] != 0:
-				interval = df["size_interval"].iloc[i]
-				interval = json.loads(interval)
-				s = np.random.uniform(interval[0], interval[1], 1).round()
+	# INS, DEL, DUP, CNV, INV
+	df = pd.read_csv("sv_distributions/size_distrib" + svtype + ".tsv", sep="\t")
+	pb = df["pb"].tolist()
+	li = np.random.multinomial(1, pb)
+	i = np.argmax(li)
+	interval = df["size_interval"].iloc[i]
+	interval = json.loads(interval)
+	s = np.random.uniform(interval[0], interval[1], 1).round()
 	return(int(s[0]))
 
 # get the sequence of each variants in BED
@@ -166,11 +156,8 @@ def get_seq(vcf_df, bed_df, fa_dict, output_file):
 
 	# remove unnecessary columns for VCF
 	vcf_df["ID"] = "."
-
-	# adjust variant start position to include reference
-	# vcf_df["POS"] = vcf_df["POS"] - 1 ### Attention aux translocation avec le nouveau start ?
-
+	vcf_df["QUAL"] = 99
 	# output VCF
 	if not os.path.exists("results"):
 		os.mkdir("results")
-	vcf_df.to_csv("results/" + output_file, sep="\t", header=False, index=False)
+	vcf_df.to_csv("results/" + output_file + ".vcf", sep="\t", header=False, index=False)
