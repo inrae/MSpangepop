@@ -33,8 +33,16 @@ def msprime_map(df):
 # pop_size = population size
 # mut_rate = mutation rate
 # n = sample size / number of indiv
-def msprime_vcf(input_fai, pop_size, mut_rate, n):
-    df = pd.read_table(input_fai, header=None, usecols=[0,1], names =["name", "length"])
+def msprime_vcf(fai: str, pop_size: int, mut_rate: float, n: int):
+    """
+    Generate VCF for each chromosome in reference FASTA.
+
+    :parameter fai: FAI samtools index of reference FASTA
+    :parameter pop_size: population size (Ne)
+    :parameter mut_rate: mutation rate (µ)
+    :parameter n: sample size
+    """
+    df = pd.read_table(fai, header=None, usecols=[0,1], names =["name", "length"])
     rate_map=msprime_map(df)
 
     ts = msprime.sim_ancestry(
