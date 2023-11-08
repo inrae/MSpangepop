@@ -4,7 +4,6 @@ import numpy as np
 
 def chrom_pos(df):
     l=df["length"].to_list()
-
     map_positions=[0]
     for i in l:
         map_positions.append(i+map_positions[-1])
@@ -87,9 +86,3 @@ def msprime_vcf(fai: str, pop_size: int, mut_rate: float, n: int):
             vcf_file.close()
 
     print(len(ts_chroms))
-
-
-# file = "/home/sukanya/tests/02_data/hackathon_Ztritici/CHR8/g1.chr8.fasta.fai"
-# file2="/home/sukanya/tests/tuto/VISOR/GCF_000001735.4_TAIR10.1_genomic.fna.fai"
-
-# msprime_vcf(file2, 1000, 1e-8)
