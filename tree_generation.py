@@ -1,5 +1,5 @@
 import pandas as pd
-import math, msprime, argparse
+import math, msprime, argparse, os
 import numpy as np
 from multiprocessing import Process
 
@@ -29,11 +29,41 @@ def msprime_map(df):
     rate_map=msprime.RateMap(position=map_positions, rate=rates)
     return(rate_map)
 
+### ts_chroms = list of trees for each chromosome
+### names = list of chromosome name
+def output_files(ts_chroms, names, outdir="results"):
+    if not os.path.exists(outdir):
+            os.mkdir(outdir)
+
+        ## write vcf
+    filename = outdir + "/msprime_simulation.vcf"
+    for i in range(len(ts_chroms)):
+        txt = ts_chroms[i].as_vcf(contig_id=names[i])
+        t = ''.join(txt.splitlines(keepends=True)[6:])
+        # filename = 'tmp_vcf/output' + str(i) + ".vcf"
+        if i==0:
+            header_top = ''.join(txt.splitlines(keepends=True)[:4])
+            header_bot = ''.join(txt.splitlines(keepends=True)[4:6])
+            with open(filename, "w") as vcf_file:
+                vcf_file.write(t)
+                # ts_chroms[i].write_vcf(vcf_file, contig_id=names[i])
+        else:
+            header_top += txt.splitlines(keepends=True)[3]
+            
+            with open(filename, "a") as vcf_file:
+                vcf_file.write(t)
+            vcf_file.close()
+    ## write header to file
+    header = header_top + header_bot
+    with open(outdir + "/header.vcf", "w") as head:
+        head.write(header)
+    head.close()
+
 # input_fai = samtools FAI of FASTA where variants will be generated
 # pop_size = population size
 # mut_rate = mutation rate
 # n = sample size / number of indiv
-def msprime_vcf(fai, pop_size, mut_rate, n):
+def msprime_vcf(fai, pop_size, mut_rate, n, outdir):
 
     df = pd.read_table(fai, header=None, usecols=[0,1], names =["name", "length"])
     rate_map=msprime_map(df)
@@ -63,29 +93,21 @@ def msprime_vcf(fai, pop_size, mut_rate, n):
         start, end = chrom_positions[j: j + 2]
         chrom_ts = mutated_ts.keep_intervals([[start, end]], simplify=False).trim()
         ts_chroms.append(chrom_ts)
-        print(chrom_ts.sequence_length)
 
     names=df["name"].to_list()
 
-    for i in range(len(ts_chroms)):
-        filename="msprime_output_chr.vcf"
-        if i==0:
-            with open(filename, "w") as vcf_file:
-                ts_chroms[i].write_vcf(vcf_file, contig_id=names[i])
-        else:
-            txt = ts_chroms[i].as_vcf(contig_id=names[i])
-            t = ''.join(txt.splitlines(keepends=True)[6:])
-            with open(filename, "a") as vcf_file:
-                vcf_file.write(t)
-            vcf_file.close()
-
-    print(len(ts_chroms))
+    ## create files    
+    if outdir == None:
+        output_files(ts_chroms, names)
+    else:
+        output_files(ts_chroms, names, outdir)
 
 parser = argparse.ArgumentParser(description='Generate VCF for each chromosome in reference FASTA.')
-parser.add_argument('fai', type=str, help='FAI samtools index of reference FASTA')
-parser.add_argument('pop_size', type=int, help='population size (Ne)')
-parser.add_argument('mut_rate', type=float, help='mutation rate (µ)')
-parser.add_argument('n', type=int, help='sample size')
+parser.add_argument('-fai', '--fai', type=str, required = True, help='FAI samtools index of reference FASTA')
+parser.add_argument('-p', '--popSize', type=int, required = True, help='population size (Ne)')
+parser.add_argument('-r', '--rate', type=float, required = True, help='mutation rate (µ)')
+parser.add_argument('-n', '--sampleSize', type=int, required = True, help='sample size')
+parser.add_argument('-o', '--outDir', type=str, help='output directory')
 
 if __name__ == '__main__':
 	args = parser.parse_args()
