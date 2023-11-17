@@ -1,7 +1,6 @@
 import pandas as pd
 import re, random, json, os
 import numpy as np
-
 from Bio import SeqIO
 from Bio.Seq import Seq
 
