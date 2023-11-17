@@ -4,7 +4,7 @@
 import io, os, shutil
 import pandas as pd
 
-def read_vcf(input_file):
+def read_vcf(input_file, header_size=6):
 	with open(input_file, "r") as txt:
 		t = txt.read()
 	txt.close()
@@ -13,11 +13,11 @@ def read_vcf(input_file):
 	if not os.path.exists("results"):
 		os.mkdir("results")
 	f = open("results/vcf_header.txt", "w")
-	f.write(''.join(t.splitlines(keepends=True)[:6]))
+	f.write(''.join(t.splitlines(keepends=True)[:header_size]))
 	f.close()
 
 	# remove VCF header for dataframe
-	t = ''.join(t.splitlines(keepends=True)[5:])
+	t = ''.join(t.splitlines(keepends=True)[header_size-1:])
 	df = pd.read_table(io.StringIO(t))
 	df = df.rename(columns={"#CHROM" : "CHROM"})
 	return(df)
