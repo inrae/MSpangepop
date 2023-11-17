@@ -15,6 +15,11 @@ def read_fa(input_file):
 def DNA(length):
     return ''.join(random.choice('CGTA') for _ in range(length))
 
+def SNP(aa):
+	s = 'ACGT'
+	s = s.replace(aa, '')
+	return(random.choice(s))
+
 # check if reverse
 def is_reverse(s):
 	return(s=="reverse")
@@ -35,6 +40,13 @@ def set_ref_alt(ref, alt, row, vcf_df):
 	vcf_df.at[row, "ALT"] = alt
 
 def get_random_len(svtype):
+	# if svtype == "SNP":
+	# 	return(1)
+	# else:
+	# 	d = {"deletion": "DEL", "insertion" : "INS", "inversion" : "INV",
+	#    		"CNV", "duplication" : "DUP", "inverted tandem duplication" : "DUP"}
+	# 	svtype = d[svtype]
+	
 	# INS, DEL, DUP, CNV, INV
 	df = pd.read_csv("sv_distributions/size_distrib" + svtype + ".tsv", sep="\t")
 	pb = df["pb"].tolist()
@@ -68,8 +80,9 @@ def get_seq(vcf_df, bed_df, fa_dict, output_file):
 		fasta_seq = fa_dict[chr_name].upper()
 
 		if sv_type == "SNP":
-			ref = str(fasta_seq.seq[start:end])
-			alt = sv_info[4]
+			ref = str(fasta_seq.seq[start])
+			# alt = sv_info[4]
+			alt = SNP(ref)
 
 		elif sv_type == "deletion":
 			end = start + get_random_len("DEL")
@@ -94,7 +107,7 @@ def get_seq(vcf_df, bed_df, fa_dict, output_file):
 			cp = int(sv_info[4])-1
 			# multiplication pour obtenir les copies
 			alt_seq = alt_seq1*cp
-			if sv_type =="inverted tandem duplication":
+			if sv_type == "inverted tandem duplication":
 				alt_seq = reverse(alt_seq)
 			
 			alt = ref + alt_seq
