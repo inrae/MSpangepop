@@ -32,7 +32,7 @@ def msprime_map(df):
 # pop_size = population size
 # mut_rate = mutation rate
 # n = sample size / number of indiv
-def msprime_vcf(fai: str, pop_size: int, mut_rate: float, n: int):
+def msprime_vcf(*, fai: str, pop_size: int, mut_rate: float, n: int):
     """
     Generate VCF for each chromosome in reference FASTA.
 
@@ -55,7 +55,7 @@ def msprime_vcf(fai: str, pop_size: int, mut_rate: float, n: int):
     mutated_ts = msprime.sim_mutations(
         ts, rate=mut_rate, 
         # random_seed=5678, 
-        discrete_genome=False)
+        discrete_genome=True)
 
     ts_chroms = []
 

@@ -4,7 +4,7 @@ from tree_generation import msprime_vcf
 import defopt
 
 ## n : length of variant
-def sv_vcf(bed: str, vcf: str, fasta: str, outName: str):
+def sv_vcf(*, bed: str, vcf: str, fasta: str, outName: str, header: int):
 	"""
     Create a VCF with structural variants.
     
@@ -12,10 +12,11 @@ def sv_vcf(bed: str, vcf: str, fasta: str, outName: str):
     :parameter vcf: VCF generated with msprime --> tree generation script
 	:parameter fasta: Reference FASTA for the VCF and the variants
 	:parameter outName: Output name
+    :parameter header: vcf header size
     
     """
 	bed_df = replace_bed_col(bed, vcf)
-	vcf_df=read_vcf(vcf)
+	vcf_df=read_vcf(vcf, header)
 	fa = read_fa(fasta)
 
 	get_seq(vcf_df, bed_df, fa, outName)
@@ -27,19 +28,3 @@ def sv_vcf(bed: str, vcf: str, fasta: str, outName: str):
 
 if __name__ == '__main__':
     defopt.run([sv_vcf, msprime_vcf])
-
-bed = "test/mini_random.bed"
-vcf = "test/output.vcf"
-fasta = "/home/sukanya/tests/02_data/hackathon_Ztritici/CHR8/ztIPO323.chr8.fasta"
-
-output_file="tritici_test"
-# main(bed, vcf, fasta, output_file)
-
-### generate msprime population VCF
-# fai = "ztIPO323.chr8.fasta.fai"
-
-# ## samtools FAI
-# ## population size
-# ## mutation rate
-# ## sample size
-# msprime_vcf(fai, 5000, 1e-8, 60)
