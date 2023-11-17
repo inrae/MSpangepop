@@ -21,10 +21,10 @@ def sv_vcf(bed, vcf, fasta, outName, header):
 
 # parse arguments
 parser = argparse.ArgumentParser(description='create final VCF')
-parser.add_argument('bed', type=str, help='BED file of structural variants to include')
-parser.add_argument('vcf', type=str, help='VCF generated with msprime --> tree generation script')
-parser.add_argument('fasta', type=str, help='Reference FASTA for the VCF and the variants')
-parser.add_argument('outName', type=str, help='Output name')
+parser.add_argument('-b','--bed', type=str, required = True, help='BED file of structural variants to include')
+parser.add_argument('-v', '--vcf', type=str, required = True, help='VCF generated with msprime --> tree generation script')
+parser.add_argument('-fa', '--fasta', type=str, required = True, help='Reference FASTA for the VCF and the variants')
+parser.add_argument('-o', '--outName', type=str, required = True, help='Output name')
 parser.add_argument('--header', type=int, help='vcf header size')
 
 if __name__ == '__main__':
