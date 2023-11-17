@@ -1,6 +1,7 @@
 import pandas as pd
-import math, msprime
+import math, msprime, argparse
 import numpy as np
+from multiprocessing import Process
 
 def chrom_pos(df):
     l=df["length"].to_list()
@@ -32,15 +33,8 @@ def msprime_map(df):
 # pop_size = population size
 # mut_rate = mutation rate
 # n = sample size / number of indiv
-def msprime_vcf(*, fai: str, pop_size: int, mut_rate: float, n: int):
-    """
-    Generate VCF for each chromosome in reference FASTA.
+def msprime_vcf(fai, pop_size, mut_rate, n):
 
-    :parameter fai: FAI samtools index of reference FASTA
-    :parameter pop_size: population size (Ne)
-    :parameter mut_rate: mutation rate (µ)
-    :parameter n: sample size
-    """
     df = pd.read_table(fai, header=None, usecols=[0,1], names =["name", "length"])
     rate_map=msprime_map(df)
 
@@ -86,3 +80,17 @@ def msprime_vcf(*, fai: str, pop_size: int, mut_rate: float, n: int):
             vcf_file.close()
 
     print(len(ts_chroms))
+
+parser = argparse.ArgumentParser(description='Generate VCF for each chromosome in reference FASTA.')
+parser.add_argument('fai', type=str, help='FAI samtools index of reference FASTA')
+parser.add_argument('pop_size', type=int, help='population size (Ne)')
+parser.add_argument('mut_rate', type=float, help='mutation rate (µ)')
+parser.add_argument('n', type=int, help='sample size')
+
+if __name__ == '__main__':
+	args = parser.parse_args()
+	d = vars(args)
+	li = list(d.values())
+	p = Process(target=msprime_vcf, args=(li))
+	p.start()
+	p.join()
