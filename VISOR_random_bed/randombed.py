@@ -63,18 +63,4 @@ def generate_type(nvar, yml, fai):
 	df = pd.DataFrame(data = for_df)
 	# shuffle values in dataframe
 	df = df.sample(frac = 1)
-	# print(df)
 	return(df)
-
-
-# tandem duplication: 0
-# inverted tandem duplication: 0
-# translocation copy-paste: 0
-# translocation cut-paste : 0
-# reciprocal translocation: 0
-
-	
-
-# fai = "/home/sukanya/tests/02_data/Sibirica_v1.0.fa.fai"
-# # select_chr(fai)
-# generate_type(12, "visor_sv_type.yaml", fai)
