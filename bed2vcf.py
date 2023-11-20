@@ -111,11 +111,11 @@ def get_seq(vcf_df, bed_df, fa_dict, output_file):
 			trans_chr = trans_info[0]
 			trans_start = trans_info[1]-1
 			trans_end = trans_start + l
+			fasta_seq_trans = fa_dict[trans_chr].upper()
 			
 			# translocation réciproque
 			if sv_type == "reciprocal translocation":
 				ref = str(fasta_seq.seq[start:end])
-				fasta_seq_trans = fa_dict[trans_chr].upper()
 				ref2 = str(fasta_seq_trans.seq[trans_start:trans_end])
 				
 				if trans_info[2] == "reverse":
