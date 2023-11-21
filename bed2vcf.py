@@ -34,9 +34,9 @@ def deletion(ref_seq, alt_seq):
 	alt = str(ref_seq)
 	return(ref,alt)
 
-def set_ref_alt(ref, alt, row, vcf_df):
-	vcf_df.at[row, "REF"] = ref
-	vcf_df.at[row, "ALT"] = alt
+def set_ref_alt(ref, alt, row, df):
+	df.at[row, "REF"] = ref
+	df.at[row, "ALT"] = alt
 
 def get_random_len(svtype):	
 	# INS, DEL, DUP, CNV, INV
@@ -54,18 +54,27 @@ def get_random_len(svtype):
 # bed_def : VISOR BED
 # fa_dict : FASTA where variants will be generated
 def get_seq(vcf_df, bed_df, fa_dict, output_file):
+	cols = ["CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT"]
+	ncol = len(vcf_df.columns) - len(cols)
+	li = [i for i in range(ncol)]
+	cols.extend(li)
+	vcf_df.columns = cols
+
+	df = vcf_df.join(bed_df)
 	# number of variants
-	n = len(vcf_df)
+	n = len(df)
+	# add variants
+	series = []
 
 	for i in range(n):
-		sv_info = bed_df.iloc[i]
 		## nom du chr pris dans le VCF
-		chr_name = vcf_df.iloc[i][0]
+		chr_name = df["CHROM"].iloc[i]
 		## position du variant pris dans le VCF
-		start = vcf_df.iloc[i][1]
-		start = start-1 # pour ajuster à l'index python
+		start = df["POS"].iloc[i]
+		start = int(start)-1 # pour ajuster à l'index python
 		## type de SV à générer
-		sv_type = sv_info[0]
+		sv_info = df['SVINFO'].iloc[i]
+		sv_type = df['SVTYPE'].iloc[i]
 
 		fasta_seq = fa_dict[chr_name].upper()
 
@@ -93,7 +102,7 @@ def get_seq(vcf_df, bed_df, fa_dict, output_file):
 			end = start + get_random_len("DUP")
 			ref = str(fasta_seq.seq[start])
 			alt_seq1 = str(fasta_seq.seq[start+1:end])
-			cp = int(sv_info[1])-1
+			cp = sv_info-1
 			# multiplication pour obtenir les copies
 			alt_seq = alt_seq1*cp
 			if sv_type == "inverted tandem duplication":
@@ -107,9 +116,8 @@ def get_seq(vcf_df, bed_df, fa_dict, output_file):
 			end = start + l
 			
 			# informations sur la translocation
-			trans_info = sv_info[1]
-			trans_chr = trans_info[0]
-			trans_start = trans_info[1]-1
+			trans_chr = sv_info[0]
+			trans_start = sv_info[1]-1
 			trans_end = trans_start + l
 			fasta_seq_trans = fa_dict[trans_chr].upper()
 			
@@ -118,12 +126,12 @@ def get_seq(vcf_df, bed_df, fa_dict, output_file):
 				ref = str(fasta_seq.seq[start:end])
 				ref2 = str(fasta_seq_trans.seq[trans_start:trans_end])
 				
-				if trans_info[2] == "reverse":
+				if sv_info[2] == "reverse":
 					alt = str(fasta_seq.seq[start]) + reverse(str(fasta_seq_trans.seq[trans_start+1:trans_end]))
 				else :
 					alt = str(fasta_seq.seq[start]) + str(fasta_seq_trans.seq[trans_start+1:trans_end])
 
-				if trans_info[3] == "reverse":
+				if sv_info[3] == "reverse":
 					alt2 = str(fasta_seq_trans.seq[trans_start]) + reverse(str(fasta_seq.seq[start+1:end]))
 				else:
 					alt2 = str(fasta_seq_trans.seq[trans_start]) + str(fasta_seq.seq[start+1:end])
@@ -136,7 +144,7 @@ def get_seq(vcf_df, bed_df, fa_dict, output_file):
 				
 				# insertion
 				ref2 = str(fasta_seq_trans.seq[trans_start])
-				if trans_info[2] == "reverse":
+				if sv_info[2] == "reverse":
 					alt2 = ref2 + reverse(str(fasta_seq.seq[start+1:end]))
 				else :
 					alt2 = ref2 + str(fasta_seq.seq[start+1:end])
@@ -144,7 +152,7 @@ def get_seq(vcf_df, bed_df, fa_dict, output_file):
 			# copier-coller
 			else:
 				ref = str(fasta_seq.seq[start])
-				alt = vcf_df["ALT"].iloc[i]
+				alt = SNP(ref)
 
 				ref2 = str(fasta_seq_trans.seq[trans_start])
 				alt2 = ref2 + str(fasta_seq.seq[start+1:end])
@@ -154,14 +162,18 @@ def get_seq(vcf_df, bed_df, fa_dict, output_file):
 			new_vcf_var[1] = trans_start+1
 			new_vcf_var[3] = ref2
 			new_vcf_var[4] = alt2
-			vcf_df.loc[len(vcf_df)] = new_vcf_var
+			save_series = pd.Series(new_vcf_var, index=cols)
+			series.append(save_series)
 
-		set_ref_alt(ref, alt, i, vcf_df)
+		set_ref_alt(ref, alt, i, df)
+
+	df_add = pd.DataFrame(series)
+	df = pd.concat([df, df_add], ignore_index=True)
 
 	# remove unnecessary columns for VCF
-	vcf_df["ID"] = "."
-	vcf_df["QUAL"] = 99
+	df["ID"] = "."
+	df["QUAL"] = 99
 	# output VCF
 	if not os.path.exists("results"):
 		os.mkdir("results")
-	vcf_df.to_csv("results/" + output_file + ".vcf", sep="\t", header=False, index=False)
+	df.to_csv("results/" + output_file + ".vcf", sep="\t", header=False, index=False)
