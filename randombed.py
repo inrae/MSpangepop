@@ -34,7 +34,6 @@ def select_orientation(li):
 ## create dataframe with all the variants to simulate
 def generate_type(nvar, yml, fai):
 	d = read_yaml(yml)
-	print(d)
 	## list for variant type and info
 	vartype = []
 	infos = []
@@ -57,24 +56,16 @@ def generate_type(nvar, yml, fai):
 			info = infos_dict[k]
 			infos.extend([info]*n)
 		vartype.extend([k]*n)
-		
-	for_df = {'variant': vartype, 'info': infos}
+	
+	if len(vartype) != nvar:
+		n = nvar - len(vartype)
+		vartype.extend(["SNP"]*n)
+		infos.extend([None]*n)
+
+	for_df = {'SVTYPE': vartype, 'SVINFO': infos}
 
 	df = pd.DataFrame(data = for_df)
 	# shuffle values in dataframe
-	df = df.sample(frac = 1)
+	df = df.sample(frac = 1, ignore_index=True)
 	# print(df)
 	return(df)
-
-
-# tandem duplication: 0
-# inverted tandem duplication: 0
-# translocation copy-paste: 0
-# translocation cut-paste : 0
-# reciprocal translocation: 0
-
-	
-
-fai = "/home/sukanya/tests/02_data/Sibirica_v1.0.fa.fai"
-# select_chr(fai)
-generate_type(12, "visor_sv_type.yaml", fai)
