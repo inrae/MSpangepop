@@ -169,6 +169,7 @@ def get_seq(vcf_df, bed_df, fa_dict, output_file):
 
 	df_add = pd.DataFrame(series)
 	df = pd.concat([df, df_add], ignore_index=True)
+	df = df.drop(['SVTYPE', 'SVINFO'], axis=1)
 
 	# remove unnecessary columns for VCF
 	df["ID"] = "."
