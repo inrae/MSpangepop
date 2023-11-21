@@ -66,13 +66,20 @@ use rule msprime_vcf as final_vcf with:
 	output:
 		"results/test_final.vcf"
 
+rule sort_vcf:
+	input:
+		rules.final_vcf.output
+	output:
+		"results/test_final_sorted.vcf"
+	shell:
+		"bcftools sort {input} -Oz -o {output}"
 
 rule graph:
 	input:
-		vcf = rules.final_vcf.output,
+		vcf = rules.sort_vcf.output,
 		fa = config["fa"]
 	output:
-		graph = "results/index.giraffe.gbz"
+		graph = "index.giraffe.gbz"
 	container:
 		"docker://quay.io/vgteam/vg:v1.52.0"
 	shell:
