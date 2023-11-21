@@ -1,12 +1,12 @@
 from bed2vcf import read_fa, get_seq
 from randombed import generate_type
-from fusion import *
 import argparse
+import pandas as pd
 from multiprocessing import Process
 
 ## n : length of variant
 def sv_vcf(vcf, fasta, fai, yml, outName):
-	vcf_df=get_vcf(vcf)
+	vcf_df = pd.read_table(vcf, sep="\t")
 	nvar = len(vcf_df)
 	bed_df = generate_type(nvar, yml, fai)
 	fa = read_fa(fasta)
