@@ -6,24 +6,12 @@ from multiprocessing import Process
 
 ## n : length of variant
 def sv_vcf(vcf, fasta, fai, yml, outName):
-	
-	# bed_df = replace_bed_col(bed, vcf)
-	# if header != None:
-	# 	vcf_df=read_vcf(vcf, header)
-	# else:
-	# 	vcf_df=read_vcf(vcf)
-
 	vcf_df=get_vcf(vcf)
 	nvar = len(vcf_df)
 	bed_df = generate_type(nvar, yml, fai)
 	fa = read_fa(fasta)
 
 	get_seq(vcf_df, bed_df, fa, outName)
-
-	# header_file="results/vcf_header.txt"
-	# content_file = "results/" + outName + ".vcf"
-	# merged_file="results/" + outName + "_final.vcf"
-	# merge_final_vcf(header_file, content_file, merged_file)
 
 # parse arguments
 parser = argparse.ArgumentParser(description='create final VCF')
