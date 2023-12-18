@@ -1,15 +1,10 @@
-# type de SV possible dans le script randomregion.r de VISOR
+### percentage of each variant type in the simulation, sum of values should be 100
+SNP: 0
 deletion: 0
 insertion: 0
-inversion: 0
+inversion: 100
 tandem duplication: 0
 inverted tandem duplication: 0
 translocation copy-paste: 0
 translocation cut-paste : 0
 reciprocal translocation: 0
-SNP: 0
-# MNP: 0
-# tandem repeat contraction: 0
-# tandem repeat expansion: 0
-# perfect tandem repetition: 0
-# approximate tandem repetition: 0
