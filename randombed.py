@@ -68,4 +68,5 @@ def generate_type(nvar, yml, fai):
 	# shuffle values in dataframe
 	df = df.sample(frac = 1, ignore_index=True)
 	# print(df)
+	df.to_csv("random_var.tsv", sep="\t", index=False)
 	return(df)
