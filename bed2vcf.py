@@ -1,7 +1,6 @@
 import pandas as pd
 import re, random, json, os
 import numpy as np
-
 from Bio import SeqIO
 from Bio.Seq import Seq
 
@@ -14,6 +13,11 @@ def read_fa(input_file):
 # génère une séquence pour insertion
 def DNA(length):
     return ''.join(random.choice('CGTA') for _ in range(length))
+
+def SNP(aa):
+	s = 'ACGT'
+	s = s.replace(aa, '')
+	return(random.choice(s))
 
 # check if reverse
 def is_reverse(s):
@@ -30,11 +34,11 @@ def deletion(ref_seq, alt_seq):
 	alt = str(ref_seq)
 	return(ref,alt)
 
-def set_ref_alt(ref, alt, row, vcf_df):
-	vcf_df.at[row, "REF"] = ref
-	vcf_df.at[row, "ALT"] = alt
+def set_ref_alt(ref, alt, row, df):
+	df.at[row, "REF"] = ref
+	df.at[row, "ALT"] = alt
 
-def get_random_len(svtype):
+def get_random_len(svtype):	
 	# INS, DEL, DUP, CNV, INV
 	df = pd.read_csv("sv_distributions/size_distrib" + svtype + ".tsv", sep="\t")
 	pb = df["pb"].tolist()
@@ -45,31 +49,38 @@ def get_random_len(svtype):
 	s = np.random.uniform(interval[0], interval[1], 1).round()
 	return(int(s[0]))
 
-# get the sequence of each variants in BED
-# output file is a VCF
-# (currently, not all variant supported by VISOR are included)
-# TODO : missing VISOR variant type : SNP, MNP and 4 types of tandem repeat
-
+### get the sequence of each variants in BED, output VCF
 # vcf_df : msprime VCF
 # bed_def : VISOR BED
 # fa_dict : FASTA where variants will be generated
 def get_seq(vcf_df, bed_df, fa_dict, output_file):
-	print(bed_df)
-# number of variants
-	n = len(vcf_df)
+	cols = ["CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT"]
+	ncol = len(vcf_df.columns) - len(cols)
+	li = [i for i in range(ncol)]
+	cols.extend(li)
+	vcf_df.columns = cols
+
+	df = vcf_df.join(bed_df)
+	# number of variants
+	n = len(df)
+	# add variants
+	series = []
 
 	for i in range(n):
-		sv_info = bed_df.iloc[i]
-		chr_name = sv_info[0]
-		start = sv_info[1]
-		start = start-1 # pour ajuster à l'index python
-		sv_type = sv_info[3]
+		## nom du chr pris dans le VCF
+		chr_name = df["CHROM"].iloc[i]
+		## position du variant pris dans le VCF
+		start = df["POS"].iloc[i]
+		start = int(start)-1 # pour ajuster à l'index python
+		## type de SV à générer
+		sv_info = df['SVINFO'].iloc[i]
+		sv_type = df['SVTYPE'].iloc[i]
 
 		fasta_seq = fa_dict[chr_name].upper()
 
 		if sv_type == "SNP":
-			ref = str(fasta_seq.seq[start:end])
-			alt = sv_info[4]
+			ref = str(fasta_seq.seq[start])
+			alt = SNP(ref)
 
 		elif sv_type == "deletion":
 			end = start + get_random_len("DEL")
@@ -91,10 +102,10 @@ def get_seq(vcf_df, bed_df, fa_dict, output_file):
 			end = start + get_random_len("DUP")
 			ref = str(fasta_seq.seq[start])
 			alt_seq1 = str(fasta_seq.seq[start+1:end])
-			cp = int(sv_info[4])-1
+			cp = sv_info-1
 			# multiplication pour obtenir les copies
 			alt_seq = alt_seq1*cp
-			if sv_type =="inverted tandem duplication":
+			if sv_type == "inverted tandem duplication":
 				alt_seq = reverse(alt_seq)
 			
 			alt = ref + alt_seq
@@ -105,25 +116,22 @@ def get_seq(vcf_df, bed_df, fa_dict, output_file):
 			end = start + l
 			
 			# informations sur la translocation
-			trans_info = sv_info[4]
-			print(trans_info, type(trans_info))
-			infos = trans_info.split(":")
-			trans_start = int(infos[2])-1
+			trans_chr = sv_info[0]
+			trans_start = sv_info[1]-1
 			trans_end = trans_start + l
-			trans_chr = infos[1]
-
+			fasta_seq_trans = fa_dict[trans_chr].upper()
+			
 			# translocation réciproque
 			if sv_type == "reciprocal translocation":
 				ref = str(fasta_seq.seq[start:end])
-				fasta_seq_trans = fa_dict[trans_chr].upper()
 				ref2 = str(fasta_seq_trans.seq[trans_start:trans_end])
 				
-				if infos[3] == "reverse":
+				if sv_info[2] == "reverse":
 					alt = str(fasta_seq.seq[start]) + reverse(str(fasta_seq_trans.seq[trans_start+1:trans_end]))
 				else :
 					alt = str(fasta_seq.seq[start]) + str(fasta_seq_trans.seq[trans_start+1:trans_end])
 
-				if infos[4] == "reverse":
+				if sv_info[3] == "reverse":
 					alt2 = str(fasta_seq_trans.seq[trans_start]) + reverse(str(fasta_seq.seq[start+1:end]))
 				else:
 					alt2 = str(fasta_seq_trans.seq[trans_start]) + str(fasta_seq.seq[start+1:end])
@@ -136,7 +144,7 @@ def get_seq(vcf_df, bed_df, fa_dict, output_file):
 				
 				# insertion
 				ref2 = str(fasta_seq_trans.seq[trans_start])
-				if infos[3] == "reverse":
+				if sv_info[2] == "reverse":
 					alt2 = ref2 + reverse(str(fasta_seq.seq[start+1:end]))
 				else :
 					alt2 = ref2 + str(fasta_seq.seq[start+1:end])
@@ -144,7 +152,7 @@ def get_seq(vcf_df, bed_df, fa_dict, output_file):
 			# copier-coller
 			else:
 				ref = str(fasta_seq.seq[start])
-				alt = vcf_df["ALT"].iloc[i]
+				alt = SNP(ref)
 
 				ref2 = str(fasta_seq_trans.seq[trans_start])
 				alt2 = ref2 + str(fasta_seq.seq[start+1:end])
@@ -154,14 +162,19 @@ def get_seq(vcf_df, bed_df, fa_dict, output_file):
 			new_vcf_var[1] = trans_start+1
 			new_vcf_var[3] = ref2
 			new_vcf_var[4] = alt2
-			vcf_df.loc[len(vcf_df)] = new_vcf_var
+			save_series = pd.Series(new_vcf_var, index=cols)
+			series.append(save_series)
 
-		set_ref_alt(ref, alt, i, vcf_df)
+		set_ref_alt(ref, alt, i, df)
+
+	df_add = pd.DataFrame(series)
+	df = pd.concat([df, df_add], ignore_index=True)
+	df = df.drop(['SVTYPE', 'SVINFO'], axis=1)
 
 	# remove unnecessary columns for VCF
-	vcf_df["ID"] = "."
-	vcf_df["QUAL"] = 99
+	df["ID"] = "."
+	df["QUAL"] = 99
 	# output VCF
 	if not os.path.exists("results"):
 		os.mkdir("results")
-	vcf_df.to_csv("results/" + output_file + ".vcf", sep="\t", header=False, index=False)
+	df.to_csv("results/" + output_file + ".vcf", sep="\t", header=False, index=False)
