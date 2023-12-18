@@ -18,18 +18,10 @@ This command output as many VCF as there are chromosomes in the reference FAI.
 
 ## 2. Generate structural variants
 ```bash
-python variants_generation.py -fai <FAI> -p <POPULATION SIZE> -r <MUTATION RATE> -n <SAMPLE SIZE>
+python variants_generation.py -fai <FAI> -fa <FASTA> -v <VCF> -y <YAML>
 ```
-Modify the YAML input to set the percentage of each variant you want to simulate (must equal 100). The number of variant is the same as in the VCF created with `msprime`.
-
-
-[How to use the randomregion.r script](https://davidebolo1993.github.io/visordoc/usecases/usecases.html#visor-hack)
-
-## 3. Get the final VCF
-The final VCF is obtained by merging the msprime VCF, the VISOR BED and the structural variant sequences.
-```bash
-python main.py sv-vcf <BED> <VCF> <FASTA> <OUTNAME>
-```
+The VCF is the one created with the previous command using `msprime`.
+YAML template is available in `VISOR_random_bed` folder. Modify the YAML input to set the percentage of each variant you want to simulate (must equal 100).
 
 Each variant type has a size distribution file (bins = 100 bp) in folder `sv_distributions`. The data was extracted from [An integrated map of structural variation in 2,504 human genomes (Sudmant, et al. 2015)](https://www.nature.com/articles/nature15394).
 
