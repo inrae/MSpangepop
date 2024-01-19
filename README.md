@@ -7,7 +7,7 @@ python tree_generation.py -h
 python variants_generation.py -h
 ```
 
-# ! DOC IS NOT UPDATED
+The code may be slow and should be ran on a cluster if you wish to generate a large population. A Singularity image can be created (`singularity_img` folder).
 
 ## 1. Use a VCF as a base
 A VCF is used as a base for genotypes and the position and number of variants. This VCF can be create with `msprime` to generate a population with:
@@ -21,14 +21,15 @@ This command output as many VCF as there are chromosomes in the reference FAI.
 python variants_generation.py -fai <FAI> -fa <FASTA> -v <VCF> -y <YAML>
 ```
 The VCF is the one created with the previous command using `msprime`.
-YAML template is available in `VISOR_random_bed` folder. Modify the YAML input to set the percentage of each variant you want to simulate (must equal 100).
+
+The variants generation is inspired by [VISOR](https://github.com/davidebolo1993/VISOR). YAML template is available in `VISOR_random_bed` folder. Modify the YAML input to set the percentage of each variant you want to simulate (must equal 100).
 
 Each variant type has a size distribution file (bins = 100 bp) in folder `sv_distributions`. The data was extracted from [An integrated map of structural variation in 2,504 human genomes (Sudmant, et al. 2015)](https://www.nature.com/articles/nature15394).
 
 The distributions are used to randomly sample each structural variant size.
 
 # TODO
-- [ ] Add non supported VISOR variant types
+- [ ] Add not yet supported VISOR variant types
     - [ ] MNP
     - [ ] tandem repeat contraction
     - [ ] tandem repeat expansion
@@ -40,6 +41,10 @@ In the `vg_extact_data` folder.
 
 Snakemake/Singularity pipeline to get a pangenome in GFA format and a FASTA with all individuals from the VCF. Starts from a reference FASTA and a VCF to specify in the `config.yaml` file, with a name for the output.
 
+Create directory or modify the SBATCH options in `job.sh`.
+```
+mkdir -p slurm_logs
+```
 On SLURM cluster, run `sbatch job.sh dry` for a dry run or `sbatch job.sh` directly. Adjust the `SNG_BIND` variable if files are not found and the snakemake profile as necessary for performance.
 
 You can extract a VCF from the graph using the `vg deconstruct` command. It is not implemented in the pipeline.
