@@ -1,0 +1,75 @@
+configfile: "config.yaml"
+SAMPLES = config["name"]
+
+
+rule all:
+	input:
+		expand("results/{sample}/{sample}.gfa", sample=SAMPLES),
+		# expand("results/{sample}/{sample}.fa", sample=SAMPLES),
+		expand("results/{sample}/{sample}_from_vg.gfa", sample=SAMPLES)
+
+rule sort:
+	input:
+		vcf = config["vcf"]
+	output:
+		sorted_vcf = "results/{sample}/{sample}.vcf.gz"
+	container:
+		"docker://mgibio/bcftools:1.12"
+	shell:
+		"bcftools sort {input.vcf} -Oz -o {output}"
+
+rule construct:
+	input:
+		ref = config["fa"],
+		vcf = rules.sort.output
+	output:
+		"results/{sample}/graph.vg"
+	container:
+		"docker://quay.io/vgteam/vg:v1.53.0"
+	shell:
+		"vg construct -m 2000000000 -r {input.ref} -v {input.vcf} -f -p > {output}"
+
+rule convert:
+	input:
+		vg = rules.construct.output
+	output:
+		gfa = "results/{sample}/{sample}_from_vg.gfa"
+	container:
+		"docker://quay.io/vgteam/vg:v1.53.0"
+	shell:
+		"vg convert -f {input.vg} > {output.gfa}"
+
+rule graph:
+	input:
+		ref = config["fa"],
+		vcf = rules.sort.output
+		# vcf = config["vcf"]
+	output:
+		gbz = "results/" + "{sample}/index.giraffe.gbz"
+	params:
+		prefix = "results/" + "{sample}/index"
+	container:
+		"docker://quay.io/vgteam/vg:v1.53.0"
+	shell:
+		"vg autoindex -r {input.ref} -v {input.vcf} -w giraffe -p {params.prefix}"
+
+rule graph_gfa:
+	input:
+		gbz = rules.graph.output
+	output:
+		gfa = "results/{sample}/{sample}.gfa"
+	container:
+		"docker://quay.io/vgteam/vg:v1.53.0"
+	shell:
+		"vg convert -f {input.gbz} > {output.gfa}"
+
+rule fa:
+	input:
+		gbz = rules.graph.output
+	output:
+		fa = "results/{sample}/{sample}.fa"
+	container:
+		"docker://quay.io/vgteam/vg:v1.53.0"
+	shell:
+		"vg paths -F -x {input.gbz} > {output.fa}"
+
