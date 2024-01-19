@@ -1,0 +1,19 @@
+Bootstrap: docker
+# From: ubuntu:focal-20220415
+From: ubuntu:jammy-20231004
+IncludeCmd: yes
+
+%files
+	msprime_VISOR_fusionVCF mspv
+
+%environment
+	export PATH="/mspv/tree_generation.py":$PATH
+	export PATH="/mspv/variants_generation.py":$PATH
+
+%post
+	##Python installation
+	apt update -y
+	apt install python3 -y
+	python3 --version
+	apt install python3-pip -y
+	pip install msprime pandas defopt numpy biopython pyyaml
