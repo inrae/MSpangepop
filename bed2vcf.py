@@ -89,7 +89,7 @@ def get_seq(vcf_df, bed_df, fa_dict, output_file):
 
 		elif sv_type == "insertion":
 			end = start + get_random_len("INS")
-			alt_seq = DNA(end)
+			alt_seq = DNA(get_random_len("INS"))
 			ref = str(fasta_seq.seq[start])
 			alt = ref + str(alt_seq)
 

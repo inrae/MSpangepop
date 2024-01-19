@@ -49,6 +49,7 @@
 !*.yml
 !*.yaml
 !Snakefile
+!*.def
 
 # 3) add a pattern to track the file patterns of section2 even if they are in
     # subdirectories

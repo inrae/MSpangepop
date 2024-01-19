@@ -1,0 +1,15 @@
+### default ressources used by snakemake (applied to all rules)
+__default__:
+  job-name: "{rule}"
+  time: "120:00:00" # max run time "hours:minutes:seconds"
+  ntasks: 1 # nb of processes
+  cpus-per-task: 10 # nb of cores for each process(1 process)
+  mem: "60G"
+  nodes: 1 # Requirements nodes/servers (default: 1)
+  ntasks-per-node: 1 # Requirements cpu/core/task (default: 1)
+  output: "slurm_logs/{rule}.%N.%j.out"
+  error: "slurm_logs/{rule}.%N.%j.err"
+  mail-type: FAIL #email notification
+  mail-user: sukanya.denni@univ-rouen.fr
+
+### rule resources
