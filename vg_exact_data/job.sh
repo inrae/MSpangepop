@@ -1,7 +1,7 @@
 #!/bin/bash
 ################################ Slurm options #################################
 ### prepare_calling_jobs
-#SBATCH -J vg_smk
+#SBATCH -J vg_data
 ### Max run time "hours:minutes:seconds"
 #SBATCH --time=120:00:00
 #SBATCH --ntasks=1 #nb of processes
@@ -14,7 +14,6 @@
 #SBATCH -o slurm_logs/snakemake.%N.%j.out
 #SBATCH -e slurm_logs/snakemake.%N.%j.err
 #SBATCH --mail-type=END,FAIL
-#SBATCH --mail-user=sukanya.denni@univ-rouen.fr
 ################################################################################
 
 # Useful information to print
