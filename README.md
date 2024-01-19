@@ -34,3 +34,12 @@ The distributions are used to randomly sample each structural variant size.
     - [ ] tandem repeat expansion
     - [ ] approximate tandem repetition
 - [x] Add VCF merging when there are multiple chromosomes
+
+## 3. Create exact data with vg
+In the `vg_extact_data` folder.
+
+Snakemake/Singularity pipeline to get a pangenome in GFA format and a FASTA with all individuals from the VCF. Starts from a reference FASTA and a VCF to specify in the `config.yaml` file, with a name for the output.
+
+On SLURM cluster, run `sbatch job.sh dry` for a dry run or `sbatch job.sh` directly. Adjust the `SNG_BIND` variable if files are not found and the snakemake profile as necessary for performance.
+
+You can extract a VCF from the graph using the `vg deconstruct` command. It is not implemented in the pipeline.
