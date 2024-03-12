@@ -41,7 +41,7 @@ In the `vg_extact_data` folder.
 
 Snakemake/Singularity pipeline to get a pangenome in GFA format and a FASTA with all individuals from the VCF. Starts from a reference FASTA and a VCF to specify in the `config.yaml` file, with a name for the output.
 
-Create directory or modify the SBATCH options in `job.sh`.
+Create directory or modify the SBATCH options in `job.sh` (**WARNING**: set the correct email adress if you want to receive the slurm emails).
 ```
 mkdir -p slurm_logs
 ```
