@@ -14,6 +14,7 @@
 #SBATCH -o slurm_logs/snakemake.%N.%j.out
 #SBATCH -e slurm_logs/snakemake.%N.%j.err
 #SBATCH --mail-type=END,FAIL
+#SBATCH --mail-user=my.email@somewhere.com
 ################################################################################
 
 # Useful information to print
