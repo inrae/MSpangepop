@@ -39,9 +39,9 @@ The distributions are used to randomly sample each structural variant size.
 ## 3. Create exact data with vg
 In the `vg_extact_data` folder.
 
-Snakemake/Singularity pipeline to get a pangenome in GFA format and a FASTA with all individuals from the VCF. Starts from a reference FASTA and a VCF to specify in the `config.yaml` file, with a name for the output.
+Snakemake/Singularity pipeline to get a pangenome in GFA format and a FASTA with all individuals from the VCF. Starts from a reference FASTA and a VCF to specify in the `config.yaml` file, with a name for the output (**WARNING**: think to set the correct email address in `config.yaml`).
 
-Create directory or modify the SBATCH options in `job.sh` (**WARNING**: set the correct email adress if you want to receive the slurm emails).
+Create directory or modify the SBATCH options in `job.sh` (**WARNING**: think to set the correct email address in `job.sh` if you want to receive the slurm emails).
 ```
 mkdir -p slurm_logs
 ```
