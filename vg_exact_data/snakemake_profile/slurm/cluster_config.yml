@@ -10,6 +10,6 @@ __default__:
   output: "slurm_logs/{rule}.%N.%j.out"
   error: "slurm_logs/{rule}.%N.%j.err"
   mail-type: FAIL #email notification
-  mail-user: sukanya.denni@univ-rouen.fr
+  mail-user: my.email@mydomain.com
 
 ### rule resources
