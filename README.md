@@ -9,13 +9,11 @@ python variants_generation.py -h
 
 The code may be slow and should be ran on a cluster if you wish to generate a large population. A Singularity image can be created (`singularity_img` folder).
 
-## 1. Use a VCF as a base
-A VCF is used as a base for genotypes and the position and number of variants. This VCF can be create with `msprime` to generate a population with:
+## 1. Create the base VCF (if you dont already have one)
+A VCF is used as a base for genotypes and the position and number of variants. This VCF can be create with `msprime` (inside tree_generation.py) to generate a population with:
 ```bash
 python tree_generation.py -fai <FAI> -p <POPULATION SIZE> -r <MUTATION RATE> -n <SAMPLE SIZE>
 ```
-This command output as many VCF as there are chromosomes in the reference FAI.
-
 ## 2. Generate structural variants
 ```bash
 python variants_generation.py -fai <FAI> -fa <FASTA> -v <VCF> -y <YAML>
