@@ -1,8 +1,8 @@
 ### percentage of each variant type in the simulation, sum of values should be 100
-SNP: 0
+SNP: 100
 deletion: 0
 insertion: 0
-inversion: 100
+inversion: 0
 tandem duplication: 0
 inverted tandem duplication: 0
 translocation copy-paste: 0
