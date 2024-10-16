@@ -3,7 +3,7 @@
 ### prepare_calling_jobs
 #SBATCH -J vg_data
 ### Max run time "hours:minutes:seconds"
-#SBATCH --time=120:00:00
+#SBATCH --time=95:00:00
 #SBATCH --ntasks=1 #nb of processes
 #SBATCH --cpus-per-task=1 # nb of cores for each process(1 process)
 #SBATCH --mem=10G # max of memory (-m) 
@@ -14,7 +14,7 @@
 #SBATCH -o slurm_logs/snakemake.%N.%j.out
 #SBATCH -e slurm_logs/snakemake.%N.%j.err
 #SBATCH --mail-type=END,FAIL
-#SBATCH --mail-user=my.email@somewhere.com
+#SBATCH --mail-user=lucien.piat@inrae.fr
 ################################################################################
 
 # Useful information to print
@@ -44,8 +44,8 @@ SNG_BIND=".,/gpfs"
 
 ### Module Loading:
 module purge
+module load python/3.9.7
 module load snakemake/6.5.1
-# module load singularity
 
 echo 'Starting Snakemake workflow'
 
