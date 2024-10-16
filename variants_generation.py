@@ -19,7 +19,7 @@ parser = argparse.ArgumentParser(description='create final VCF')
 parser.add_argument('-v', '--vcf', type=str, required = True, help='VCF generated with msprime --> tree generation script')
 parser.add_argument('-fa', '--fasta', type=str, required = True, help='Reference FASTA for the VCF and the variants')
 parser.add_argument('-fai', '--fai', type=str, required = True, help='Samtools index of reference FASTA')
-parser.add_argument('-y', '--yaml', type=str, required = True, help='Reference FASTA for the VCF and the variants')
+parser.add_argument('-y', '--yaml', type=str, required = True, help='YAML configuration for structural variants')
 parser.add_argument('-o', '--outName', type=str, required = True, help='Output name')
 # parser.add_argument('--header', type=int, help='vcf header size')
 
