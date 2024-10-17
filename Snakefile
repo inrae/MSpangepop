@@ -1,4 +1,4 @@
-configfile: ".masterconfig.yaml"  
+configfile: ".config/.masterconfig.yaml"  
 
 config["samples"] = {k: v for k, v in config["samples"].items()}
 
@@ -33,7 +33,7 @@ rule generate_tree:
         out = output_dir + "{sample}_results/01_genet_tree"
     shell:
         """
-        python3 tree_generation.py -fai {input.fai} -p {params.pop_size} -r {params.mut_rate} -n {params.n} -o {params.out}
+        python3 scripts/tree_generation.py -fai {input.fai} -p {params.pop_size} -r {params.mut_rate} -n {params.n} -o {params.out}
         """
 
 # Rule to generate structural variants using variants_generation.py
@@ -42,12 +42,13 @@ rule generate_structural_variants:
         fai=lambda wildcards: config["samples"][wildcards.sample]["fai"],
         fasta=output_dir + "{sample}_results/temp/{sample}.fa",
         vcf=output_dir + "{sample}_results/01_genet_tree/msprime_simulation.vcf",
-        yaml="visor_sv_type.yaml"
+        yaml=".config/visor_sv_type.yaml"
     output:
         output_dir + "{sample}_results/02_variant_generation/{sample}_variants.vcf"
     params:
         outfile=output_dir + "{sample}_results/02_variant_generation/{sample}_variants.vcf"
     shell:
         """
-        python3 variants_generation.py -fai {input.fai} -fa {input.fasta} -v {input.vcf} -y {input.yaml} -o {params.outfile}
+        python3 scripts/variants_generation.py -fai {input.fai} -fa {input.fasta} -v {input.vcf} -y {input.yaml} -o {params.outfile} && 
+        rm random_var.tsv
         """
