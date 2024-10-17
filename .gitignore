@@ -50,6 +50,7 @@
 !*.yaml
 !Snakefile
 !*.def
+!tes
 
 # 3) add a pattern to track the file patterns of section2 even if they are in
     # subdirectories
@@ -57,6 +58,6 @@
 
 
 # 4) specific files or folder to TRACK (the '**' sign means 'any path')
-!/sv_distributions/*
+!/simulation_data/*
 
 # 5) specific folders to UNTRACK (wherever it may be in the treeview)
