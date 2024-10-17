@@ -33,4 +33,8 @@ Edit the `.masterconfig` file and the `visor_sv_type.yaml` in the `.config/` dir
 ```
 snakemake -c1 -n
 ```
+If no warnings are displayed
+```
+snakemake -c1
+```
 /!\ Act with care; this workflow is a proper memory hog if you increase the values in the .masterconfig too much.
