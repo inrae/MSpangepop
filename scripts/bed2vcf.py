@@ -42,7 +42,7 @@ def set_ref_alt(ref, alt, row, df):
 
 # Get random length for structural variants
 def get_random_len(svtype):    
-    df = pd.read_csv(f"sv_distributions/size_distrib{svtype}.tsv", sep="\t")
+    df = pd.read_csv(f"simulation_data/sv_distributions/size_distrib{svtype}.tsv", sep="\t")
     pb = df["pb"].tolist()
     li = np.random.multinomial(1, pb)
     i = np.argmax(li)

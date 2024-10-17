@@ -58,6 +58,6 @@
 
 
 # 4) specific files or folder to TRACK (the '**' sign means 'any path')
-!/simulation_data/*
+!/simulation_data/**
 
 # 5) specific folders to UNTRACK (wherever it may be in the treeview)
