@@ -11,7 +11,7 @@ sudo apt update -y
 sudo apt install python3 -y
 python3 --version
 sudo apt install python3-pip -y
-pip install msprime pandas defopt numpy biopython pyyaml snakemake
+pip install msprime pandas defopt numpy biopython pyyaml
 sudo apt install gzip
 ```
 Clone the branch

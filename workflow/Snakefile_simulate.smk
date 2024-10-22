@@ -39,10 +39,12 @@ rule generate_tree:
         mut_rate=lambda wildcards: config["samples"][wildcards.sample]["mutation_rate"],
         n=lambda wildcards: config["samples"][wildcards.sample]["sample_size"],
         out=lambda wildcards: os.path.join(output_dir, f"{wildcards.sample}_results", "02_msprime_tree_sim")
+    container:
+        "docker://registry.forgemia.inra.fr/pangepop/mspangepop/mspangepop_dep:0.0.1"
     shell:
         """
         mkdir -p {params.out} &&
-        python3 workflow/scripts/tree_generation.py -fai {input.fai} -p {params.pop_size} -r {params.mut_rate} -n {params.n} -o {params.out} -c {wildcards.chromosome}
+        workflow/scripts/tree_generation.py -fai {input.fai} -p {params.pop_size} -r {params.mut_rate} -n {params.n} -o {params.out} -c {wildcards.chromosome}
         """
 
 # Rule to merge all VCF files for each sample
@@ -83,8 +85,10 @@ rule generate_structural_variants:
         output_dir + "{sample}_results/04_final_vcf_generation/simulated_variants.vcf"
     params:
         outfile=output_dir + "{sample}_results/04_final_vcf_generation/simulated_variants.vcf"
+    container:
+        "docker://registry.forgemia.inra.fr/pangepop/mspangepop/mspangepop_dep:0.0.1"
     shell:
         """
-        python3 workflow/scripts/variants_generation.py -fai {input.fai} -fa {input.fasta} -v {input.vcf} -y {input.yaml} -o {params.outfile} && 
+        workflow/scripts/variants_generation.py -fai {input.fai} -fa {input.fasta} -v {input.vcf} -y {input.yaml} -o {params.outfile} && 
         rm random_var.tsv
         """
