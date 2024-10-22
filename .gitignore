@@ -55,7 +55,7 @@
 # 3) add a pattern to track the file patterns of section2 even if they are in
     # subdirectories
 !*/
-
+!**.smk
 
 # 4) specific files or folder to TRACK (the '**' sign means 'any path')
 !/simulation_data/**
