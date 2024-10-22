@@ -42,7 +42,7 @@ rule generate_tree:
     shell:
         """
         mkdir -p {params.out} &&
-        python3 scripts/tree_generation.py -fai {input.fai} -p {params.pop_size} -r {params.mut_rate} -n {params.n} -o {params.out} -c {wildcards.chromosome}
+        python3 workflow/scripts/tree_generation.py -fai {input.fai} -p {params.pop_size} -r {params.mut_rate} -n {params.n} -o {params.out} -c {wildcards.chromosome}
         """
 
 # Rule to merge all VCF files for each sample
@@ -57,7 +57,7 @@ rule merge_vcf:
     shell:
         """
         mkdir -p $(dirname {output.merged_vcf}) &&
-        bash scripts/merge_vcf.sh {output.merged_vcf} {input.vcf_files}
+        bash workflow/scripts/merge_vcf.sh {output.merged_vcf} {input.vcf_files}
         """
 
 
@@ -85,6 +85,6 @@ rule generate_structural_variants:
         outfile=output_dir + "{sample}_results/04_final_vcf_generation/simulated_variants.vcf"
     shell:
         """
-        python3 scripts/variants_generation.py -fai {input.fai} -fa {input.fasta} -v {input.vcf} -y {input.yaml} -o {params.outfile} && 
+        python3 workflow/scripts/variants_generation.py -fai {input.fai} -fa {input.fasta} -v {input.vcf} -y {input.yaml} -o {params.outfile} && 
         rm random_var.tsv
         """
