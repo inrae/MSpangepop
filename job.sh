@@ -84,16 +84,33 @@ run_snakemake() {
 }
 
 if [ $# -eq 0 ]; then
-    echo "Usage: $0 [dry|dag|run]"
-    echo "    dry - run both Snakefiles in dry-run mode"
-    echo "    dag - generate DAG for both Snakefiles"
-    echo "    run - run both Snakefiles normally (default)"
+    echo "Usage: $0 [split|simulate] [dry|dag|run]"
+    echo "    split - run the split Snakefile"
+    echo "    simulate - run the simulate Snakefile"
+    echo "    dry - run the specified Snakefile in dry-run mode"
+    echo "    dag - generate DAG for the specified Snakefile"
+    echo "    run - run the specified Snakefile normally (default)"
     exit 1
 fi
 
-# Determine the option based on the argument
-option="$1"
+# Determine the workflow and option based on the arguments
+workflow="$1"
+option="$2"
 
-# Run the Snakefiles with the specified option
-run_snakemake "workflow/Snakefile_split.smk" "$option"
-run_snakemake "workflow/Snakefile_simulate.smk" "$option"
+# Run the specified Snakefile based on user input
+case "$workflow" in
+    split)
+        snakefile="workflow/Snakefile_split.smk"
+        ;;
+    simulate)
+        snakefile="workflow/Snakefile_simulate.smk"
+        ;;
+    *)
+        echo "Invalid workflow: $workflow"
+        echo "Usage: $0 [split|simulate] [dry|dag|run]"
+        exit 1
+        ;;
+esac
+
+# Run the specified Snakefile with the provided option
+run_snakemake "$snakefile" "$option"
