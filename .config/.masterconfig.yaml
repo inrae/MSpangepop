@@ -1,7 +1,25 @@
 samples:
   test_sample1:
-    fai: "test_fai.fai"
-    fasta.gz: "test_genome.fa.gz"
-    population_size: 5
-    mutation_rate: 1e-7
-    sample_size: 2
+    fai: "test_fai.fai"            # Input FAI file
+    fasta.gz: "test_genome.fa.gz"  # Fasta file
+    population_size: 5              # Example population size
+    mutation_rate: 1e-7             # Example mutation rate
+    sample_size: 2                   # Example sample size
+
+chromosomes:
+  - "BJ4#1#chr01"
+  - "BJ4#1#chr02"
+  - "BJ4#1#chr03"
+  - "BJ4#1#chr04"
+  - "BJ4#1#chr05"
+  - "BJ4#1#chr06"
+  - "BJ4#1#chr07"
+  - "BJ4#1#chr08"
+  - "BJ4#1#chr09"
+  - "BJ4#1#chr10"
+  - "BJ4#1#chr12"
+  - "BJ4#1#chr13"
+  - "BJ4#1#chr14"
+  - "BJ4#1#chr15"
+  - "BJ4#1#chr16"
+  - "BJ4#1#chr.M"
