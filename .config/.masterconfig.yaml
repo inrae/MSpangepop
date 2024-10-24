@@ -1,10 +1,11 @@
 samples:
   test_sample1:
     fai: "test_fai.fai"            # Input FAI file
-    fasta.gz: "test_genome.fa.gz"  # Fasta file
-    population_size: 5              # Example population size
-    mutation_rate: 1e-7             # Example mutation rate
-    sample_size: 2                   # Example sample size
+    fasta_gz: "test_genome.fa.gz"  # Fasta file
+    population_size: 5              # Population size (Ne)
+    mutation_rate: 1e-7             # Mutation rate (r)
+    recombination_rate:
+    sample_size: 2                   # Sample size
 
 chromosomes:
   - "BJ4#1#chr01"

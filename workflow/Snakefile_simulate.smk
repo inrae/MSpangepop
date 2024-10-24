@@ -65,7 +65,7 @@ rule merge_vcf:
 
 rule unzip_fasta:
     input:
-        fasta_gz=lambda wildcards: config["samples"][wildcards.sample]["fasta.gz"]
+        fasta_gz=lambda wildcards: config["samples"][wildcards.sample]["fasta_gz"]
     output:
         temp(output_dir + "{sample}_results/temp/{sample}.fasta")  # Store unzipped FASTA files in a temporary directory
     shell:
