@@ -9,27 +9,30 @@ output_dir = "results/"
 
 rule all:
     input:
-        expand(os.path.join(output_dir, "{sample}_results", "02_split_fai"), sample=config["samples"].keys()) 
+        expand(os.path.join(output_dir, "{sample}_results", "02_split_fai"), sample=config["samples"].keys()),
+        expand(os.path.join(output_dir, "{sample}_results", "chr_config.yaml"), sample=config["samples"].keys()) 
 
 rule generate_fai:
     input:
-        fasta=lambda wildcards: config["samples"][wildcards.sample]["fasta_gz"]  # Get FASTA file from config
+        fasta=lambda wildcards: config["samples"][wildcards.sample]["fasta_gz"]
     output:
         fai=os.path.join(output_dir, "{sample}_results", "01_full_fai", "{sample}_full.fai")  
+    params: 
+        out=os.path.join(output_dir, "{sample}_results", "01_full_fai")  
     container:
         "docker://registry.forgemia.inra.fr/pangepop/mspangepop/samtool:1.21"
     shell:
         """
-        samtools faidx {input.fasta}
-        mv {input.fasta}.fai {output.fai}
+        samtools faidx {input.fasta} &&
+        mv {input.fasta}.fai {output.fai} &&
+        rm {input.fasta}.gzi || true
         """
 
-# Rule to split the FAI file
 rule split_fai:
     input:
         fai=rules.generate_fai.output.fai
     output:
-        directory(os.path.join(output_dir, "{sample}_results", "02_split_fai"))  # Directory where split files will be stored
+        directory(os.path.join(output_dir, "{sample}_results", "02_split_fai"))
     params:
         out=os.path.join(output_dir, "{sample}_results", "02_split_fai")
     shell:
@@ -38,3 +41,12 @@ rule split_fai:
         awk '{{print > "{params.out}/" $1 ".fai"}}' {input.fai}
         """
 
+rule create_chr_config:
+    input:
+        fai=rules.generate_fai.output.fai
+    output:
+        yaml=os.path.join(output_dir, "{sample}_results", "chr_config.yaml")
+    shell:
+        """
+        bash workflow/scripts/fai2yaml.sh {input.fai} {output.yaml}
+        """
