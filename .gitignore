@@ -59,7 +59,6 @@
 
 # 4) specific files or folder to TRACK (the '**' sign means 'any path')
 !/simulation_data/**
-!test**fai
 !test**fa.gz
 !**setting.json
 !slurm_logs/
