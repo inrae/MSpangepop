@@ -47,13 +47,11 @@
 #!*.template
 #!*.txt
 !*.yml
-!*.yaml
 !Snakefile
 !*.def
 !tes
 
-# 3) add a pattern to track the file patterns of section2 even if they are in
-    # subdirectories
+# 3) add a pattern to track the file patterns of section2 even if they are in subdirectories
 !*/
 !**.smk
 
