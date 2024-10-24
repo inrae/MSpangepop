@@ -1,3 +1,6 @@
+#!/bin/bash
+#Script to run localy the workflow DO NOT USE AS IS ON A CLUSTER!
+
 SNG_BIND=$(pwd)
 
 run_snakemake() {
