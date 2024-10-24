@@ -1,6 +1,5 @@
 samples:
-  test_sample1:
-    fai: "test_fai.fai"            # Input FAI file
+  test_sample1:        
     fasta_gz: "test_genome.fa.gz"  # Fasta file
     population_size: 5              # Population size (Ne)
     mutation_rate: 1e-7             # Mutation rate (r)
