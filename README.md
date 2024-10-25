@@ -26,8 +26,9 @@ If no warnings are displayed, run:
 ```
 sbatch job.sh [split, simulate] 
 ```
-> **Nb:** to create a visual representation of the workflow, use [dag]. Open the generated `.dot` file with a [viewer](https://dreampuf.github.io/GraphvizOnline/) that supports the format.
+> **Nb 1:** to create a visual representation of the workflow, use [dag]. Open the generated `.dot` file with a [viewer](https://dreampuf.github.io/GraphvizOnline/) that supports the format.
 
+> **Nb 2:** Frist execution of the workflow will be slow since images need to be pulled.
 ## Run localy
 - Ensure `snakemake` and `singularity` are installed on your machine.
 - Modify the `.masterconfig` file and `visor_sv_type.yaml` in the `.config/` directory as needed.
