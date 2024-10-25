@@ -49,7 +49,7 @@ load_modules() {
 load_modules "python/3.9.7" "snakemake/6.5.1" 
 
 ### variables
-SNG_BIND="/mnt/cbib/pangenoak_trials/MSpangepop/"
+SNG_BIND=$(pwd)
 CLUSTER_CONFIG=".config/snakemake_profile/slurm/cluster_config.yml"
 MAX_CORES=10
 PROFILE=".config/snakemake_profile/slurm"
