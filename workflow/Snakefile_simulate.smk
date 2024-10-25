@@ -19,7 +19,7 @@ def load_chromosomes(sample):
 # Rule to define all final outputs
 rule all:
     input:
-        expand(os.path.join(output_dir, "{sample}_results", "05_final_vcf", "simulated_variants.vcf"),
+        expand(os.path.join(output_dir, "{sample}_results", "06_graph", "graph.gfa"),
                sample=config["samples"].keys())
 
 # Define a function to get the path of the FAI file for each sample and chromosome
@@ -77,18 +77,46 @@ rule unzip_fasta:
 # Rule to generate structural variants using variants_generation.py
 rule generate_sv:
     input:
-        fai=rules.unzip_fasta.output,
-        fasta=output_dir + "{sample}_results/temp/{sample}.fasta",
+        fasta=rules.unzip_fasta.output,
         vcf=rules.merge_simulations.output,
         yaml=".config/visor_sv_type.yaml"
     output:
-        output_dir + "{sample}_results/05_final_vcf/simulated_variants.vcf"
-    params:
-        outfile=output_dir + "{sample}_results/05_final_vcf/simulated_variants.vcf"
+        outfile = os.path.join(output_dir, "{sample}_results", "05_final_vcf", "simulated_variants.vcf")
     container:
         "docker://registry.forgemia.inra.fr/pangepop/mspangepop/mspangepop_dep:0.0.1"
     shell:
         """
-        python3 workflow/scripts/variants_generation.py -fai {input.fai} -fa {input.fasta} -v {input.vcf} -y {input.yaml} -o {params.outfile} && 
+        python3 workflow/scripts/variants_generation.py -fai {input.fai} -fa {input.fasta} -v {input.vcf} -y {input.yaml} -o {output.outfile} && 
         rm random_var.tsv
         """
+
+rule sort_vcf:
+    input:
+        rules.generate_sv.output
+    output:
+        outfile = os.path.join(output_dir, "{sample}_results", "05_final_vcf", "sorted_simulated_variants.vcf")
+    container:
+        "docker://mgibio/bcftools:1.12"
+    shell:
+        "bcftools sort {input.vcf} -Oz -o {output}"
+
+rule construct_graph:
+    input:
+        fasta=rules.unzip_fasta.output, 
+        vcf=rules.sort_vcf.output
+    output:
+        outfile=os.path.join(output_dir, "{sample}_results", "06_graph", "graph.vg")
+    container:
+        "docker://quay.io/vgteam/vg:v1.53.0"
+    shell:
+        "vg construct -m 2000000000 -r {input.fasta} -v {input.vcf} -f -p > {output}"
+
+rule convert_to_gfa:
+    input:
+        vg=rules.construct_graph.output
+    output:
+        outfile=os.path.join(output_dir, "{sample}_results", "06_graph", "graph.gfa")
+    container:
+        "docker://quay.io/vgteam/vg:v1.53.0"
+    shell:
+        "vg convert -f {input.vg} > {output.outfile}"
