@@ -1,44 +1,49 @@
 # How to Use
+> **`/!\`:** Act with care; this workflow uses significant memory if you increase the values in `.masterconfig`. We recommend keeping the default settings and running a test first.
 
-### 1. Set Up
-
-You can run the workflow directly after downloading; no need for additional libraries; everything is included in a Singularity image.
-
+## Running on the CBIB
+### 1. Set up
+Clone the Git repository and switch to my branch:
 ```bash
 git clone https://forgemia.inra.fr/pangepop/MSpangepop.git
 cd MSpangepop
 git checkout dev_lpiat
 ```
-Clone the branch
 
 ### 2. Add your files
-- Add a `.fasta.gz` file
-- Add a `.fai` file 
+- Add a `.fasta.gz` file; examples can be found in the repository
 
-you will find examples in the repo. 
-
-### 3. Set up the pipeline
+### 3. Configure the pipeline
 - Edit the `.masterconfig` file and the `visor_sv_type.yaml` in the `.config/` directory to suit your needs. 
 - Edit the `job.sh` and the `./config/snakemake_profile/clusterconfig.yaml` with your email.
 
 ### 4. Run the WF
+The workflow has two parts: `split` and `simulate`. Run the following command:
 ```
 sbatch job.sh [split, simulate] [dry, dag]
 ```
-If no warnings are displayed
+If no warnings are displayed, run:
 ```
 sbatch job.sh [split, simulate] 
 ```
+> **Nb:** to create a visual representation of the workflow, use [dag]. Open the generated `.dot` file with a [viewer](https://dreampuf.github.io/GraphvizOnline/) that supports the format.
 
-Nb: you can also run localy, use ./local_run [split, simulate] [dry, dag] and make sure you have snakemake and singularity instaled on the local machine
+## Run localy
+- Ensure `snakemake` and `singularity` are installed on your machine.
+- Modify the `.masterconfig` file and `visor_sv_type.yaml` in the `.config/` directory as needed.
 
-/!\ Act with care; this workflow is a proper memory hog if you increase the values in the .masterconfig too much.
+```
+./local_run [split, simulate] [dry, dag]
+```
 
-### Help ! It is complaning about the singularity image 
-If you want to run localy, make sure you are loged in the forgemia registery before executing the pipeline.
+If the workflow cannot download images from the container registry, install `Docker`, log in with your credentials, and rerun the workflow:
 ```
 docker login -u "<your_username>" -p "<your_token>" "registry.forgemia.inra.fr" 
 ```
+
+# Workflow
+![Dag of the workflow](workflow/dag.png)
+
 
 # More informations
 
