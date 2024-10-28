@@ -63,5 +63,5 @@ You can extract a VCF from the graph using the `vg deconstruct` command. It is n
 
 # Dependencies
 TODO
-
+pandas, msprime, argprase, os, multiprocessing, yaml, Bio.Seq
 bgzip, singularity, snakemake
