@@ -1,7 +1,11 @@
+# Configuration file for genome simulation parameters per sample.
+# Each sample is defined by a unique name and associated parameters.
+
 samples:
+  # Unique identifier for each sample with specific simulation parameters.
   test_sample1:        
-    fasta_gz: "test_genome.fa.gz"  # Fasta file
-    population_size: 5              # Population size (Ne)
-    mutation_rate: 1e-7             # Mutation rate (r)
-    recombination_rate:
-    sample_size: 2      
+    fasta_gz: "test_genome.fa.gz"       # Path to the compressed FASTA file (genome sequence) for this sample.
+    population_size: 5                  # Effective population size (Ne) the size of the population.
+    mutation_rate: 1e-7                 # Mutation rate (µ) the rate of mutations in the genome.
+    recombination_rate: 1e-8            # Recombination rate (r) the frequency of recombination events.
+    sample_size: 2                      # Number of individual samples to simulate (number of FASTA output)

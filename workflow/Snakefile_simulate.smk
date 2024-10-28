@@ -43,6 +43,7 @@ rule run_msprime:
     params:
         pop_size=lambda wildcards: config["samples"][wildcards.sample]["population_size"],
         mut_rate=lambda wildcards: config["samples"][wildcards.sample]["mutation_rate"],
+        reco_rate=lambda wildcards: config["samples"][wildcards.sample]["recombination_rate"],
         n=lambda wildcards: config["samples"][wildcards.sample]["sample_size"],
         out=lambda wildcards: os.path.join(output_dir, f"{wildcards.sample}_results", "temp")
     container:
@@ -50,7 +51,7 @@ rule run_msprime:
     shell:
         """
         mkdir -p {params.out} &&
-        python3 workflow/scripts/tree_generation.py -fai {input.fai} -p {params.pop_size} -r {params.mut_rate} -n {params.n} -o {params.out} -c {wildcards.chromosome}
+        python3 workflow/scripts/tree_generation.py -fai {input.fai} -p {params.pop_size} -m {params.mut_rate} -r {params.reco_rate} -n {params.n} -o {params.out} -c {wildcards.chromosome}
         """
 
 rule compress_sim_vcf:
