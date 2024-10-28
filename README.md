@@ -25,7 +25,7 @@ git checkout dev_lpiat
 - Edit the `job.sh` and the `./config/snakemake_profile/clusterconfig.yaml` with your email.
 
 ### 4. Run the WF
-The workflow has two parts: `split` and `simulate`. Run the following command:
+The workflow has two parts: `split` and `simulate`. Always run the split first and once its done (realy quick) run the simulate. To do so run the following commands:
 ```
 sbatch job.sh [split, simulate] [dry, dag]
 ```
@@ -64,4 +64,5 @@ You can extract a VCF from the graph using the `vg deconstruct` command. It is n
 # Dependencies
 TODO
 pandas, msprime, argprase, os, multiprocessing, yaml, Bio.Seq
-bgzip, singularity, snakemake
+singularity, snakemake
+vg:1.60.0, bcftools:1.12, bgzip:latest, tabix:1.7. 

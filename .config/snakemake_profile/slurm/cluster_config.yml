@@ -12,3 +12,19 @@ __default__:
   mail-type: END,FAIL #email notification
   mail-user: lucien.piat@inrae.fr
 
+run_msprime:
+  error: "/dev/null"
+  output: "/dev/null"
+  mail-type: NONE 
+  cpus-per-task: 1
+  mem: "50G"
+
+compress_sim_vcf:
+  error: "/dev/null"
+  output: "/dev/null"
+  mail-type: NONE 
+
+index_sim_vcf:
+    error: "/dev/null"
+    output: "/dev/null"
+    mail-type: NONE 
