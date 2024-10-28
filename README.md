@@ -1,7 +1,14 @@
-# How to Use
+# Warnings
+
 > **`/!\`:** Act with care; this workflow uses significant memory if you increase the values in `.masterconfig`. We recommend keeping the default settings and running a test first.
 
-## Running on the CBIB
+> **`/!\`:** For now workflow only tested with SPN generation
+
+> **`/!\`:** For now dont run multiple split at once
+
+
+# How to Use
+## A. Running on the CBIB
 ### 1. Set up
 Clone the Git repository and switch to my branch:
 ```bash
@@ -29,7 +36,7 @@ sbatch job.sh [split, simulate]
 > **Nb 1:** to create a visual representation of the workflow, use [dag]. Open the generated `.dot` file with a [viewer](https://dreampuf.github.io/GraphvizOnline/) that supports the format.
 
 > **Nb 2:** Frist execution of the workflow will be slow since images need to be pulled.
-## Run localy
+## B. Run localy
 - Ensure `snakemake` and `singularity` are installed on your machine.
 - Modify the `.masterconfig` file and `visor_sv_type.yaml` in the `.config/` directory as needed.
 
@@ -43,26 +50,18 @@ docker login -u "<your_username>" -p "<your_token>" "registry.forgemia.inra.fr"
 ```
 
 # Workflow
-![Dag of the workflow](workflow/dag.png)
+![Dag of the workflow](workflow/graphviz.svg)
 
 
 # More informations
 
-The variants generation is inspired by [VISOR](https://github.com/davidebolo1993/VISOR). YAML template is available in `VISOR_random_bed` folder. Modify the YAML input to set the percentage of each variant you want to simulate (must equal 100).
+The variants generation is inspired by [VISOR](https://github.com/davidebolo1993/VISOR).
 
-Each variant type has a size distribution file (bins = 100 bp) in folder `sv_distributions`. The data was extracted from [An integrated map of structural variation in 2,504 human genomes (Sudmant, et al. 2015)](https://www.nature.com/articles/nature15394).
-
-The distributions are used to randomly sample each structural variant size.
-
-## Create exact data with vg
-In the `vg_extact_data` folder.
-
-Snakemake/Singularity pipeline to get a pangenome in GFA format and a FASTA with all individuals from the VCF. Starts from a reference FASTA and a VCF to specify in the `config.yaml` file, with a name for the output (**WARNING**: think to set the correct email address in `config.yaml`).
-
-Create directory or modify the SBATCH options in `job.sh` (**WARNING**: think to set the correct email address in `job.sh` if you want to receive the slurm emails).
-```
-mkdir -p slurm_logs
-```
-On SLURM cluster, run `sbatch job.sh dry` for a dry run or `sbatch job.sh` directly. Adjust the `SNG_BIND` variable if files are not found and the snakemake profile as necessary for performance.
+Each variant type has a size distribution file (bins = 100 bp) in folder `sv_distributions`. The data was extracted from [An integrated map of structural variation in 2,504 human genomes (Sudmant, et al. 2015)](https://www.nature.com/articles/nature15394). The distributions are used to randomly sample each structural variant size.
 
 You can extract a VCF from the graph using the `vg deconstruct` command. It is not implemented in the pipeline.
+
+# Dependencies
+TODO
+
+bgzip, singularity, snakemake
