@@ -19,8 +19,14 @@ def load_chromosomes(sample):
 # Rule to define all final outputs
 rule all:
     input:
-        expand(os.path.join(output_dir, "{sample}_results", "06_graph", "graph.gfa"),
+        expand(os.path.join(output_dir, "{sample}_results", "04_generated_variants", "{sample}_simulated_variants.vcf.gz"),
+               sample=config["samples"].keys()) + 
+        expand(os.path.join(output_dir, "{sample}_results", "05_vg_graph", "{sample}_vg_graph.gfa"),
+               sample=config["samples"].keys()) + 
+        expand(os.path.join(output_dir, "{sample}_results", "06_graph_paths", "{sample}_paths.fasta"),
                sample=config["samples"].keys())
+               
+
 
 # Define a function to get the path of the FAI file for each sample and chromosome
 def get_fai(wildcards):
@@ -33,12 +39,12 @@ rule run_msprime:
     input:
         fai=get_fai
     output:
-        os.path.join(output_dir, "{sample}_results", "03_msprime_simulation", "{chromosome}_msprime_simulation.vcf")
+        temp(os.path.join(output_dir, "{sample}_results", "temp", "{chromosome}_msprime_simulation.vcf"))
     params:
         pop_size=lambda wildcards: config["samples"][wildcards.sample]["population_size"],
         mut_rate=lambda wildcards: config["samples"][wildcards.sample]["mutation_rate"],
         n=lambda wildcards: config["samples"][wildcards.sample]["sample_size"],
-        out=lambda wildcards: os.path.join(output_dir, f"{wildcards.sample}_results", "03_msprime_simulation")
+        out=lambda wildcards: os.path.join(output_dir, f"{wildcards.sample}_results", "temp")
     container:
         "docker://registry.forgemia.inra.fr/pangepop/mspangepop/mspangepop_dep:0.0.1"
     shell:
@@ -47,23 +53,23 @@ rule run_msprime:
         python3 workflow/scripts/tree_generation.py -fai {input.fai} -p {params.pop_size} -r {params.mut_rate} -n {params.n} -o {params.out} -c {wildcards.chromosome}
         """
 
-rule compress_vcf:
+rule compress_sim_vcf:
     input:
-        vcf=os.path.join(output_dir, "{sample}_results", "03_msprime_simulation", "{chromosome}_msprime_simulation.vcf")
+        vcf=rules.run_msprime.output
     output:
-        vcf_gz=os.path.join(output_dir, "{sample}_results", "03_msprime_simulation", "{chromosome}_msprime_simulation.vcf.gz")
+        temp(os.path.join(output_dir, "{sample}_results", "temp", "{chromosome}_msprime_simulation.vcf.gz"))
     container:
         "docker://registry.forgemia.inra.fr/pangepop/mspangepop/bgzip:latest"
     shell:
         """
-        bgzip -c {input.vcf} > {output.vcf_gz}
+        bgzip -c {input.vcf} > {output}
         """
 
-rule index_vcf:
+rule index_sim_vcf:
     input:
-        vcf_gz=os.path.join(output_dir, "{sample}_results", "03_msprime_simulation", "{chromosome}_msprime_simulation.vcf.gz")
+        vcf_gz=rules.compress_sim_vcf.output
     output:
-        index=os.path.join(output_dir, "{sample}_results", "03_msprime_simulation", "{chromosome}_msprime_simulation.vcf.gz.tbi")
+        temp(os.path.join(output_dir, "{sample}_results", "temp", "{chromosome}_msprime_simulation.vcf.gz.tbi"))
     container:
         "docker://registry.forgemia.inra.fr/pangepop/mspangepop/tabix:1.7"
     shell:
@@ -75,17 +81,17 @@ rule index_vcf:
 rule merge_simulations:
     input:
         vcf_files=lambda wildcards: expand(
-            os.path.join(output_dir, "{sample}_results", "03_msprime_simulation", "{chromosome}_msprime_simulation.vcf.gz"),
+            os.path.join(output_dir, "{sample}_results", "temp", "{chromosome}_msprime_simulation.vcf.gz"),
             sample=[wildcards.sample],
             chromosome=load_chromosomes(wildcards.sample)
         ),
         index_files=lambda wildcards: expand(
-            os.path.join(output_dir, "{sample}_results", "03_msprime_simulation", "{chromosome}_msprime_simulation.vcf.gz.tbi"),
+            os.path.join(output_dir, "{sample}_results", "temp", "{chromosome}_msprime_simulation.vcf.gz.tbi"),
             sample=[wildcards.sample],
             chromosome=load_chromosomes(wildcards.sample)
         )
     output:
-        merged_vcf=os.path.join(output_dir, "{sample}_results", "04_merged_msprime_simulation", "combined_msprime_simulation.vcf.gz")
+        merged_vcf=os.path.join(output_dir, "{sample}_results", "03_msprime_simulation", "msprime_simulation.vcf.gz")
     container:
         "docker://registry.forgemia.inra.fr/pangepop/mspangepop/bcftools:1.12"
     shell:
@@ -94,7 +100,7 @@ rule merge_simulations:
         """
 
 # Rule to unzip the FASTA file for each sample
-rule unzip_fasta:
+rule unzip_input_fasta:
     input:
         fasta_gz=lambda wildcards: config["samples"][wildcards.sample]["fasta_gz"]
     output:
@@ -104,7 +110,7 @@ rule unzip_fasta:
         gunzip -c {input.fasta_gz} > {output}
         """
 
-rule unzip_vcf:
+rule unzip_simulated_vcf:
     input:
         vcf_gz=rules.merge_simulations.output.merged_vcf
     output:
@@ -116,7 +122,7 @@ rule unzip_vcf:
 
 rule remove_vcf_header:
     input:
-        vcf=rules.unzip_vcf.output
+        vcf=rules.unzip_simulated_vcf.output
     output:
         temp(output_dir + "{sample}_results/temp/{sample}_msprime_no_header.vcf")
     shell:
@@ -127,7 +133,7 @@ rule remove_vcf_header:
 # Rule to extract the header from the uncompressed VCF file
 rule extract_vcf_header:
     input:
-        vcf=rules.unzip_vcf.output
+        vcf=rules.unzip_simulated_vcf.output
     output:
         temp(output_dir + "{sample}_results/temp/{sample}_msprime_header.vcf")
     shell:
@@ -136,61 +142,125 @@ rule extract_vcf_header:
         """
 
 # Rule to generate structural variants using variants_generation.py
-rule generate_sv:
+rule generate_variants:
     input:
         fai=os.path.join(output_dir, "{sample}_results", "01_chromosome_index", "{sample}_full.fai"),
-        fasta=rules.unzip_fasta.output,
+        fasta=rules.unzip_input_fasta.output,
         vcf=rules.remove_vcf_header.output,
         yaml=".config/visor_sv_type.yaml"
     output:
-        outfile=os.path.join(output_dir, "{sample}_results", "05_final_vcf", "simulated_variants.vcf")
+        temp(os.path.join(output_dir, "{sample}_results", "temp", "simulated_variants.vcf"))
     container:
         "docker://registry.forgemia.inra.fr/pangepop/mspangepop/mspangepop_dep:0.0.1"
     shell:
         """
-        python3 workflow/scripts/variants_generation.py -fai {input.fai} -fa {input.fasta} -v {input.vcf} -y {input.yaml} -o {output.outfile} && 
+        python3 workflow/scripts/variants_generation.py -fai {input.fai} -fa {input.fasta} -v {input.vcf} -y {input.yaml} -o {output} && 
         rm random_var.tsv
+        """
+
+
+# Rule to sort the extracted VCF header using the external script
+rule sort_header:
+    input:
+        header=rules.extract_vcf_header.output
+    output:
+        temp(os.path.join(output_dir, "{sample}_results", "temp", "sorted_header.vcf"))
+    container:
+        "docker://registry.forgemia.inra.fr/pangepop/mspangepop/mspangepop_dep:0.0.1"
+    shell:
+        """
+        python3 workflow/scripts/sort_vcf_header.py {input.header} {output}
         """
 
 # Rule to add the header to the generated VCF output
 rule add_header:
     input:
-        header=rules.extract_vcf_header.output,
-        vcf=rules.generate_sv.output
+        header=rules.sort_header.output,
+        vcf=rules.generate_variants.output
     output:
-        final_output=os.path.join(output_dir, "{sample}_results", "05_final_vcf", "final_simulated_variants.vcf")
+        temp(os.path.join(output_dir, "{sample}_results", "temp", "final_simulated_variants.vcf"))
     shell:
         """
-        cat {input.header} {input.vcf} > {output.final_output}
+        cat {input.header} {input.vcf} > {output}
         """
 
+# Workflow to sort, compress, index VCF files and construct graphs
 rule sort_vcf:
     input:
         vcf = rules.add_header.output
     output:
-        outfile = os.path.join(output_dir, "{sample}_results", "05_final_vcf", "sorted_simulated_variants.vcf")
+        temp(os.path.join(output_dir, "{sample}_results", "temp", "sorted_simulated_variants.vcf"))
     container:
         "docker://registry.forgemia.inra.fr/pangepop/mspangepop/bcftools:1.12"
     shell:
         "bcftools sort {input.vcf} -Oz -o {output}"
 
+
 rule construct_graph:
     input:
-        fasta=rules.unzip_fasta.output, 
-        vcf=rules.sort_vcf.output
+        fasta = rules.unzip_input_fasta.output, 
+        vcf = rules.sort_vcf.output
     output:
-        outfile=os.path.join(output_dir, "{sample}_results", "06_graph", "graph.vg")
+        temp(os.path.join(output_dir, "{sample}_results", "05_vg_graph", "graph.vg"))
     container:
         "docker://registry.forgemia.inra.fr/pangepop/mspangepop/vg:1.60.0"
     shell:
         "vg construct -m 2000000000 -r {input.fasta} -v {input.vcf} -f -p > {output}"
 
-rule convert_to_gfa:
+
+rule vg_to_gfa:
     input:
-        vg=rules.construct_graph.output
+        vg = rules.construct_graph.output
     output:
-        outfile=os.path.join(output_dir, "{sample}_results", "06_graph", "graph.gfa")
+        outfile = os.path.join(output_dir, "{sample}_results", "05_vg_graph", "{sample}_vg_graph.gfa")
     container:
         "docker://registry.forgemia.inra.fr/pangepop/mspangepop/vg:1.60.0"
     shell:
         "vg convert -f {input.vg} > {output.outfile}"
+
+rule compress_vcf_for_griaffe:
+    input:
+        vcf = rules.sort_vcf.output
+    output:
+        os.path.join(output_dir, "{sample}_results", "04_generated_variants", "{sample}_simulated_variants.vcf.gz")
+    container:
+        "docker://registry.forgemia.inra.fr/pangepop/mspangepop/bgzip:latest"
+    shell:
+        """
+        bgzip -c {input.vcf} > {output}
+        """
+
+rule index_giraffe:
+    input:
+        fasta = rules.unzip_input_fasta.output, 
+        vcf_gz = rules.compress_vcf_for_griaffe.output
+    output:
+        temp(os.path.join(output_dir, "{sample}_results", "temp", "index.giraffe.gbz"))
+    params:
+        out = os.path.join(output_dir, "{sample}_results", "temp", "index")
+    container:
+        "docker://registry.forgemia.inra.fr/pangepop/mspangepop/vg:1.60.0"
+    shell:
+        "vg autoindex -r {input.fasta} -v {input.vcf_gz} -w giraffe -p {params.out}"
+
+
+rule gbz_to_gfa:
+    input:
+        gbz = rules.index_giraffe.output
+    output:
+        temp(os.path.join(output_dir, "{sample}_results", "temp", "giraffe_graph.gfa"))
+    container:
+        "docker://registry.forgemia.inra.fr/pangepop/mspangepop/vg:1.60.0"
+    shell:
+        "vg convert -f {input.gbz} > {output}"
+
+
+rule graph_to_fasta:
+    input:
+        gbz = rules.gbz_to_gfa.output
+    output:
+        os.path.join(output_dir, "{sample}_results", "06_graph_paths", "{sample}_paths.fasta")
+    container:
+        "docker://registry.forgemia.inra.fr/pangepop/mspangepop/vg:1.60.0"
+    shell:
+        "vg paths -F -x {input.gbz} > {output}"
