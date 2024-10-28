@@ -50,7 +50,7 @@ docker login -u "<your_username>" -p "<your_token>" "registry.forgemia.inra.fr"
 ```
 
 # Workflow
-![Dag of the workflow](workflow/graphviz.svg)
+![Dag of the workflow](workflow/dag.svg)
 
 
 # More informations
