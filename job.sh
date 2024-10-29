@@ -114,3 +114,4 @@ esac
 
 # Run the specified Snakefile with the provided option
 run_snakemake "$snakefile" "$option"
+squeue -u $USER
