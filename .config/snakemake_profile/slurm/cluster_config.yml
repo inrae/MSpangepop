@@ -78,7 +78,7 @@ compress_vcf_for_griaffe:
   mail-type: NONE 
 
 generate_variants:
-  mem: "150G"
+  mem: "200G"
 
 index_giraffe:
   mail-type: NONE
