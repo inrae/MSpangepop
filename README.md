@@ -2,10 +2,7 @@
 
 > **`/!\`:** Act with care; this workflow uses significant memory if you increase the values in `.masterconfig`. We recommend keeping the default settings and running a test first.
 
-> **`/!\`:** For now workflow only tested with SPN generation
-
 > **`/!\`:** For now dont run multiple split at once
-
 
 # How to Use
 ## A. Running on the CBIB
@@ -25,7 +22,7 @@ git checkout dev_lpiat
 - Edit the `job.sh` and the `./config/snakemake_profile/clusterconfig.yaml` with your email.
 
 ### 4. Run the WF
-The workflow has two parts: `split` and `simulate`. Always run the split first and once its done (realy quick) run the simulate. To do so run the following commands:
+The workflow has two parts: `split` and `simulate`. Always run the split first and once its done (realy quick) run the simulate.
 ```
 sbatch job.sh [split, simulate] [dry, dag]
 ```
