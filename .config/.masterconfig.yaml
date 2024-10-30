@@ -7,5 +7,5 @@ samples:
     fasta_gz: "test_genome.fa.gz"       # Path to the compressed FASTA file (genome sequence) for this sample.
     population_size: 5                  # Effective population size (Ne) the size of the population.
     mutation_rate: 1e-7                 # Mutation rate (µ) the rate of mutations in the genome.
-    recombination_rate: 1e-8            # Recombination rate (r) the frequency of recombination events.
+    recombination_rate: 1e-9            # Recombination rate (r) the frequency of recombination events.
     sample_size: 2                      # Number of individual samples to simulate (number of FASTA output)
