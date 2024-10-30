@@ -23,11 +23,11 @@ def select_length(df):
     lower_bound, upper_bound = map(float, interval.strip('[]').split(','))
     return random.randint(int(lower_bound), int(upper_bound))
 
-def retrieve_reference_sequence(chromosome_dict, chrom, pos, length, no_ref=False):
+def retrieve_reference_sequence(chromosome_dict, chrom, position, length, no_ref=False):
     """Retrieve the reference sequence from a FASTA file."""
     if chrom in chromosome_dict:
         seq_record = chromosome_dict[chrom]
-        start = pos - 1 
+        start = position - 1 
         if no_ref:
             return str(seq_record.seq[start:start + 1])  # Only need one base for insertions
         end = min(start + length, len(seq_record))
@@ -35,7 +35,7 @@ def retrieve_reference_sequence(chromosome_dict, chrom, pos, length, no_ref=Fals
     else:
         raise ValueError(f"Chromosome {chrom} not found in FASTA.")
 
-def create_variant(variant_probs, chrom, pos, length_files, chrom_lengths, chromosome_dict, samples):
+def create_variant(variant_probs, chrom, position, length_files, chrom_lengths, chromosome_dict, samples):
     """Create a variant with a random length based on probabilities and file data, respecting chromosome length."""
     variant_types = list(variant_probs.keys())
     probabilities = list(variant_probs.values())
@@ -49,23 +49,23 @@ def create_variant(variant_probs, chrom, pos, length_files, chrom_lengths, chrom
         raise ValueError(f"Variant type '{selected_variant_type}' does not correspond to an implemented class.")
     
     if selected_variant_type == 'SNP':
-        variant = variant_class(chrom, pos)
+        variant = variant_class(chrom, position)
     else:
         length_df = length_files[selected_variant_type]
         length = select_length(length_df)
         
         # Ensure the variant length does not exceed the chromosome length
-        max_length = chrom_lengths[chrom] - pos
+        max_length = chrom_lengths[chrom] - position
         if length > max_length:
             length = max_length
         if length == 0:
             length += 1
             
-        variant = variant_class(chrom, pos, length)
+        variant = variant_class(chrom, position, length)
 
     # Retrieve the reference sequence and attach it to the variant
     no_ref = (selected_variant_type == 'Insertion')
-    variant.reference_seq = retrieve_reference_sequence(chromosome_dict, chrom, pos, variant.length, no_ref)
+    variant.reference_seq = retrieve_reference_sequence(chromosome_dict, chrom, position, variant.length, no_ref)
     
     variant.samples = samples
     variant.compute_alt_seq()
@@ -96,11 +96,11 @@ def main(fai_file, vcf_input_file, vcf_output_file, fasta_file, yaml_file):
         # Generate and write variants for each row in the VCF
         for index, random_row in vcf_data.iterrows():
             chrom = random_row['CHROM']
-            pos = random_row['POS']
+            position = random_row['POS']
             
             samples = {col: random_row[col] for col in vcf_data.columns if col.startswith('SAMPLE')}
             
-            variant_instance = create_variant(variant_probs, chrom, pos, length_files, chrom_lengths, chromosome_dict, samples)
+            variant_instance = create_variant(variant_probs, chrom, position, length_files, chrom_lengths, chromosome_dict, samples)
             vcf_line = variant_instance.vcf_line()
 
             vcf_output.write(vcf_line + '\n')
