@@ -17,6 +17,7 @@ def load_chromosomes(sample):
     return []
 
 # Rule to define all final outputs
+
 rule all:
     input:
         expand(os.path.join(output_dir, "{sample}_results", "04_generated_variants", "{sample}_simulated_variants.vcf.gz"),
@@ -25,8 +26,6 @@ rule all:
                sample=config["samples"].keys()) + 
         expand(os.path.join(output_dir, "{sample}_results", "06_graph_paths", "{sample}_paths.fasta"),
                sample=config["samples"].keys())
-               
-
 
 # Define a function to get the path of the FAI file for each sample and chromosome
 def get_fai(wildcards):
@@ -155,10 +154,8 @@ rule generate_variants:
         "docker://registry.forgemia.inra.fr/pangepop/mspangepop/mspangepop_dep:0.0.1"
     shell:
         """
-        python3 workflow/scripts/variants_generation.py -fai {input.fai} -fa {input.fasta} -v {input.vcf} -y {input.yaml} -o {output} && 
-        rm random_var.tsv
+        python3 workflow/scripts/generate_variant.py --fai {input.fai} --fasta {input.fasta} --vcf {input.vcf} --yaml {input.yaml} --output {output}
         """
-
 
 # Rule to sort the extracted VCF header using the external script
 rule sort_header:
