@@ -1,11 +1,11 @@
 # Percentage of each variant type in the simulation
 # Sum of values MUST be 100
-SNP: 10
-Deletion: 10
+SNP: 20
+Deletion: 20
 Insertion: 20
-Inversion: 20
-TandemDuplication: 20
-InvertedTandemDuplication: 20
-Translocation: 0 # Not suported yet
+Inversion: 10
+TandemDuplication: 10
+InvertedTandemDuplication: 10
+Translocation: 10
 Transduplication : 0 # Not suported yet
 ReciprocalTranslocation: 0 # Not suported yet
