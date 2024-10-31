@@ -56,8 +56,6 @@ docker login -u "<your_username>" -p "<your_token>" "registry.forgemia.inra.fr"
 
 The variants generation is inspired by [VISOR](https://github.com/davidebolo1993/VISOR).
 
-Each variant type has a size distribution file (bins = 100 bp) in folder `sv_distributions`. The data was extracted from [An integrated map of structural variation in 2,504 human genomes (Sudmant, et al. 2015)](https://www.nature.com/articles/nature15394). The distributions are used to randomly sample each structural variant size.
-
 You can extract a VCF from the graph using the `vg deconstruct` command. It is not implemented in the pipeline.
 
 # Dependencies
