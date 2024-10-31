@@ -76,12 +76,14 @@ def main(fai_file, vcf_input_file, vcf_output_file, fasta_file, yaml_file):
     # Open the output VCF file for writing
     with open(vcf_output_file, 'w') as vcf_output:
         
-        for row in vcf_data.iterrows():
-            chrom = row['CHROM']
-            position = row['POS']
-            
+        for index, random_row in vcf_data.iterrows():
+            chrom = random_row['CHROM']
+            position = random_row['POS']
+
+
             # Extract sample data from VCF row
-            samples = {col: row[col] for col in vcf_data.columns if col.startswith('SAMPLE')}
+            samples = {col: random_row[col] for col in vcf_data.columns if col.startswith('SAMPLE')}
+
             
             # Create a variant instance and generate VCF line output
             variant_instance = create_variant(variant_probs, chrom, position, length_files, chrom_lengths, chromosome_dict, samples)
