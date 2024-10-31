@@ -10,7 +10,7 @@ __default__:
   output: "slurm_logs/{rule}.%N.%j.out"
   error: "slurm_logs/{rule}.%N.%j.err"
   mail-type: END,FAIL #email notification
-  mail-user: lucien.piat@inrae.fr
+  mail-user: your.email@here.fr
 
 create_chr_config_file:
   output: "/dev/null"
