@@ -26,11 +26,11 @@ git checkout dev_lpiat
 
 ### 4. Run the WF
 The workflow has two parts: `split` and `simulate`. Always run the split first and once its done (realy quick) run the simulate.
-```
+```bash
 sbatch job.sh [split or simulate] dry
 ```
 If no warnings are displayed, run:
-```
+```bash
 sbatch job.sh [split or simulate] 
 ```
 > **Nb 1:** to create a visual representation of the workflow, use `dag` instead of `dry`. Open the generated `.dot` file with a [viewer](https://dreampuf.github.io/GraphvizOnline/) that supports the format.
@@ -39,13 +39,15 @@ sbatch job.sh [split or simulate]
 
 > **Nb 3:** The workflow is in two parts because we want to execute the simulations chromosome by chromosome. Snakemake cannot retrieve the number of chromosomes in one go and needs to index and split first.
 
+> **Nb 4:** Since the cbib dose not support `python:3.9.7` we cant use cookie cutter config, use the `cbib_job.sh` to run. 
+
 ## B. Run localy
 - Ensure `snakemake` and `singularity` are installed on your machine, then run the workflow:
-```
+```bash
 ./local_run [split or simulate] dry
 ```
 If the workflow cannot download images from the container registry, install `Docker`, log in with your credentials, and rerun the workflow:
-```
+```bash
 docker login -u "<your_username>" -p "<your_token>" "registry.forgemia.inra.fr" 
 ```
 
@@ -58,6 +60,10 @@ The variants generation is inspired by [VISOR](https://github.com/davidebolo1993
 
 You can extract a VCF from the graph using the `vg deconstruct` command. It is not implemented in the pipeline.
 
+You can use the script `workflow/scripts/split_path.sh` to cut the final fasta into chromosome level fasta files. 
+```bash
+./split_fasta.sh input.fasta /path/to/output_directory
+```
 # Dependencies
 TODO
 pandas, msprime, argprase, os, multiprocessing, yaml, Bio.Seq
