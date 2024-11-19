@@ -60,10 +60,14 @@ The variants generation is inspired by [VISOR](https://github.com/davidebolo1993
 
 You can extract a VCF from the graph using the `vg deconstruct` command. It is not implemented in the pipeline.
 
+## Helper script 
 You can use the script `workflow/scripts/split_path.sh` to cut the final fasta into chromosome level fasta files. 
+
+Example use :
 ```bash
-./split_fasta.sh input.fasta /path/to/output_directory
+./workflow/scripts/split_path.sh input.fasta results/test_sample1_results/06_graph_paths/test_sample1_paths.fasta ./out
 ```
+
 # Dependencies
 TODO
 pandas, msprime, argprase, os, multiprocessing, yaml, Bio.Seq
