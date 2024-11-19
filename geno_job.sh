@@ -17,6 +17,8 @@
 #SBATCH --mail-user=<your.email@here.fr>
 ################################################################################
 
+# This script is used as temporary sollution for runing MSpangepop on the genotoul HPC
+
 # Function to load modules
 load_modules() {
     module purge  # Clear any previously loaded modules
@@ -67,6 +69,9 @@ if [ $# -eq 0 ]; then
     echo "    dry - run the specified Snakefile in dry-run mode"
     echo "    dag - generate DAG for the specified Snakefile"
     echo "    run - run the specified Snakefile normally (default)"
+    echo ""
+    echo "This script is used as temporary sollution for runing MSpangepop on the genotoul HPC"
+    echo "Please use job.sh on any other HPC"
     exit 1
 fi
 
