@@ -24,7 +24,7 @@ rule all:
                sample=config["samples"].keys()) + 
         expand(os.path.join(output_dir, "{sample}_results", "05_vg_graph", "{sample}_vg_graph.gfa"),
                sample=config["samples"].keys()) + 
-        expand(os.path.join(output_dir, "{sample}_results", "06_graph_paths", "{sample}_paths.fasta"),
+        expand(os.path.join(output_dir, "{sample}_results", "06_graph_paths", "{sample}_paths.fasta.gz"),
                sample=config["samples"].keys())
 
 # Define a function to get the path of the FAI file for each sample and chromosome
@@ -269,8 +269,20 @@ rule remove_reference:
     input:
         fasta = rules.graph_to_fasta.output
     output:
-        os.path.join(output_dir, "{sample}_results", "06_graph_paths", "{sample}_paths.fasta")
+        temp(os.path.join(output_dir, "{sample}_results", "temp", "{sample}_paths_.fasta"))
     shell:
         """
         ./workflow/scripts/remove_reference.sh {input.fasta} {output}
+        """
+
+rule compress_filtered_fasta:
+    input:
+        fasta = rules.remove_reference.output
+    output:
+        os.path.join(output_dir, "{sample}_results", "06_graph_paths", "{sample}_paths.fasta.gz")
+    container:
+        "docker://registry.forgemia.inra.fr/pangepop/mspangepop/bgzip:latest"
+    shell:
+        """
+        bgzip -c {input.fasta} > {output}
         """
