@@ -252,13 +252,25 @@ rule gbz_to_gfa:
     shell:
         "vg convert -f {input.gbz} > {output}"
 
-
 rule graph_to_fasta:
     input:
         gbz = rules.gbz_to_gfa.output
     output:
-        os.path.join(output_dir, "{sample}_results", "06_graph_paths", "{sample}_paths.fasta")
+        temp(os.path.join(output_dir, "{sample}_results", "temp", "{sample}_paths_drity.fasta"))
     container:
         "docker://registry.forgemia.inra.fr/pangepop/mspangepop/vg:1.60.0"
     shell:
-        "vg paths -F -x {input.gbz} > {output}"
+        """
+        vg paths -F -x {input.gbz} > {output}
+        """
+        
+# This rule is used to remove the reference from the list of paths in the fasta
+rule remove_reference:
+    input:
+        fasta = rules.graph_to_fasta.output
+    output:
+        os.path.join(output_dir, "{sample}_results", "06_graph_paths", "{sample}_paths.fasta")
+    shell:
+        """
+        ./workflow/scripts/remove_reference.sh {input.fasta} {output}
+        """
