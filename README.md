@@ -4,25 +4,27 @@
 
 > **`/!\`:** For now dont run multiple split at once
 
-> **`/!\`:** The Transduplication and Reciprocal Translocation sections in the `visor_sv_type.yaml` config file are placeholders; do not use them yet.
-
 # How to Use
-## A. Running on the CBIB
+## A. Running on a cluster
 ### 1. Set up
-Clone the Git repository and switch to my branch:
+Clone the Git repository
 ```bash
 git clone https://forgemia.inra.fr/pangepop/MSpangepop.git
 cd MSpangepop
-git checkout dev_lpiat
 ```
 
 ### 2. Add your files
 - Add a `.fasta.gz` file; an example can be found in the repository.
 
 ### 3. Configure the pipeline
-- Edit the `.masterconfig` file in the `.config/` directory with your sample information. 
+- Edit the `masterconfig` file in the `config/` directory with your sample information. 
 - Edit the `visor_sv_type.yaml` file with the mutations you want.
-- Edit line 17 of `job.sh` and line 13 of `./config/snakemake_profile/clusterconfig.yaml` with your email.
+- Edit `job.sh` with your email and add path to the needed modules (Singularity/Apptainer, Miniconda3)
+- Provide the needed conda environement in `job.sh`, under `source activate wf_env`you can create it using :
+```bash
+conda create -n wf_env -c conda-forge -c bioconda snakemake=8.4.7 snakemake-executor-plugin-slurm
+conda init bash
+```
 
 ### 4. Run the WF
 The workflow has two parts: `split` and `simulate`. Always run the split first and once its done (realy quick) run the simulate.
@@ -38,8 +40,6 @@ sbatch job.sh [split or simulate]
 > **Nb 2:** Frist execution of the workflow will be slow since images need to be pulled.
 
 > **Nb 3:** The workflow is in two parts because we want to execute the simulations chromosome by chromosome. Snakemake cannot retrieve the number of chromosomes in one go and needs to index and split first.
-
-> **Nb 4:** Since the cbib dose not support `python:3.9.7` we cant use cookie cutter config, use the `cbib_job.sh` to run. 
 
 ## B. Run localy
 - Ensure `snakemake` and `singularity` are installed on your machine, then run the workflow:
