@@ -41,7 +41,7 @@ def get_fai(wildcards):
 rule run_msprime:
     input:
         fai=get_fai
-    output:time="02:00:00"
+    output:
         temp(os.path.join(output_dir, "{sample}_results", "temp", "{chromosome}_msprime_simulation.vcf"))
     params:
         pop_size=lambda wildcards: config["samples"][wildcards.sample]["population_size"],
