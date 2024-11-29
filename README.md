@@ -1,6 +1,6 @@
 # Warnings / Issues
 
-> **`/!\`:** Act with care; this workflow uses significant memory if you increase the values in `.masterconfig`. We recommend keeping the default settings and running a test first.
+> **`/!\`:** Act with care; this workflow uses significant memory if you increase the values in `masterconfig`. We recommend keeping the default settings and running a test first.
 
 > **`/!\`:** For now dont run multiple split at once
 
@@ -19,7 +19,7 @@ cd MSpangepop
 ### 3. Configure the pipeline
 - Edit the `masterconfig` file in the `config/` directory with your sample information. 
 - Edit the `visor_sv_type.yaml` file with the mutations you want.
-- Edit `job.sh` with your email and add path to the needed modules (Singularity/Apptainer, Miniconda3)
+- Edit `job.sh` with your email and add path to the needed modules (`Singularity/Apptainer`, `Miniconda3`)
 - Provide the needed conda environement in `job.sh`, under `source activate wf_env`you can create it using :
 ```bash
 conda create -n wf_env -c conda-forge -c bioconda snakemake=8.4.7 snakemake-executor-plugin-slurm
@@ -42,7 +42,7 @@ sbatch job.sh [split or simulate]
 > **Nb 3:** The workflow is in two parts because we want to execute the simulations chromosome by chromosome. Snakemake cannot retrieve the number of chromosomes in one go and needs to index and split first.
 
 ## B. Run localy
-- Ensure `snakemake` and `singularity` are installed on your machine, then run the workflow:
+- Ensure `snakemake` and `Singularity/Apptainer` are installed on your machine, then run the workflow:
 ```bash
 ./local_run [split or simulate] dry
 ```
@@ -70,6 +70,12 @@ Example use :
 
 # Dependencies
 TODO
+
+Containers :
+Miniconda 3, Singularity/Apptainer
+
+Python :
 pandas, msprime, argprase, os, multiprocessing, yaml, Bio.Seq
-singularity, snakemake
-vg:1.60.0, bcftools:1.12, bgzip:latest, tabix:1.7. 
+
+Workflow :
+snakemake, snakemake-executor-plugin-slurm, vg 1.60.0, bcftools 1.12, bgzip, tabix 1.7. 
