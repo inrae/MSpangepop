@@ -1,94 +1,73 @@
 #!/bin/bash
-################################ Slurm options #################################
-### prepare_calling_jobs
-#SBATCH -J smk_main
-#SBATCH --time=96:00:00
-#SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
+#SBATCH -o slurm_logs/out_job_%j.out
+#SBATCH -e slurm_logs/err_job_%j.err
+#SBATCH --time=10:00:00
+#SBATCH -J MSpangepop
 #SBATCH --mem=10G
-#SBATCH --nodes=1
-#SBATCH --ntasks-per-node=1
-#SBATCH -o slurm_logs/snakemake.%N.%j.out
-#SBATCH -e slurm_logs/snakemake.%N.%j.err
-#SBATCH --mail-type=END,FAIL
-#SBATCH --mail-user=<your.email@here.fr>
-################################################################################
+#SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --mail-user=<mail>
 
-# Load the Singularity container runtime
+# Function to display usage instructions
+usage() {
+    echo "Usage: $0 [split|simulate] [dry|dag|run]"
+    echo "  [split|simulate]: The workflow you want to run"
+    echo "  [dry|dag|run]: The option to execute (dry-run, generate DAG, or actual run)"
+    echo "Examples:"
+    echo "  $0 split dry     # Run the split workflow in dry-run mode"
+    echo "  $0 simulate run  # Run the simulate workflow"
+    exit 1
+}
+
+# Update this with the path to your images
+echo 'Loading modules'
 module purge
-module load "containers/singularity/3.9.9" || { echo "Failed to load Singularity module"; exit 1; }
+module load containers/Apptainer/1.2.5 
+module load devel/Miniconda/Miniconda3
 
-# Define paths to your containers
-PYTHON_CONTAINER="docker://registry.forgemia.inra.fr/pangepop/mspangepop/python:3.9.7"
-SNAKEMAKE_CONTAINER="docker://registry.forgemia.inra.fr/pangepop/mspangepop/snakemake:6.5.1"
+echo 'Activating environment'
+source activate wf_env
 
-# Bind paths
-SNG_BIND=$(pwd)
-CLUSTER_CONFIG=".config/snakemake_profile/slurm/cluster_config.yml"
-MAX_CORES=10
-PROFILE=".config/snakemake_profile/slurm"
+echo 'Starting Snakemake workflow'
 
-# Print job details
-echo '########################################'
-echo 'Job Details:'
-echo 'Date:' $(date --iso-8601=seconds)
-echo 'User:' $USER
-echo 'Job Name:' $SLURM_JOB_NAME
-echo 'Job ID:' $SLURM_JOB_ID
-echo 'Nodes Allocated:' $SLURM_JOB_NODELIST
-echo 'CPUs Per Task:' $SLURM_CPUS_PER_TASK
-echo 'Working Directory:' $(pwd)
-echo '########################################'
-
-
-# Run Snakemake inside the Snakemake container
 run_snakemake() {
-    local snakefile="$1"  # The Snakefile to run
-    local option="$2"     # The option for dry run or DAG
+    local snakefile="$1"  
+    local option="$2"     
+    echo "Starting $snakefile..."
 
-    echo "Starting Snakemake workflow with container..."
-
-    singularity exec --bind $SNG_BIND \
-        $SNAKEMAKE_CONTAINER \
-        snakemake -s "$snakefile" --profile $PROFILE -j $MAX_CORES --use-singularity --singularity-args "-B $SNG_BIND" --cluster-config $CLUSTER_CONFIG $option
+    # Execute the Snakemake command with the specified option
+    if [[ "$option" == "dry" ]]; then
+        snakemake -s "$snakefile" -c $(nproc) --dry-run
+    elif [[ "$option" == "dag" ]]; then
+        snakemake -s "$snakefile" -c $(nproc) --dag > workflow.dot
+        echo "DAG has been generated as workflow.svg"
+        return
+    elif [[ "$option" == "run" || -z "$option" ]]; then
+        snakemake -s "$snakefile" --executor slurm --jobs 10 --use-singularity --singularity-args "--bind $(pwd)"
+    else
+        echo "Invalid option: $option"
+        usage  # Display usage if option is invalid
+    fi
 
     # Check if the Snakemake command was successful
     if [ $? -eq 0 ]; then
         echo "$snakefile completed successfully."
     else
         echo "Error: $snakefile failed."
-        exit 1
     fi
 }
-
-if [ $# -eq 0 ]; then
-    echo "Usage: $0 [split|simulate] [dry|dag|run]"
-    echo "    split - run the split Snakefile"
-    echo "    simulate - run the simulate Snakefile"
-    echo "    dry - run the specified Snakefile in dry-run mode"
-    echo "    dag - generate DAG for the specified Snakefile"
-    echo "    run - run the specified Snakefile normally (default)"
-    exit 1
-fi
 
 # Determine the workflow and option based on the arguments
 workflow="$1"
 option="$2"
 
-# Parse options for Snakemake
-case "$option" in
-    dry)
-        snakemake_option="-n -r"
-        ;;
-    dag)
-        snakemake_option="--dag > dag.dot"
-        echo "DAG will be generated as dag.png"
-        ;;
-    *)
-        snakemake_option=""
-        ;;
-esac
+# Validate arguments and call the usage function if invalid
+if [[ -z "$workflow" ]]; then
+    echo "Error: Missing required workflow argument."
+    usage  # Display usage if workflow is missing
+fi
 
+# Run the specified Snakefile based on user input
 case "$workflow" in
     split)
         snakefile="workflow/Snakefile_split.smk"
@@ -98,13 +77,9 @@ case "$workflow" in
         ;;
     *)
         echo "Invalid workflow: $workflow"
-        echo "Usage: $0 [split|simulate] [dry|dag|run]"
-        exit 1
+        usage  # Display usage if workflow is invalid
         ;;
 esac
 
-# Run the Snakemake command
-run_snakemake "$snakefile" "$snakemake_option"
-
-# Monitor job queue
-squeue -u $USER
+# Run the specified Snakefile with the provided option
+run_snakemake "$snakefile" "$option"
