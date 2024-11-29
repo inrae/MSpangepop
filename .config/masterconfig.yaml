@@ -15,4 +15,3 @@ samples:
 memory_multiplier: 1.5  # Multiplier for scaling memory across all rules*
 container_registry: "docker://registry.forgemia.inra.fr/pangepop/mspangepop"
 output_dir: "results/"
-log_dir: "slurm_logs/"

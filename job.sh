@@ -43,7 +43,7 @@ run_snakemake() {
         echo "DAG has been generated as workflow.svg"
         return
     elif [[ "$option" == "run" || -z "$option" ]]; then
-        snakemake -s "$snakefile" --executor slurm --jobs 10 --use-singularity --singularity-args "--bind $(pwd)"
+        snakemake -s "$snakefile" --workflow-profile ./.config/snakemake/profiles/slurm
     else
         echo "Invalid option: $option"
         usage  # Display usage if option is invalid

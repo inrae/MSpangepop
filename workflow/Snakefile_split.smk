@@ -1,5 +1,5 @@
 # Load the configuration file
-configfile: "config/masterconfig.yaml"
+configfile: ".config/masterconfig.yaml"
 
 import os
 import yaml
@@ -7,7 +7,6 @@ import yaml
 # Retrieve variables from the config file
 container_registry = config.get("container_registry", "docker://registry.forgemia.inra.fr/pangepop/mspangepop")
 output_dir = config.get("output_dir", "results/")
-log_dir = config.get("log_dir", "logs/")
 
 # Retrieve memory multiplier from config
 memory_multiplier = config.get("memory_multiplier", 1)

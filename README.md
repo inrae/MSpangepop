@@ -17,7 +17,7 @@ cd MSpangepop
 - Add a `.fasta.gz` file; an example can be found in the repository.
 
 ### 3. Configure the pipeline
-- Edit the `masterconfig` file in the `config/` directory with your sample information. 
+- Edit the `masterconfig` file in the `.config/` directory with your sample information. 
 - Edit the `visor_sv_type.yaml` file with the mutations you want.
 - Edit `job.sh` with your email and add path to the needed modules (`Singularity/Apptainer`, `Miniconda3`)
 - Provide the needed conda environement in `job.sh`, under `source activate wf_env`you can create it using :

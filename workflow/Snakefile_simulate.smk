@@ -1,5 +1,5 @@
 # Load the configuration file
-configfile: "config/masterconfig.yaml"
+configfile: ".config/masterconfig.yaml"
 
 import os
 import yaml
@@ -7,7 +7,6 @@ import yaml
 # Retrieve variables from the config file
 container_registry = config.get("container_registry", "docker://registry.forgemia.inra.fr/pangepop/mspangepop")
 output_dir = config.get("output_dir", "results/")
-log_dir = config.get("log_dir", "logs/")
 
 # Retrieve memory multiplier from config
 memory_multiplier = config.get("memory_multiplier", 1)
@@ -180,7 +179,7 @@ rule generate_variants:
         fai=os.path.join(output_dir, "{sample}_results", "01_chromosome_index", "{sample}_full.fai"),
         fasta=rules.unzip_input_fasta.output,
         vcf=rules.remove_vcf_header.output,
-        yaml="config/visor_sv_type.yaml"
+        yaml=".config/visor_sv_type.yaml"
     output:
         temp(os.path.join(output_dir, "{sample}_results", "temp", "simulated_variants.vcf"))
     resources:
