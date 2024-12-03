@@ -61,4 +61,5 @@
 !**setting.json
 !slurm_logs/
 !.config/**
+!temporary_dependencies/**
 # 5) specific folders to UNTRACK (wherever it may be in the treeview)
