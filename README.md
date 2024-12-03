@@ -9,8 +9,7 @@
 ### 1. Set up
 Clone the Git repository
 ```bash
-git clone https://forgemia.inra.fr/pangepop/MSpangepop.git
-cd MSpangepop
+git clone https://forgemia.inra.fr/pangepop/MSpangepop.git && cd MSpangepop
 ```
 
 ### 2. Add your files

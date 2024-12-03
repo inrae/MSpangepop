@@ -37,7 +37,7 @@ def get_fai(wildcards):
     return os.path.join(output_dir, f"{sample}_results", "02_splited_index", f"{chromosome}.fai")
 
 # Rule to run msprime simulation
-rule run_msprime:
+rule msprime_simulation:
     input:
         fai=get_fai
     output:
@@ -50,7 +50,7 @@ rule run_msprime:
         out=lambda wildcards: os.path.join(output_dir, f"{wildcards.sample}_results", "temp")
     resources:
         mem_mb=lambda wildcards: int(8000 * memory_multiplier),
-        time="02:00:00"
+        time="10:00:00"
     container:
         f"{container_registry}/mspangepop_dep:0.0.1"
     shell:
@@ -60,9 +60,9 @@ rule run_msprime:
         """
 
 # Rule to compress the msprime simulation VCF file
-rule compress_sim_vcf:
+rule bgzip_compress_simvcf:
     input:
-        vcf=rules.run_msprime.output
+        vcf=rules.msprime_simulation.output
     output:
         temp(os.path.join(output_dir, "{sample}_results", "temp", "{chromosome}_msprime_simulation.vcf.gz"))
     resources:
@@ -76,9 +76,9 @@ rule compress_sim_vcf:
         """
 
 # Rule to index the compressed VCF file
-rule index_sim_vcf:
+rule tabix_index_simvcf:
     input:
-        vcf_gz=rules.compress_sim_vcf.output
+        vcf_gz=rules.bgzip_compress_simvcf.output
     output:
         temp(os.path.join(output_dir, "{sample}_results", "temp", "{chromosome}_msprime_simulation.vcf.gz.tbi"))
     resources:
@@ -93,7 +93,7 @@ rule index_sim_vcf:
 
 
 # Rule to merge VCF files for each sample by combining VCFs from all chromosomes
-rule merge_simulations:
+rule bcftools_concat_simvcfs:
     input:
         vcf_files=lambda wildcards: expand(
             os.path.join(output_dir, "{sample}_results", "temp", "{chromosome}_msprime_simulation.vcf.gz"),
@@ -118,7 +118,7 @@ rule merge_simulations:
         """
 
 # Rule to unzip the FASTA file for each sample
-rule unzip_input_fasta:
+rule gunzip_fasta:
     input:
         fasta_gz=lambda wildcards: config["samples"][wildcards.sample]["fasta_gz"]
     output:
@@ -132,9 +132,9 @@ rule unzip_input_fasta:
         """
 
 # Rule to unzip the simulated VCF
-rule unzip_simulated_vcf:
+rule gunzip_simvcf:
     input:
-        vcf_gz=rules.merge_simulations.output.merged_vcf
+        vcf_gz=rules.bcftools_concat_simvcfs.output.merged_vcf
     output:
         temp(output_dir + "{sample}_results/temp/{sample}_msprime.vcf")
     resources:
@@ -146,9 +146,9 @@ rule unzip_simulated_vcf:
         """
 
 # Rule to remove the header from the VCF file
-rule remove_vcf_header:
+rule awk_header_removal:
     input:
-        vcf=rules.unzip_simulated_vcf.output
+        vcf=rules.gunzip_simvcf.output
     output:
         temp(output_dir + "{sample}_results/temp/{sample}_msprime_no_header.vcf")
     resources:
@@ -160,9 +160,9 @@ rule remove_vcf_header:
         """
 
 # Rule to extract the header from the uncompressed VCF file
-rule extract_vcf_header:
+rule awk_header_extraction:
     input:
-        vcf=rules.unzip_simulated_vcf.output
+        vcf=rules.gunzip_simvcf.output
     output:
         temp(output_dir + "{sample}_results/temp/{sample}_msprime_header.vcf")
     resources:
@@ -177,8 +177,8 @@ rule extract_vcf_header:
 rule generate_variants:
     input:
         fai=os.path.join(output_dir, "{sample}_results", "01_chromosome_index", "{sample}_full.fai"),
-        fasta=rules.unzip_input_fasta.output,
-        vcf=rules.remove_vcf_header.output,
+        fasta=rules.gunzip_fasta.output,
+        vcf=rules.awk_header_removal.output,
         yaml=".config/visor_sv_type.yaml"
     output:
         temp(os.path.join(output_dir, "{sample}_results", "temp", "simulated_variants.vcf"))
@@ -195,7 +195,7 @@ rule generate_variants:
 # Rule to sort the VCF header
 rule sort_header:
     input:
-        header=rules.extract_vcf_header.output
+        header=rules.awk_header_extraction.output
     output:
         temp(os.path.join(output_dir, "{sample}_results", "temp", "sorted_header.vcf"))
     resources:
@@ -209,7 +209,7 @@ rule sort_header:
         """
 
 # Rule to add the header to the VCF output
-rule add_header:
+rule cat_add_header:
     input:
         header=rules.sort_header.output,
         vcf=rules.generate_variants.output
@@ -224,9 +224,9 @@ rule add_header:
         """
 
 # Rule to sort and compress the final VCF
-rule sort_vcf:
+rule bcftools_sort_finalvcf:
     input:
-        vcf=rules.add_header.output
+        vcf=rules.cat_add_header.output
     output:
         temp(os.path.join(output_dir, "{sample}_results", "temp", "sorted_simulated_variants.vcf"))
     resources:
@@ -240,10 +240,10 @@ rule sort_vcf:
         """
 
 # Rule to construct the graph
-rule construct_graph:
+rule vg_construct_graph:
     input:
-        fasta=rules.unzip_input_fasta.output,
-        vcf=rules.sort_vcf.output
+        fasta=rules.gunzip_fasta.output,
+        vcf=rules.bcftools_sort_finalvcf.output
     output:
         temp(os.path.join(output_dir, "{sample}_results", "05_vg_graph", "graph.vg"))
     resources:
@@ -259,9 +259,9 @@ rule construct_graph:
         """
 
 # Rule to convert VG graph to GFA format
-rule vg_to_gfa:
+rule vg_convert_to_gfa:
     input:
-        vg=rules.construct_graph.output
+        vg=rules.vg_construct_graph.output
     output:
         outfile=os.path.join(output_dir, "{sample}_results", "05_vg_graph", "{sample}_vg_graph.gfa")
     resources:
@@ -275,9 +275,9 @@ rule vg_to_gfa:
         """
 
 # Rule to compress VCF for Giraffe
-rule compress_vcf_for_griaffe:
+rule bgzip_compress_finalvcf:
     input:
-        vcf=rules.sort_vcf.output
+        vcf=rules.bcftools_sort_finalvcf.output
     output:
         os.path.join(output_dir, "{sample}_results", "04_generated_variants", "{sample}_simulated_variants.vcf.gz")
     resources:
@@ -291,10 +291,10 @@ rule compress_vcf_for_griaffe:
         """
 
 # Rule to create Giraffe index
-rule index_giraffe:
+rule vg_autoindex_giraffe:
     input:
-        fasta=rules.unzip_input_fasta.output,
-        vcf_gz=rules.compress_vcf_for_griaffe.output
+        fasta=rules.gunzip_fasta.output,
+        vcf_gz=rules.bgzip_compress_finalvcf.output
     output:
         temp(os.path.join(output_dir, "{sample}_results", "temp", "index.giraffe.gbz"))
     params:
@@ -310,9 +310,9 @@ rule index_giraffe:
         """
 
 # Rule to convert GBZ to GFA format
-rule gbz_to_gfa:
+rule vg_convert_gbz_to_gfa:
     input:
-        gbz=rules.index_giraffe.output
+        gbz=rules.vg_autoindex_giraffe.output
     output:
         temp(os.path.join(output_dir, "{sample}_results", "temp", "giraffe_graph.gfa"))
     resources:
@@ -326,9 +326,9 @@ rule gbz_to_gfa:
         """
 
 # Rule to extract paths to a FASTA file
-rule graph_to_fasta:
+rule vg_paths:
     input:
-        gbz=rules.gbz_to_gfa.output
+        gbz=rules.vg_convert_gbz_to_gfa.output
     output:
         temp(os.path.join(output_dir, "{sample}_results", "temp", "{sample}_paths_dirty.fasta"))
     resources:
@@ -344,7 +344,7 @@ rule graph_to_fasta:
 # Rule to remove the reference paths
 rule remove_reference:
     input:
-        fasta=rules.graph_to_fasta.output
+        fasta=rules.vg_paths.output
     output:
         temp(os.path.join(output_dir, "{sample}_results", "temp", "{sample}_paths_.fasta"))
     resources:
@@ -356,7 +356,7 @@ rule remove_reference:
         """
 
 # Rule to compress the filtered FASTA file
-rule compress_filtered_fasta:
+rule bgzip_compress_finalfasta:
     input:
         fasta=rules.remove_reference.output
     output:

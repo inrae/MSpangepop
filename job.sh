@@ -2,11 +2,9 @@
 #SBATCH --cpus-per-task=1
 #SBATCH -o slurm_logs/out_job_%j.out
 #SBATCH -e slurm_logs/err_job_%j.err
-#SBATCH --time=10:00:00
+#SBATCH --time=80:00:00
 #SBATCH -J MSpangepop
 #SBATCH --mem=10G
-#SBATCH --mail-type=BEGIN,END,FAIL
-#SBATCH --mail-user=<mail>
 
 # Function to display usage instructions
 usage() {

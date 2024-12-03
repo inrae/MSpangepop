@@ -18,7 +18,7 @@ rule all:
         expand(os.path.join(output_dir, "{sample}_results", "01_chromosome_index", "chr_config.yaml"), sample=config["samples"].keys())
 
 # Rule to generate FAI index for each FASTA file
-rule generate_fai_index:
+rule samtools_index_generation:
     input:
         fasta=lambda wildcards: config["samples"][wildcards.sample]["fasta_gz"]
     output:
@@ -26,7 +26,7 @@ rule generate_fai_index:
     threads: 1
     resources:
         mem_mb=lambda wildcards: int(10000 * memory_multiplier),
-        time="01:00:00"
+        time="10:00:00"
     params: 
         out=os.path.join(output_dir, "{sample}_results", "01_chromosome_index")  
     container:
@@ -39,14 +39,14 @@ rule generate_fai_index:
         """
 
 # Rule to split the FAI file into separate chromosome files
-rule split_index:
+rule awk_index_split:
     input:
-        fai=rules.generate_fai_index.output.fai
+        fai=rules.samtools_index_generation.output.fai
     output:
         directory(os.path.join(output_dir, "{sample}_results", "02_splited_index"))
     resources:
         mem_mb=lambda wildcards: int(5000 * memory_multiplier),
-        time="01:00:00"
+        time="10:00:00"
     params:
         out=os.path.join(output_dir, "{sample}_results", "02_splited_index")
     shell:
@@ -56,14 +56,14 @@ rule split_index:
         """
 
 # Rule to create chromosome configuration YAML with chromosome names
-rule create_chr_config_file:
+rule yaml_index_conversion:
     input:
-        fai=rules.generate_fai_index.output.fai
+        fai=rules.samtools_index_generation.output.fai
     output:
         yaml=os.path.join(output_dir, "{sample}_results", "01_chromosome_index", "chr_config.yaml")
     resources:
         mem_mb=lambda wildcards: int(2000 * memory_multiplier),
-        time="01:00:00"
+        time="10:00:00"
     shell:
         """
         awk '{{print $1}}' {input.fai} | \
