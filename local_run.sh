@@ -1,7 +1,10 @@
 #!/bin/bash
-#Script to run localy the workflow DO NOT USE AS IS ON A CLUSTER!
+# Script to run locally, DO NOT USE AS IS ON A CLUSTER!
 
 SNG_BIND=$(pwd)
+
+# Get the number of CPU cores dynamically
+CORES=$(nproc)
 
 run_snakemake() {
     local snakefile="$1"  # The Snakefile to run
@@ -11,13 +14,13 @@ run_snakemake() {
 
     # Execute the Snakemake command with the specified option
     if [[ "$option" == "dry" ]]; then
-        snakemake -s "$snakefile" --use-singularity --singularity-args "-B $SNG_BIND" -c4 -n
+        snakemake -s "$snakefile" --use-singularity --singularity-args "-B $SNG_BIND" -j $CORES -n
     elif [[ "$option" == "dag" ]]; then
-                snakemake -s "$snakefile" --use-singularity --singularity-args "-B $SNG_BIND" -c4 --dag > dag.dot
+        snakemake -s "$snakefile" --use-singularity --singularity-args "-B $SNG_BIND" -j $CORES --dag > dag.dot
         echo "DAG has been generated as dag.png"
         return
     else
-        snakemake -s "$snakefile" --use-singularity --singularity-args "-B $SNG_BIND" -c4
+        snakemake -s "$snakefile" --use-singularity --singularity-args "-B $SNG_BIND" -j $CORES
     fi
 
     # Check if the Snakemake command was successful
@@ -60,5 +63,3 @@ esac
 
 # Run the specified Snakefile with the provided option
 run_snakemake "$snakefile" "$option"
-
-
