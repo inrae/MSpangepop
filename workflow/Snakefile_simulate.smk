@@ -39,26 +39,25 @@ for sample in samples:
 # Rule to simulate all msprime simulations for all samples and chromosomes
 rule all:
     input:
-        expand(os.path.join(output_dir, "{sample}_results", "temp", "{chromosome}_msprime_simulation.vcf"),
+        expand(os.path.join(output_dir, "{sample}_results", "03_msprime_simulation", "{chromosome}_msprime_simulation.json"),
                sample=samples, chromosome=chromosomes)
 
-# Rule to run msprime simulation
 rule msprime_simulation:
     input:
         fai=get_fai
     output:
-        os.path.join(output_dir, "{sample}_results", "temp", "{chromosome}_msprime_simulation.vcf")
+        os.path.join(output_dir, "{sample}_results", "03_msprime_simulation", "{chromosome}_msprime_simulation.json")
     params:
         pop_size=lambda wildcards: config["samples"][wildcards.sample]["population_size"],
         mut_rate=lambda wildcards: config["samples"][wildcards.sample]["mutation_rate"],
         reco_rate=lambda wildcards: config["samples"][wildcards.sample]["recombination_rate"],
         n=lambda wildcards: config["samples"][wildcards.sample]["sample_size"],
-        out=lambda wildcards: os.path.join(output_dir, f"{wildcards.sample}_results", "temp")
+        out=lambda wildcards: os.path.join(output_dir, f"{wildcards.sample}_results", "03_msprime_simulation")
     resources:
         mem_mb=lambda wildcards: int(8000 * memory_multiplier),
         time="10:00:00"
     container:
-        f"{container_registry}/mspangepop_dep:0.0.1"
+        "/root/MSpangepop/temporary_dependencies/msprime_box.sif"  # Update with the path to the local .sif file
     shell:
         """
         mkdir -p {params.out} &&
