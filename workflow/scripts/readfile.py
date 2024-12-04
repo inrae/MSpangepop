@@ -11,24 +11,6 @@ import json
 import pandas as pd
 from Bio import SeqIO
 
-def read_fai(fai_file):
-    """
-    Reads a .fai file and returns a dictionary of chromosome lengths.
-    
-    Parameters:
-        fai_file (str): Path to the FAI file.
-        
-    Returns:
-        dict: A dictionary mapping chromosome names to their lengths.
-    """
-    try:
-        fai_df = pd.read_table(fai_file, header=None, names=["CHROM", "LENGTH", "OFFSET", "LINEBASES", "LINEWIDTH"])
-        return dict(zip(fai_df["CHROM"], fai_df["LENGTH"]))
-    except Exception as e:
-        print(f"Error reading FAI file: {e}")
-        raise
-
-
 def read_json(json_path):
     """
     Reads a JSON file containing chromosome, nodes, edges, and mutations information.
