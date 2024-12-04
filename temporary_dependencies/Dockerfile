@@ -19,4 +19,6 @@ EXPOSE 5000
 
 ENV PYTHONUNBUFFERED=1
 
-CMD ["python", "script_name.py"]
+# Add maintainer information using LABEL
+LABEL maintainer="Lucien Piat" \
+      description="This image is used for the MSpangepop workflow at INRAe." 
