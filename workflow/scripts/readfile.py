@@ -12,14 +12,22 @@ import pandas as pd
 from Bio import SeqIO
 
 def read_fai(fai_file):
-    """Read a .fai file and return a dictionary of chromosome lengths."""
+    """
+    Reads a .fai file and returns a dictionary of chromosome lengths.
+    
+    Parameters:
+        fai_file (str): Path to the FAI file.
+        
+    Returns:
+        dict: A dictionary mapping chromosome names to their lengths.
+    """
     try:
         fai_df = pd.read_table(fai_file, header=None, names=["CHROM", "LENGTH", "OFFSET", "LINEBASES", "LINEWIDTH"])
         return dict(zip(fai_df["CHROM"], fai_df["LENGTH"]))
-    
     except Exception as e:
         print(f"Error reading FAI file: {e}")
         raise
+
 
 def read_json(json_path):
     """
@@ -29,42 +37,71 @@ def read_json(json_path):
         json_path (str): Path to the JSON file.
         
     Returns:
-        dict: A dictionary representation of the JSON file.
+        dict: A dictionary representation of the JSON data.
     """
-    with open(json_path, 'r') as file:
-        data = json.load(file)
-    return data
+    try:
+        with open(json_path, 'r') as file:
+            data = json.load(file)
+        return data
+    except Exception as e:
+        print(f"Error reading JSON file: {e}")
+        raise
+
 
 def save_json(data, output_path):
     """
-    Saves the data as a JSON file to the specified output path.
+    Saves the data to a JSON file at the specified output path.
     
     Parameters:
-        data (dict): The data to save to the file.
-        output_path (str): The path where the file should be saved.
+        data (dict): The data to be saved to the JSON file.
+        output_path (str): Path where the JSON file should be saved.
     """
-    with open(output_path, 'w') as file:
-        json.dump(data, file, indent=4)
-    print(f"JSON data has been saved to {output_path}")
+    try:
+        with open(output_path, 'w') as file:
+            json.dump(data, file, indent=4)
+        print(f"JSON data has been saved to {output_path}")
+    except Exception as e:
+        print(f"Error saving JSON file: {e}")
+        raise
+
 
 def read_variant_length_file(file_path):
-    """Read length distribution file and parse intervals with probabilities."""
+    """
+    Reads a variant length distribution file and parses intervals with their probabilities.
+    
+    Parameters:
+        file_path (str): Path to the variant length distribution file.
+        
+    Returns:
+        pandas.DataFrame: DataFrame containing the variant length intervals and cumulative probabilities.
+    """
     try:
         df = pd.read_table(file_path)
-        df['cumulative_pb'] = df['pb'].cumsum()
+        df['cumulative_pb'] = df['pb'].cumsum()  # Cumulative sum of probabilities
         return df
-    
     except Exception as e:
         print(f"Error reading variant length file {file_path}: {e}")
         raise
 
+
 def read_yaml(yaml_file):
-    """Reads variant probabilities from a YAML configuration file."""
+    """
+    Reads variant probabilities from a YAML configuration file.
+    
+    Parameters:
+        yaml_file (str): Path to the YAML file containing variant probabilities.
+        
+    Returns:
+        dict: Dictionary of variant types and their associated probabilities.
+        
+    Raises:
+        ValueError: If the sum of the probabilities does not equal 100.
+    """
     try:
         with open(yaml_file, 'r') as file:
             variant_probabilities = yaml.safe_load(file)
         
-        # Ensure probabilities sum to 100
+        # Ensure that probabilities sum to 100
         if sum(variant_probabilities.values()) != 100:
             raise ValueError("Sum of variant probabilities in YAML must equal 100.")
         
@@ -73,12 +110,19 @@ def read_yaml(yaml_file):
         print(f"Error reading YAML file: {e}")
         raise
 
+
 def read_fasta(input_fasta):
-    """Read a FASTA file and return a dictionary of sequences."""
+    """
+    Reads a FASTA file and returns a dictionary of sequences.
+    
+    Parameters:
+        input_fasta (str): Path to the FASTA file.
+        
+    Returns:
+        dict: A dictionary with sequence IDs as keys and sequence data as values.
+    """
     try:
         return SeqIO.index(input_fasta, "fasta")
-    
     except Exception as e:
         print(f"Error reading FASTA file: {e}")
         raise
-
