@@ -1,55 +1,15 @@
 """
 Author: Lucien Piat
-Date: 28 Oct 2024
+Creation: 20 Oct 2024
+Updated: 4 Dec 2024
 Institution: INRAe
 Project: PangenOak
 """
 
 import yaml
+import json
 import pandas as pd
 from Bio import SeqIO
-
-
-def read_yaml(file_path):
-    """Read a YAML file and ensure that percentages sum to 100."""
-    try:
-        with open(file_path, 'r') as stream:
-            data = yaml.safe_load(stream)
-        
-        if sum(data.values()) != 100:
-            raise ValueError("Sum of values in the config file MUST be 100.")
-        
-        return data
-    
-    except Exception as e:
-        print(f"Error reading YAML file: {e}")
-        raise
-
-def read_vcf(vcf_file):
-    """Read a VCF file, format it with custom column names, and extract chromosome, position, and sample data."""
-    try:
-        # Read the first line to determine the number of columns
-        with open(vcf_file, 'r') as file:
-            first_line = file.readline().strip()
-        
-        # Split the first line to get the number of columns
-        cols = first_line.split('\t')
-        num_samples = len(cols) - 9  # Subtract the first 9 standard VCF columns
-        
-        # Create a dynamic list of sample column names
-        sample_cols = [f"SAMPLE{i + 1}" for i in range(num_samples)]
-        all_cols = ["CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT"] + sample_cols
-        
-        # Read the entire VCF file with the appropriate column names
-        vcf_df = pd.read_table(vcf_file, sep="\t", header=None, names=all_cols)
-        vcf_df['CHROM'] = vcf_df['CHROM'].astype(str)
-        vcf_df['POS'] = vcf_df['POS'].astype(int)
-
-        return vcf_df[['CHROM', 'POS'] + sample_cols]
-    
-    except Exception as e:
-        print(f"Error reading VCF file: {e}")
-        raise
 
 def read_fai(fai_file):
     """Read a .fai file and return a dictionary of chromosome lengths."""
@@ -60,6 +20,32 @@ def read_fai(fai_file):
     except Exception as e:
         print(f"Error reading FAI file: {e}")
         raise
+
+def read_json(json_path):
+    """
+    Reads a JSON file containing chromosome, nodes, edges, and mutations information.
+    
+    Parameters:
+        json_path (str): Path to the JSON file.
+        
+    Returns:
+        dict: A dictionary representation of the JSON file.
+    """
+    with open(json_path, 'r') as file:
+        data = json.load(file)
+    return data
+
+def save_json(data, output_path):
+    """
+    Saves the data as a JSON file to the specified output path.
+    
+    Parameters:
+        data (dict): The data to save to the file.
+        output_path (str): The path where the file should be saved.
+    """
+    with open(output_path, 'w') as file:
+        json.dump(data, file, indent=4)
+    print(f"JSON data has been saved to {output_path}")
 
 def read_variant_length_file(file_path):
     """Read length distribution file and parse intervals with probabilities."""
@@ -72,6 +58,21 @@ def read_variant_length_file(file_path):
         print(f"Error reading variant length file {file_path}: {e}")
         raise
 
+def read_yaml(yaml_file):
+    """Reads variant probabilities from a YAML configuration file."""
+    try:
+        with open(yaml_file, 'r') as file:
+            variant_probabilities = yaml.safe_load(file)
+        
+        # Ensure probabilities sum to 100
+        if sum(variant_probabilities.values()) != 100:
+            raise ValueError("Sum of variant probabilities in YAML must equal 100.")
+        
+        return variant_probabilities
+    except Exception as e:
+        print(f"Error reading YAML file: {e}")
+        raise
+
 def read_fasta(input_fasta):
     """Read a FASTA file and return a dictionary of sequences."""
     try:
@@ -80,3 +81,4 @@ def read_fasta(input_fasta):
     except Exception as e:
         print(f"Error reading FASTA file: {e}")
         raise
+
