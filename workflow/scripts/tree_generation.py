@@ -17,8 +17,6 @@ import msprime
 import argparse
 import os
 import json
-import matplotlib.pyplot as plt
-from IPython.display import display
 
 def get_chromosome_bounds(chrom_length):
     """
@@ -36,30 +34,56 @@ import json
 
 def save_output(ts_chrom, chromosome_name, output_dir="results", batch_size=1000):
     """
-    Save the simulation tree and mutation information to a specified output directory.
-    Supports multiple formats: GFA, JSON, CSV.
+    Save all simulation trees and mutation information into a single JSON file, 
+    linking mutations to the trees they occur in.
 
     :param ts_chrom: Tree sequence object
     :param chromosome_name: Name of the chromosome simulated
     :param output_dir: Directory to save the output files
     :param batch_size: Number of records per batch (if needed)
     """
-    os.makedirs(output_dir, exist_ok=True)
+    
+    # Initialize mutation linkage dictionary
+    tree_mutations = {tree_index: [] for tree_index, _ in enumerate(ts_chrom.trees())}
+    
+    # Collect mutations and link them to their corresponding trees
+    for mutation in ts_chrom.mutations():
+        site = ts_chrom.site(mutation.site)
+        mutation_data = {
+            "site": mutation.site,
+            "site_position": site.position,
+            "node": mutation.node,
+            "time": mutation.time,
+        }
+        
+        # Find the tree containing this mutation
+        for tree_index, tree in enumerate(ts_chrom.trees()):
+            if tree.interval[0] <= site.position < tree.interval[1]:
+                tree_mutations[tree_index].append(mutation_data)
+                break
+    
+    # Collect all tree data
+    trees_data = []
+    for tree_index, tree in enumerate(ts_chrom.trees()):
+        # Retrieve all parent-child relationships in the tree
+        edges = []
+        for parent in tree.nodes():
+            for child in tree.children(parent):
+                edges.append({"parent": parent, "child": child})
+        
+        tree_data = {
+            "tree_index": tree_index,
+            "interval": tree.interval,
+            "nodes": [{"id": node, "time": ts_chrom.node(node).time} for node in tree.nodes()],
+            "edges": edges,  # Use computed edges
+            "mutations": tree_mutations[tree_index],  # Add mutations specific to this tree
+        }
+        trees_data.append(tree_data)
     
     # Output as JSON
     json_filename = os.path.join(output_dir, f"{chromosome_name}_msprime_simulation.json")
     with open(json_filename, 'w') as f:
-        ts_data = {
-            "chromosome": chromosome_name,
-            "nodes": [{"id": node.id, "time": node.time} for node in ts_chrom.nodes()],
-            "edges": [{"parent": edge.parent, "child": edge.child} for edge in ts_chrom.edges()],
-            "mutations": [{
-                            "site": mutation.site,
-                            "site_position": ts_chrom.site(mutation.site).position,
-                            "node": mutation.node,
-                            "time": mutation.time} for mutation in ts_chrom.mutations()]
-        }
-        json.dump(ts_data, f, indent=4)
+        json.dump(trees_data, f, indent=4)
 
 
 def simulate_chromosome_vcf(fai_file, population_size, mutation_rate, recombination_rate, sample_size, output_dir, chromosome_name):
@@ -86,11 +110,13 @@ def simulate_chromosome_vcf(fai_file, population_size, mutation_rate, recombinat
         recombination_rate=recombination_map,
         population_size=population_size
     )
+    ancestry_ts = ancestry_ts.simplify()
     mutated_ts = msprime.sim_mutations(ancestry_ts, rate=mutation_rate, discrete_genome=True)
     
     # Trim and keep the relevant intervals
     ts_chrom = mutated_ts.keep_intervals([[0, chrom_length]], simplify=False).trim()
     print(ts_chrom.draw_text())
+
 
     plt = ts_chrom.draw_svg()
     with open(f"{output_dir}/{chromosome_name}_tree.svg", "w") as f:
