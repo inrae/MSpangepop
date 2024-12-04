@@ -66,7 +66,6 @@ rule msprime_simulation:
 rule generate_variant_type:
     input:
         JSON = rules.msprime_simulation.output,
-        fai = os.path.join(output_dir, "{sample}_results", "01_chromosome_index", "{sample}_full.fai"),
         sv_type_file = config.get("sv_type_file")
     output:
         os.path.join(output_dir, "{sample}_results", "03_msprime_simulation", "{chromosome}_augmented_ms_sim.json")
@@ -80,6 +79,6 @@ rule generate_variant_type:
         "./temporary_dependencies/msprime_box.sif" # Update with the path to the local .sif file
     shell:
         """
-        python3 workflow/scripts/generate_variant_type.py --json {input.JSON} --fai {input.fai} --yaml {input.sv_type_file} --output {output} 
+        python3 workflow/scripts/generate_variant_type.py --json {input.JSON} --yaml {input.sv_type_file} --output {output} 
         mv {params.svg} {params.out}
         """
