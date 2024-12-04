@@ -39,20 +39,20 @@ for sample in samples:
 # Rule to simulate all msprime simulations for all samples and chromosomes
 rule all:
     input:
-        expand(os.path.join(output_dir, "{sample}_results", "04_augmented_simulation", "{chromosome}_augmented_simulation.json"),
+        expand(os.path.join(output_dir, "{sample}_results", "03_msprime_simulation", "{chromosome}_augmented_ms_sim.json"),
                sample=samples, chromosome=chromosomes)
 
 rule msprime_simulation:
     input:
         fai=get_fai
     output:
-        os.path.join(output_dir, "{sample}_results", "03_msprime_simulation", "{chromosome}_msprime_simulation.json")
+        temp(os.path.join(output_dir, "{sample}_results", "temp", "{chromosome}_msprime_simulation.json"))
     params:
         pop_size=lambda wildcards: config["samples"][wildcards.sample]["population_size"],
         mut_rate=lambda wildcards: config["samples"][wildcards.sample]["mutation_rate"],
         reco_rate=lambda wildcards: config["samples"][wildcards.sample]["recombination_rate"],
         n=lambda wildcards: config["samples"][wildcards.sample]["sample_size"],
-        out=lambda wildcards: os.path.join(output_dir, f"{wildcards.sample}_results", "03_msprime_simulation")
+        out=lambda wildcards: os.path.join(output_dir, f"{wildcards.sample}_results", "temp")
     resources:
         mem_mb=lambda wildcards: int(8000 * memory_multiplier),
         time="10:00:00"
@@ -69,7 +69,10 @@ rule generate_variant_type:
         fai = os.path.join(output_dir, "{sample}_results", "01_chromosome_index", "{sample}_full.fai"),
         sv_type_file = config.get("sv_type_file")
     output:
-        os.path.join(output_dir, "{sample}_results", "04_augmented_simulation", "{chromosome}_augmented_simulation.json")
+        os.path.join(output_dir, "{sample}_results", "03_msprime_simulation", "{chromosome}_augmented_ms_sim.json")
+    params:
+        svg = lambda wildcards: os.path.join(output_dir, f"{wildcards.sample}_results", "temp", f"{wildcards.chromosome}_tree.svg"),
+        out = os.path.join(output_dir, "{sample}_results", "03_msprime_simulation")
     resources:
         mem_mb=lambda wildcards: int(8000 * memory_multiplier),
         time="10:00:00"
@@ -77,5 +80,6 @@ rule generate_variant_type:
         "./temporary_dependencies/msprime_box.sif" # Update with the path to the local .sif file
     shell:
         """
-        python3 workflow/scripts/generate_variant_type.py --json {input.JSON} --fai {input.fai} --yaml {input.sv_type_file} --output {output}
+        python3 workflow/scripts/generate_variant_type.py --json {input.JSON} --fai {input.fai} --yaml {input.sv_type_file} --output {output} 
+        mv {params.svg} {params.out}
         """
