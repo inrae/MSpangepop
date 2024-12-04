@@ -39,7 +39,7 @@ for sample in samples:
 # Rule to simulate all msprime simulations for all samples and chromosomes
 rule all:
     input:
-        expand(os.path.join(output_dir, "{sample}_results", "03_msprime_simulation", "{chromosome}_msprime_simulation.json"),
+        expand(os.path.join(output_dir, "{sample}_results", "04_augmented_simulation", "{chromosome}_augmented_simulation.json"),
                sample=samples, chromosome=chromosomes)
 
 rule msprime_simulation:
@@ -57,9 +57,24 @@ rule msprime_simulation:
         mem_mb=lambda wildcards: int(8000 * memory_multiplier),
         time="10:00:00"
     container:
-        "/root/MSpangepop/temporary_dependencies/msprime_box.sif"  # Update with the path to the local .sif file
+        "./temporary_dependencies/msprime_box.sif"  # Update with the path to the local .sif file
     shell:
         """
-        mkdir -p {params.out} &&
         python3 workflow/scripts/tree_generation.py -fai {input.fai} -p {params.pop_size} -m {params.mut_rate} -r {params.reco_rate} -n {params.n} -o {params.out} -c {wildcards.chromosome}
+        """
+
+rule generate_variant_type:
+    input:
+        JSON = rules.msprime_simulation.output,
+        fai = os.path.join(output_dir, "{sample}_results", "01_chromosome_index", "{sample}_full.fai")
+    output:
+        os.path.join(output_dir, "{sample}_results", "04_augmented_simulation", "{chromosome}_augmented_simulation.json")
+    resources:
+        mem_mb=lambda wildcards: int(8000 * memory_multiplier),
+        time="10:00:00"
+    container:
+        "./temporary_dependencies/msprime_box.sif" # Update with the path to the local .sif file
+    shell:
+        """
+        python3 workflow/scripts/generate_variant_type.py --json {input.JSON} --fai {input.fai} --output {output}
         """
