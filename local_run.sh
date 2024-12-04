@@ -20,7 +20,7 @@ run_snakemake() {
         echo "DAG has been generated as dag.png"
         return
     else
-        snakemake -s "$snakefile" --use-singularity --singularity-args "-B $SNG_BIND" -j $CORES
+        snakemake -s "$snakefile" --use-singularity --singularity-args "-B $SNG_BIND" -j $CORES --forceall
     fi
 
     # Check if the Snakemake command was successful
