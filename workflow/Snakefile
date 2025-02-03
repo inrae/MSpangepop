@@ -1,0 +1,94 @@
+# Load the configuration file
+configfile: ".config/masterconfig.yaml"
+
+import os
+import yaml
+
+# Retrieve variables from the config file
+container_registry = config.get("container_registry", "docker://registry.forgemia.inra.fr/pangepop/mspangepop")
+output_dir = config.get("output_dir", "results/")
+
+# Retrieve memory multiplier from config
+memory_multiplier = config.get("memory_multiplier", 1)
+
+def get_input_files():
+    inputs = []
+    for sample in config["samples"].keys():
+        chr_n = config["samples"][sample]["chr_n"]
+        chromosomes = [f"{i}" for i in range(1, chr_n + 1)]
+        inputs.extend([os.path.join(output_dir, f"{sample}_results", "02_msprime_simulation", f"chr_{chromosome}_augmented_ms_sim.json") for chromosome in chromosomes])
+    return inputs
+
+rule all:
+    input:
+        get_input_files()
+
+rule samtools_index_generation:
+    input:
+        fasta=lambda wildcards: config["samples"][wildcards.sample]["fasta_gz"]
+    output:
+        fai=os.path.join(output_dir, "{sample}_results", "01_chromosome_index", "{sample}_full.fai")
+    threads: 1
+    resources:
+        mem_mb=lambda wildcards: int(10000 * memory_multiplier),
+        time="10:00:00"
+    params: 
+        out=os.path.join(output_dir, "{sample}_results", "01_chromosome_index")  
+    container:
+        f"{container_registry}/samtool:1.21"
+    shell:
+        """
+        echo 'MSpangepop -> Starting {wildcards.sample} indexing...' && 
+        samtools faidx {input.fasta} &&
+        mv {input.fasta}.fai {output.fai} && echo 'MSpangepop -> {wildcards.sample} indexing successful.' &&
+        rm {input.fasta}.gzi || true 
+        """
+
+rule msprime_simulation:    
+    input:
+        fai=rules.samtools_index_generation.output
+    output:
+        temp(os.path.join(output_dir, "{sample}_results", "temp", "chr_{chromosome}_msprime_simulation.json"))
+    params:
+        pop_size=lambda wildcards: config["samples"][wildcards.sample]["population_size"],
+        mut_rate=lambda wildcards: config["samples"][wildcards.sample]["mutation_rate"],
+        reco_rate=lambda wildcards: config["samples"][wildcards.sample]["recombination_rate"],
+        n=lambda wildcards: config["samples"][wildcards.sample]["sample_size"],
+        out=lambda wildcards: os.path.join(output_dir, f"{wildcards.sample}_results", "temp")
+    resources:
+        mem_mb=lambda wildcards: int(8000 * memory_multiplier),
+        time="10:00:00"
+    container:
+        "./temporary_dependencies/msprime_box.sif"
+    shell:
+        """
+        python3 workflow/scripts/msprime_simulation.py -fai {input.fai} -p {params.pop_size} -m {params.mut_rate} -r {params.reco_rate} -n {params.n} -o {params.out} -c {wildcards.chromosome}
+        """
+
+rule generate_variant_type:
+    input:
+        json = rules.msprime_simulation.output
+    output:
+        os.path.join(output_dir, "{sample}_results", "02_msprime_simulation", "chr_{chromosome}_augmented_ms_sim.json")
+    params:
+        svg = lambda wildcards: os.path.join(output_dir, f"{wildcards.sample}_results", "temp", f"chr_{wildcards.chromosome}_tree.svg"),
+        out = os.path.join(output_dir, "{sample}_results", "02_msprime_simulation"),
+        sv_type_file = config.get("sv_type_file")
+    resources:
+        mem_mb=lambda wildcards: int(8000 * memory_multiplier),
+        time="10:00:00"
+    container:
+        "./temporary_dependencies/msprime_box.sif"
+    shell:
+        """
+        python3 workflow/scripts/generate_variant_type.py --json {input.json} --yaml {params.sv_type_file} --output {output} --chromosome {wildcards.chromosome}
+        mv {params.svg} {params.out}
+        """
+
+rule seq_to_gfa:
+    input:
+        JSON = rules.generate_variant_type.output,
+        fasta=lambda wildcards: config["samples"][wildcards.sample]["fasta_gz"]
+    output:
+        os.path.join(output_dir, "{sample}_results", "03_subgfa", "chr_{chromosome}_sub_gfa.gfa")
+        
