@@ -26,7 +26,7 @@ def read_json(json_path):
             data = json.load(file)
         return data
     except Exception as e:
-        print(f"Error reading JSON file: {e}")
+        print(f"MSpangepop -> Error reading JSON file: {e}")
         raise
 
 
@@ -41,9 +41,8 @@ def save_json(data, output_path):
     try:
         with open(output_path, 'w') as file:
             json.dump(data, file, indent=4)
-        print(f"JSON data has been saved to {output_path}")
     except Exception as e:
-        print(f"Error saving JSON file: {e}")
+        print(f"MSpangepop -> Error saving JSON file: {e}")
         raise
 
 
@@ -62,7 +61,7 @@ def read_variant_length_file(file_path):
         df['cumulative_pb'] = df['pb'].cumsum()  # Cumulative sum of probabilities
         return df
     except Exception as e:
-        print(f"Error reading variant length file {file_path}: {e}")
+        print(f"MSpangepop -> Error reading variant length file {file_path}: {e}")
         raise
 
 
@@ -89,7 +88,7 @@ def read_yaml(yaml_file):
         
         return variant_probabilities
     except Exception as e:
-        print(f"Error reading YAML file: {e}")
+        print(f"MSpangepop -> Error reading YAML file: {e}")
         raise
 
 
