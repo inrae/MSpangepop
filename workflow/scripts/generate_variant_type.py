@@ -20,7 +20,7 @@ def set_length(length_df, max_length):
         return min(length, max_length)
     
     except Exception as e:
-        print(f"MSpangepop -> Error in selecting variant length : {e}", file=sys.stderr)
+        print(f"❌ MSpangepop -> Error in selecting variant length : {e}", file=sys.stderr)
         sys.exit(1)
 
 def select_variant_type(variant_probabilities):
@@ -28,7 +28,7 @@ def select_variant_type(variant_probabilities):
     try:
         return random.choices(list(variant_probabilities.keys()), weights=variant_probabilities.values())[0]
     except Exception as e:
-        print(f"MSpangepop -> Error selecting variant type : {e}", file=sys.stderr)
+        print(f"❌ MSpangepop -> Error selecting variant type : {e}", file=sys.stderr)
         sys.exit(1)
 
 def augment_tree_mutations(tree, length_files, variant_probabilities):
@@ -46,7 +46,7 @@ def augment_tree_mutations(tree, length_files, variant_probabilities):
                 # Retrieve length distribution for the variant type
                 length_df = length_files.get(variant_type)
                 if length_df is None:
-                    raise ValueError(f"MSpangepop -> No length distribution data for variant type '{variant_type}'.")
+                    raise ValueError(f"❌ MSpangepop ->  No length distribution data for variant type '{variant_type}'.")
 
                 # Determine the maximum allowable length within tree boundaries
                 max_length = tree["interval"][1] - mutation["site_position"]
@@ -57,28 +57,28 @@ def augment_tree_mutations(tree, length_files, variant_probabilities):
         return tree
 
     except Exception as e:
-        print(f"MSpangepop -> Error augmenting mutations : {e}", file=sys.stderr)
+        print(f"❌ MSpangepop -> Error augmenting mutations : {e}", file=sys.stderr)
         sys.exit(1)
 
 def main(json_file, output_json_file, yaml_file, chromosome):
     """Processes a JSON list of trees, augmenting mutations with variant type and size."""
     try:
         start_time = time.time()
-        print(f"MSpangepop -> Generating variants for chromosome {chromosome}")
+        print(f"🔹 MSpangepop -> Generating variants for chromosome {chromosome}")
         if not os.path.exists(json_file):
-            raise FileNotFoundError(f"Input JSON file not found: {json_file}")
+            raise FileNotFoundError(f"❌ MSpangepop -> Input JSON file not found: {json_file}")
         if not os.path.exists(yaml_file):
-            raise FileNotFoundError(f"YAML configuration file not found: {yaml_file}")
+            raise FileNotFoundError(f"❌ MSpangepop -> YAML configuration file not found: {yaml_file}")
 
         # Read variant probabilities
         variant_probabilities = read_yaml(yaml_file)
         if not isinstance(variant_probabilities, dict) or not variant_probabilities:
-            raise ValueError("Variant probabilities file is empty or improperly formatted.")
+            raise ValueError("❌ MSpangepop -> Variant probabilities file is empty or improperly formatted.")
 
         # Read tree data
         tree_list = read_json(json_file)
         if not isinstance(tree_list, list) or not tree_list:
-            raise ValueError("Tree JSON file is empty or improperly formatted.")
+            raise ValueError("❌ MSpangepop -> Tree JSON file is empty or improperly formatted.")
 
         # Read length distribution files
         length_files = {}
@@ -99,10 +99,10 @@ def main(json_file, output_json_file, yaml_file, chromosome):
         save_json(tree_list, output_json_file)
         end_time = time.time()
         elapsed_time = end_time - start_time
-        print(f"MSpangepop -> Successfully processed chromosome {chromosome} in {elapsed_time/60:.2f} min.. Output saved to {output_json_file}")
+        print(f"✅ MSpangepop -> Successfully processed chromosome {chromosome} in {elapsed_time/60:.2f} min")
 
     except Exception as e:
-        print(f"MSpangepop -> Critical error processing (Chromosome {chromosome}): {e}", file=sys.stderr)
+        print(f"❌ MSpangepop -> Critical error processing (Chromosome {chromosome}): {e}", file=sys.stderr)
         sys.exit(1)
 
 if __name__ == "__main__":
