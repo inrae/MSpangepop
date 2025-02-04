@@ -16,7 +16,7 @@ def get_input_files():
     for sample in config["samples"].keys():
         chr_n = config["samples"][sample]["chr_n"]
         chromosomes = [f"{i}" for i in range(1, chr_n + 1)]
-        inputs.extend([os.path.join(output_dir, f"{sample}_results", "02_msprime_simulation", f"chr_{chromosome}_augmented_ms_sim.json") for chromosome in chromosomes])
+        inputs.extend([os.path.join(output_dir, f"{sample}_results", "03_recombination_sequence", f"chr_{chromosome}_recombinations.txt") for chromosome in chromosomes])
     return inputs
 
 rule all:
@@ -38,9 +38,9 @@ rule samtools_index_generation:
         f"{container_registry}/samtool:1.21"
     shell:
         """
-        echo 'MSpangepop -> Starting {wildcards.sample} indexing...' && 
+        echo '🔹 MSpangepop -> Starting {wildcards.sample} indexing...' && 
         samtools faidx {input.fasta} &&
-        mv {input.fasta}.fai {output.fai} && echo 'MSpangepop -> {wildcards.sample} indexing successful.' &&
+        mv {input.fasta}.fai {output.fai} && echo '✅ MSpangepop -> {wildcards.sample} indexing successful.' &&
         rm {input.fasta}.gzi || true 
         """
 
@@ -85,10 +85,19 @@ rule generate_variant_type:
         mv {params.svg} {params.out}
         """
 
-rule seq_to_gfa:
+rule split_recombination:
     input:
-        JSON = rules.generate_variant_type.output,
+        json = rules.generate_variant_type.output,
         fasta=lambda wildcards: config["samples"][wildcards.sample]["fasta_gz"]
     output:
-        os.path.join(output_dir, "{sample}_results", "03_subgfa", "chr_{chromosome}_sub_gfa.gfa")
+        os.path.join(output_dir, "{sample}_results", "03_recombination_sequence", "chr_{chromosome}_recombinations.txt")
+    resources:
+        mem_mb=lambda wildcards: int(8000 * memory_multiplier),
+        time="10:00:00"
+    container:
+        "./temporary_dependencies/msprime_box.sif"
+    shell:
+        """
+        python3 workflow/scripts/split_recombination.py --json {input.json} --fasta {input.fasta} --chromosome {wildcards.chromosome} --output {output} 
+        """       
         

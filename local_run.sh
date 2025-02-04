@@ -23,18 +23,18 @@ run_snakemake() {
         dag)
             snakemake --use-singularity --singularity-args "-B $SNG_BIND" -j $(nproc) --dag > dag.dot
             if [ $? -eq 0 ]; then
-                echo "MSpangepop -> DAG has been successfully generated as dag.dot"
+                echo "✅ MSpangepop -> DAG has been successfully generated as dag.dot"
             else
-                echo "MSpangepop -> Error: Failed to generate DAG."
+                echo "❌ MSpangepop -> Error: Failed to generate DAG."
                 exit 1
             fi
             ;;
         rulegraph)
             snakemake --use-singularity --singularity-args "-B $SNG_BIND" -j $(nproc) --rulegraph > rulegraph.dot
             if [ $? -eq 0 ]; then
-                echo "MSpangepop -> Rulegraph has been successfully generated as rulegraph.dot"
+                echo "✅ MSpangepop -> Rulegraph has been successfully generated as rulegraph.dot"
             else
-                echo "MSpangepop -> Error: Failed to generate Rulegraph."
+                echo "❌ MSpangepop -> Error: Failed to generate Rulegraph."
                 exit 1
             fi
             ;;
@@ -42,7 +42,7 @@ run_snakemake() {
             snakemake --use-singularity --singularity-args "-B $SNG_BIND" -j $(nproc) --unlock
             ;;
         run)
-            snakemake --use-singularity --singularity-args "-B $SNG_BIND" -j $(nproc) --forceall
+            snakemake --use-singularity --singularity-args "-B $SNG_BIND" -j $(nproc) 
             ;;
         *)
             echo "Invalid option: $option"
@@ -53,9 +53,9 @@ run_snakemake() {
 
     # Check if the Snakemake command was successful
     if [ $? -eq 0 ]; then
-        echo "MSpangepop -> Snakemake workflow completed successfully."
+        echo "✅ MSpangepop -> Snakemake workflow completed successfully."
     else
-        echo "MSpangepop -> Error: Snakemake workflow execution failed."
+        echo "❌ MSpangepop -> Error: Snakemake workflow execution failed."
         exit 1
     fi
 }
@@ -74,4 +74,5 @@ if [ $# -ne 1 ] || [ "$1" == "help" ]; then
 fi
 
 # Execute the function with the provided option
+echo "🔹 MSpangepop -> Starting snakemake workflow"
 run_snakemake "$1"
