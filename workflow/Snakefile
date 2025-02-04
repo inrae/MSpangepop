@@ -16,14 +16,14 @@ def get_input_files():
     for sample in config["samples"].keys():
         chr_n = config["samples"][sample]["chr_n"]
         chromosomes = [f"{i}" for i in range(1, chr_n + 1)]
-        inputs.extend([os.path.join(output_dir, f"{sample}_results", "03_recombination_sequence", f"chr_{chromosome}_recombinations.txt") for chromosome in chromosomes])
+        inputs.extend([os.path.join(output_dir, f"{sample}_results", "03_recombination_sequence", f"chr_{chromosome}_recombinations.fasta") for chromosome in chromosomes])
     return inputs
 
 rule all:
     input:
         get_input_files()
 
-rule samtools_index_generation:
+rule samtools_index:
     input:
         fasta=lambda wildcards: config["samples"][wildcards.sample]["fasta_gz"]
     output:
@@ -36,6 +36,8 @@ rule samtools_index_generation:
         out=os.path.join(output_dir, "{sample}_results", "01_chromosome_index")  
     container:
         f"{container_registry}/samtool:1.21"
+    benchmark:
+        os.path.join(output_dir, "{sample}_results", "benchmark", "samtools_index_benchmark.txt")
     shell:
         """
         echo '🔹 MSpangepop -> Starting {wildcards.sample} indexing...' && 
@@ -46,7 +48,7 @@ rule samtools_index_generation:
 
 rule msprime_simulation:    
     input:
-        fai=rules.samtools_index_generation.output
+        fai=rules.samtools_index.output
     output:
         temp(os.path.join(output_dir, "{sample}_results", "temp", "chr_{chromosome}_msprime_simulation.json"))
     params:
@@ -58,6 +60,8 @@ rule msprime_simulation:
     resources:
         mem_mb=lambda wildcards: int(8000 * memory_multiplier),
         time="10:00:00"
+    benchmark:
+        os.path.join(output_dir, "{sample}_results", "benchmark", "msprime_chr_{chromosome}_benchmark.txt")
     container:
         "./temporary_dependencies/msprime_box.sif"
     shell:
@@ -79,6 +83,8 @@ rule generate_variant_type:
         time="10:00:00"
     container:
         "./temporary_dependencies/msprime_box.sif"
+    benchmark:
+        os.path.join(output_dir, "{sample}_results", "benchmark", "generate_variant_{chromosome}_benchmark.txt")
     shell:
         """
         python3 workflow/scripts/generate_variant_type.py --json {input.json} --yaml {params.sv_type_file} --output {output} --chromosome {wildcards.chromosome}
@@ -90,10 +96,12 @@ rule split_recombination:
         json = rules.generate_variant_type.output,
         fasta=lambda wildcards: config["samples"][wildcards.sample]["fasta_gz"]
     output:
-        os.path.join(output_dir, "{sample}_results", "03_recombination_sequence", "chr_{chromosome}_recombinations.txt")
+        os.path.join(output_dir, "{sample}_results", "03_recombination_sequence", "chr_{chromosome}_recombinations.fasta")
     resources:
         mem_mb=lambda wildcards: int(8000 * memory_multiplier),
         time="10:00:00"
+    benchmark:
+        os.path.join(output_dir, "{sample}_results", "benchmark", "split_recombination_chr_{chromosome}_benchmark.txt")
     container:
         "./temporary_dependencies/msprime_box.sif"
     shell:
