@@ -16,7 +16,7 @@ def get_input_files():
     for sample in config["samples"].keys():
         chr_n = config["samples"][sample]["chr_n"]
         chromosomes = [f"{i}" for i in range(1, chr_n + 1)]
-        inputs.extend([os.path.join(output_dir, f"{sample}_results", "03_recombination_sequence", f"chr_{chromosome}_recombinations.fasta") for chromosome in chromosomes])
+        inputs.extend([os.path.join(output_dir, f"{sample}_results", "03_recombination_sequence", f"chr_{chromosome}_recombinations.fasta.gz") for chromosome in chromosomes])
     return inputs
 
 rule all:
@@ -96,7 +96,7 @@ rule split_recombination:
         json = rules.generate_variant_type.output,
         fasta=lambda wildcards: config["samples"][wildcards.sample]["fasta_gz"]
     output:
-        os.path.join(output_dir, "{sample}_results", "03_recombination_sequence", "chr_{chromosome}_recombinations.fasta")
+        os.path.join(output_dir, "{sample}_results", "03_recombination_sequence", "chr_{chromosome}_recombinations.fasta.gz")
     resources:
         mem_mb=lambda wildcards: int(8000 * memory_multiplier),
         time="10:00:00"
