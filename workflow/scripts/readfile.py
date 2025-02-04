@@ -10,6 +10,7 @@ import yaml
 import json
 import pandas as pd
 from Bio import SeqIO
+import gzip
 
 def read_json(json_path):
     """
@@ -26,7 +27,7 @@ def read_json(json_path):
             data = json.load(file)
         return data
     except Exception as e:
-        print(f"MSpangepop -> Error reading JSON file: {e}")
+        print(f"❌ MSpangepop -> Error reading JSON file: {e}")
         raise
 
 
@@ -42,7 +43,7 @@ def save_json(data, output_path):
         with open(output_path, 'w') as file:
             json.dump(data, file, indent=4)
     except Exception as e:
-        print(f"MSpangepop -> Error saving JSON file: {e}")
+        print(f"❌ MSpangepop -> Error saving JSON file: {e}")
         raise
 
 
@@ -61,7 +62,7 @@ def read_variant_length_file(file_path):
         df['cumulative_pb'] = df['pb'].cumsum()  # Cumulative sum of probabilities
         return df
     except Exception as e:
-        print(f"MSpangepop -> Error reading variant length file {file_path}: {e}")
+        print(f"❌ MSpangepop -> Error reading variant length file {file_path}: {e}")
         raise
 
 
@@ -88,11 +89,11 @@ def read_yaml(yaml_file):
         
         return variant_probabilities
     except Exception as e:
-        print(f"MSpangepop -> Error reading YAML file: {e}")
+        print(f"❌ MSpangepop -> Error reading YAML file: {e}")
         raise
 
 
-def read_fasta(input_fasta):
+def read_fasta_gz(fasta_gz_file):
     """
     Reads a FASTA file and returns a dictionary of sequences.
     
@@ -103,7 +104,7 @@ def read_fasta(input_fasta):
         dict: A dictionary with sequence IDs as keys and sequence data as values.
     """
     try:
-        return SeqIO.index(input_fasta, "fasta")
+        with gzip.open(fasta_gz_file, "rt") as handle:  # "rt" means read as text
+            return list(SeqIO.parse(handle, "fasta"))
     except Exception as e:
-        print(f"Error reading FASTA file: {e}")
-        raise
+        print(f"❌ MSpangepop -> Error reading FASTA gz file: {e}")
