@@ -16,7 +16,7 @@ def get_input_files():
     for sample in config["samples"].keys():
         chr_n = config["samples"][sample]["chr_n"]
         chromosomes = [f"{i}" for i in range(1, chr_n + 1)]
-        inputs.extend([os.path.join(output_dir, f"{sample}_results", "03_recombination_sequence", f"chr_{chromosome}_recombinations.fasta.gz") for chromosome in chromosomes])
+        inputs.extend([os.path.join(output_dir, f"{sample}_results", "04_gfa", f"chr_{chromosome}_graph.gfa") for chromosome in chromosomes])
     return inputs
 
 rule all:
@@ -50,13 +50,14 @@ rule msprime_simulation:
     input:
         fai=rules.samtools_index.output
     output:
-        temp(os.path.join(output_dir, "{sample}_results", "temp", "chr_{chromosome}_msprime_simulation.json"))
+        os.path.join(output_dir, "{sample}_results", "temp", "chr_{chromosome}_msprime_simulation.json")
     params:
         pop_size=lambda wildcards: config["samples"][wildcards.sample]["population_size"],
         mut_rate=lambda wildcards: config["samples"][wildcards.sample]["mutation_rate"],
         reco_rate=lambda wildcards: config["samples"][wildcards.sample]["recombination_rate"],
         n=lambda wildcards: config["samples"][wildcards.sample]["sample_size"],
-        out=lambda wildcards: os.path.join(output_dir, f"{wildcards.sample}_results", "temp")
+        out=lambda wildcards: os.path.join(output_dir, f"{wildcards.sample}_results", "temp"),
+        model=lambda wildcards: config["samples"][wildcards.sample]["model"]
     resources:
         mem_mb=lambda wildcards: int(8000 * memory_multiplier),
         time="10:00:00"
@@ -66,7 +67,7 @@ rule msprime_simulation:
         "./temporary_dependencies/msprime_box.sif"
     shell:
         """
-        python3 workflow/scripts/msprime_simulation.py -fai {input.fai} -p {params.pop_size} -m {params.mut_rate} -r {params.reco_rate} -n {params.n} -o {params.out} -c {wildcards.chromosome}
+        python3 workflow/scripts/msprime_simulation.py -fai {input.fai} -p {params.pop_size} -mu {params.mut_rate} -r {params.reco_rate} -n {params.n} -o {params.out} -c {wildcards.chromosome} -mo '{params.model}'
         """
 
 rule generate_variant_type:
@@ -109,3 +110,22 @@ rule split_recombination:
         python3 workflow/scripts/split_recombination.py --json {input.json} --fasta {input.fasta} --chromosome {wildcards.chromosome} --output {output} 
         """       
         
+rule create_graph:
+    input:
+        json = rules.generate_variant_type.output,
+        splited_fasta=rules.split_recombination.output
+    output:
+        os.path.join(output_dir, "{sample}_results", "04_gfa", "chr_{chromosome}_graph.gfa")
+    resources:
+        mem_mb=lambda wildcards: int(8000 * memory_multiplier),
+        time="10:00:00"
+    benchmark:
+        os.path.join(output_dir, "{sample}_results", "benchmark", "create_graph_chr_{chromosome}_benchmark.txt")
+    container:
+        "./temporary_dependencies/msprime_box.sif"
+    shell:
+        """
+        touch {output}
+        python3 workflow/scripts/fasta_to_gfa.py --splited_fasta {input.splited_fasta}
+        python3 workflow/scripts/json_preorder_traversal.py --json {input.json} --chromosome {wildcards.chromosome}
+        """       
