@@ -50,6 +50,7 @@ def save_output(ts_chrom, chromosome_name, output_dir="results"):
                 "site_position": site.position,
                 "node": mutation.node,
                 "time": mutation.time,
+                "derived_state": mutation.derived_state
             }
             for tree_index, tree in enumerate(ts_chrom.trees()):
                 if tree.interval[0] <= site.position < tree.interval[1]:
@@ -76,7 +77,7 @@ def save_output(ts_chrom, chromosome_name, output_dir="results"):
         print(f"❌ MSpangepop -> Error saving output: {e}", file=sys.stderr)
         sys.exit(1)
 
-def simulate_chromosome_evolution(fai_file, population_size, mutation_rate, recombination_rate, sample_size, output_dir, chromosome_name):
+def simulate_chromosome_evolution(fai_file, population_size, mutation_rate, recombination_rate, sample_size, output_dir, chromosome_name, model):
     """
     Main function to generate a .json for a specified chromosome using msprime simulations.
     """
@@ -102,8 +103,7 @@ def simulate_chromosome_evolution(fai_file, population_size, mutation_rate, reco
             recombination_rate=recombination_map,
             population_size=population_size
         ).simplify()
-        
-        mutated_ts = msprime.sim_mutations(ancestry_ts, rate=mutation_rate, discrete_genome=True)
+        mutated_ts = msprime.sim_mutations(ancestry_ts, rate=mutation_rate, discrete_genome=True, model=model)
 
         ts_chrom = mutated_ts.keep_intervals([[0, chrom_length]], simplify=False).trim()
 
@@ -135,12 +135,12 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Generate a .json for a specific chromosome using msprime simulations.")
     parser.add_argument('-fai', '--fai', type=str, required=True, help='Path to the FAI index file for the reference FASTA.')
     parser.add_argument('-p', '--population_size', type=int, required=True, help='Effective population size (Ne).')
-    parser.add_argument('-m', '--mutation_rate', type=float, required=True, help='Mutation rate per base pair (µ).')
+    parser.add_argument('-mu', '--mutation_rate', type=float, required=True, help='Mutation rate per base pair (µ).')
     parser.add_argument('-r', '--recombination_rate', type=float, required=True, help='Recombination rate per base pair.')
     parser.add_argument('-n', '--sample_size', type=int, required=True, help='Sample size (number of individuals to simulate).')
     parser.add_argument('-o', '--output_dir', type=str, required=True, help='Directory to save the output file.')
     parser.add_argument('-c', '--chromosome', type=str, required=True, help='Chromosome number (1-based index).')
-
+    parser.add_argument('-mo', '--model', type=str, required=True, help='msprime mutation model')
     args = parser.parse_args()
 
     simulate_chromosome_evolution(
@@ -150,5 +150,6 @@ if __name__ == '__main__':
         recombination_rate=args.recombination_rate,
         sample_size=args.sample_size,
         output_dir=args.output_dir,
-        chromosome_name=args.chromosome
+        chromosome_name=args.chromosome,
+        model=args.model
     )
