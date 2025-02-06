@@ -6,13 +6,13 @@
 samples:
   # Unique identifier for each sample with specific simulation parameters.
   test_sample1:        
-    fasta_gz: "test_genome.fa.gz"      # Path to the compressed FASTA file (genome sequence) for this sample.
+    fasta_gz: "small_test_genome.fa.gz"      # Path to the compressed FASTA file (genome sequence) for this sample.
     chr_n: 2
-    population_size: 5                 # Effective population size (Ne) the size of the population.
-    mutation_rate: 1e-6                # Mutation rate (µ) the rate of mutations in the genome.
-    recombination_rate: 1e-7           # Recombination rate (r) the frequency of recombination events.
-    sample_size: 2                     # Number of individual samples to simulate (number of FASTA output)
-    output_type: GFA                   # Placeholder
+    population_size: 10                 # Effective population size (Ne) the size of the population.
+    mutation_rate: 1e-2               # Mutation rate (µ) the rate of mutations in the genome.
+    recombination_rate: 1e-4           # Recombination rate (r) the frequency of recombination events.
+    sample_size: 2                     # Number of individual samples to simulate
+    model: binary            # Mutation model for msprime ['binary', 'infinite_alleles', 'jc69']
 
 memory_multiplier: 100  # Multiplier for scaling memory across all rules*
 container_registry: "docker://registry.forgemia.inra.fr/pangepop/mspangepop"
