@@ -37,6 +37,21 @@ class Graph:
         node = Node(base, next(self.node_id_generator))
         self.nodes.append(node)
         return node
+    
+    def __getitem__(self, i):
+        return self.nodes[i]
+
+    def __len__(self):
+        return len(self.nodes)
+
+    def __add__(self, other):
+        """Concatenates two graphs by linking the last node of the first to the first node of the second."""
+        if not self.nodes or not other.nodes:
+            raise ValueError("Cannot concatenate empty graphs.")
+        self.connect_nodes(self.end_node, other.start_node)
+        self.nodes.extend(other.nodes)
+        self.end_node = other.end_node
+        return self
 
     def connect_nodes(self, from_node, to_node):
         """Creates a directed edge from `from_node` to `to_node`."""
@@ -77,30 +92,43 @@ class GraphEnsemble:
         graph = Graph(self.node_id_generator)
         self.add_graph(graph)
         return graph
+    
+    def save_to_gfa(self, filename):
+        """Saves the concatenated graph to a file in the requested format."""
+        if not self.graphs:
+            print("⚠️ MSpangepop -> No graphs to save.")
+            return
 
-    def link_graphs(self, graph1, graph2):
-        """Links two graphs by connecting the last node of graph1 to the first node of graph2."""
-        if graph1.end_node and graph2.start_node:
-            graph1.connect_nodes(graph1.end_node, graph2.start_node)
-            print(f"🔗 MSpangepop -> Linked Graph {graph1.id} to Graph {graph2.id}")
-        else:
-            print("⚠️ MSpangepop -> Cannot link graphs with missing start/end nodes.")
+        concatenated_graph = self.graphs[0]
+        for graph in self.graphs[1:]:
+            concatenated_graph += graph
+        
+        with open(filename, 'w') as f:
+            # Write all nodes
+            for node in concatenated_graph.nodes:
+                f.write(f"S\t{node.id}\t{node.base.decode()}\n")
+            
+            # Write all links
+            for node in concatenated_graph.nodes:
+                for out_node in node.out_edges:
+                    f.write(f"L\t{node.id}\t+\t{out_node.id}\t+\t0M\n")
+        print(f"✅ MSpangepop -> Graph ensemble saved to {filename}")
 
     def __repr__(self):
         return f"GraphEnsemble({len(self.graphs)} graphs)"
 
 
-def main(splited_fasta):
+def main(splited_fasta, output_file):
     """
     Reads a FASTA file with interval sequences, constructs graphs for each, and prints them.
     
     Parameters:
         splited_fasta (str): Path to the FASTA file.
+        output_file (str): Path to the output file where graph data will be saved.
     """
     sequences = read_fasta_gz(splited_fasta)
     ensemble = GraphEnsemble()
 
-    prev_graph = None
     for record in sequences:
         header = record.id  
         seq = str(record.seq)  
@@ -109,13 +137,13 @@ def main(splited_fasta):
         graph.build_from_fasta(seq)
         print("✅ MSpangepop -> ", graph)
         
-        if prev_graph:
-            ensemble.link_graphs(prev_graph, graph)
-        prev_graph = graph
+    # Save the concatenated graph to file
+    ensemble.save_to_gfa(output_file)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Construct a nucleotide graph from an interval FASTA file.")
     parser.add_argument("--splited_fasta", required=True, help="Path to the gzipped FASTA file.")
-
+    parser.add_argument("--output_file", required=True, help="Path to the output file.")
+    
     args = parser.parse_args()
-    main(args.splited_fasta)
+    main(args.splited_fasta, args.output_file)
