@@ -60,6 +60,10 @@ def read_variant_length_file(file_path):
     try:
         df = pd.read_table(file_path)
         df['cumulative_pb'] = df['pb'].cumsum()  # Cumulative sum of probabilities
+
+        # Check if the last cumulative probability is 1
+        if not abs(df['cumulative_pb'].iloc[-1] - 1) < 1e-6:
+            print(f"⚠️ Warning: The cumulative probability of {file_path}, is less than 1 (this could lead to errors)")
         return df
     except Exception as e:
         print(f"❌ MSpangepop -> Error reading variant length file {file_path}: {e}")
