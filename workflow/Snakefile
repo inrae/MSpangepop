@@ -81,7 +81,8 @@ rule generate_variant_type:
     output:
         os.path.join(output_dir, "{sample}_results", "02_msprime_simulation", "chr_{chromosome}_augmented_ms_sim.json")
     params:
-        sv_type_file = config.get("sv_type_file")
+        sv_type_file = config.get("sv_type_file"),
+        minimal_variant_size=lambda wildcards: config["samples"][wildcards.sample]["minimal_variant_size"]
     threads: 4
     resources:
         mem_mb=lambda wildcards: int(8000 * memory_multiplier),
@@ -92,7 +93,7 @@ rule generate_variant_type:
         os.path.join(output_dir, "{sample}_results", "benchmark", "generate_variant_{chromosome}_benchmark.txt")
     shell:
         """
-        python3 workflow/scripts/generate_variant_type.py --json {input.json} --yaml {params.sv_type_file} --output {output} --chromosome {wildcards.chromosome} --threads {threads}
+        python3 workflow/scripts/generate_variant_type.py --json {input.json} --yaml {params.sv_type_file} --output {output} --chromosome {wildcards.chromosome} --threads {threads} --minimal_variant_size {params.minimal_variant_size}
         """
 
 rule split_recombination:
