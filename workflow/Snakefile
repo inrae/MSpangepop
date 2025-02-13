@@ -17,6 +17,7 @@ def get_input_files():
         chr_n = config["samples"][sample]["chr_n"]
         chromosomes = [f"{i}" for i in range(1, chr_n + 1)]
         inputs.extend([os.path.join(output_dir, f"{sample}_results", "04_gfa", f"chr_{chromosome}_graph.gfa") for chromosome in chromosomes])
+        inputs.extend([os.path.join(output_dir, f"{sample}_results", "02_msprime_simulation", f"chr_{chromosome}_augmented_ms_sim.json") for chromosome in chromosomes])
     return inputs
 
 rule all:
@@ -50,13 +51,15 @@ rule msprime_simulation:
     input:
         fai=rules.samtools_index.output
     output:
-        temp(os.path.join(output_dir, "{sample}_results", "temp", "chr_{chromosome}_msprime_simulation.json"))
+        os.path.join(output_dir, "{sample}_results", "temp", "chr_{chromosome}_msprime_simulation.json")
     params:
         pop_size=lambda wildcards: config["samples"][wildcards.sample]["population_size"],
         mut_rate=lambda wildcards: config["samples"][wildcards.sample]["mutation_rate"],
         reco_rate=lambda wildcards: config["samples"][wildcards.sample]["recombination_rate"],
         n=lambda wildcards: config["samples"][wildcards.sample]["sample_size"],
         out=lambda wildcards: os.path.join(output_dir, f"{wildcards.sample}_results", "temp"),
+        svg = lambda wildcards: os.path.join(output_dir, f"{wildcards.sample}_results", "temp", f"chr_{wildcards.chromosome}_mutations.svg"),
+        out_svg = os.path.join(output_dir, "{sample}_results", "02_msprime_simulation"),
         model=lambda wildcards: config["samples"][wildcards.sample]["model"]
     resources:
         mem_mb=lambda wildcards: int(8000 * memory_multiplier),
@@ -67,7 +70,9 @@ rule msprime_simulation:
         "./temporary_dependencies/msprime_box.sif"
     shell:
         """
+        mkdir -p {params.out_svg}
         python3 workflow/scripts/msprime_simulation.py -fai {input.fai} -p {params.pop_size} -mu {params.mut_rate} -r {params.reco_rate} -n {params.n} -o {params.out} -c {wildcards.chromosome} -mo '{params.model}'
+        mv {params.svg} {params.out_svg}
         """
 
 rule generate_variant_type:
@@ -76,9 +81,8 @@ rule generate_variant_type:
     output:
         os.path.join(output_dir, "{sample}_results", "02_msprime_simulation", "chr_{chromosome}_augmented_ms_sim.json")
     params:
-        svg = lambda wildcards: os.path.join(output_dir, f"{wildcards.sample}_results", "temp", f"chr_{wildcards.chromosome}_tree.svg"),
-        out = os.path.join(output_dir, "{sample}_results", "02_msprime_simulation"),
         sv_type_file = config.get("sv_type_file")
+    threads: 4
     resources:
         mem_mb=lambda wildcards: int(8000 * memory_multiplier),
         time="10:00:00"
@@ -88,8 +92,7 @@ rule generate_variant_type:
         os.path.join(output_dir, "{sample}_results", "benchmark", "generate_variant_{chromosome}_benchmark.txt")
     shell:
         """
-        python3 workflow/scripts/generate_variant_type.py --json {input.json} --yaml {params.sv_type_file} --output {output} --chromosome {wildcards.chromosome}
-        mv {params.svg} {params.out}
+        python3 workflow/scripts/generate_variant_type.py --json {input.json} --yaml {params.sv_type_file} --output {output} --chromosome {wildcards.chromosome} --threads {threads}
         """
 
 rule split_recombination:
@@ -97,7 +100,7 @@ rule split_recombination:
         json = rules.generate_variant_type.output,
         fasta=lambda wildcards: config["samples"][wildcards.sample]["fasta_gz"]
     output:
-        os.path.join(output_dir, "{sample}_results", "03_recombination_sequence", "chr_{chromosome}_recombinations.fasta.gz")
+        os.path.join(output_dir, "{sample}_results", "temp", "chr_{chromosome}_recombinations.fasta.gz")
     resources:
         mem_mb=lambda wildcards: int(8000 * memory_multiplier),
         time="10:00:00"
@@ -127,4 +130,4 @@ rule create_graph:
         """
         python3 workflow/scripts/fasta_to_gfa.py --splited_fasta {input.splited_fasta} --output_file {output}
         python3 workflow/scripts/json_preorder_traversal.py --json {input.json} --chromosome {wildcards.chromosome}
-        """       
+        """
