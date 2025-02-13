@@ -33,49 +33,55 @@ def create_recombination_map(chrom_length, recombination_rate):
         print(f"❌ MSpangepop -> Error creating recombination map: {e}", file=sys.stderr)
         sys.exit(1)
 
-def save_output(ts_chrom, chromosome_name, output_dir="results"):
+def save_output(mutated_ts, chromosome_name, output_dir="results"):
     """
-    Save simulation results into a JSON file.
+    Save simulation results into a JSON file efficiently for large files.
     """
     try:
         os.makedirs(output_dir, exist_ok=True)
 
-        # Initialize mutation linkage dictionary
-        tree_mutations = {tree_index: [] for tree_index, _ in enumerate(ts_chrom.trees())}
-
-        for mutation in ts_chrom.mutations():
-            site = ts_chrom.site(mutation.site)
-            mutation_data = {
-                "site": mutation.site,
-                "site_position": site.position,
-                "node": mutation.node,
-                "time": mutation.time,
-                "derived_state": mutation.derived_state
-            }
-            for tree_index, tree in enumerate(ts_chrom.trees()):
-                if tree.interval[0] <= site.position < tree.interval[1]:
-                    tree_mutations[tree_index].append(mutation_data)
-                    break
-
-        trees_data = []
-        for tree_index, tree in enumerate(ts_chrom.trees()):
-            edges = [{"parent": parent, "child": child} for parent in tree.nodes() for child in tree.children(parent)]
-            tree_data = {
-                "tree_index": tree_index,
-                "interval": tree.interval,
-                "nodes": [{"id": node, "time": ts_chrom.node(node).time} for node in tree.nodes()],
-                "edges": edges,
-                "mutations": tree_mutations[tree_index],
-            }
-            trees_data.append(tree_data)
-
         json_filename = os.path.join(output_dir, f"chr_{chromosome_name}_msprime_simulation.json")
+
         with open(json_filename, 'w') as f:
-            json.dump(trees_data, f, indent=4)
+            f.write('[\n')  # Start JSON array
+
+            first_tree = True
+            for tree_index, tree in enumerate(mutated_ts.trees()):
+                # Convert interval to integers
+                interval = [int(tree.interval[0]), int(tree.interval[1])]
+
+                edges = [{"parent": parent, "child": child} for parent in tree.nodes() for child in tree.children(parent)]
+                nodes = [{"id": node, "time": mutated_ts.node(node).time} for node in tree.nodes()]
+
+                mutations = []
+                for mutation in mutated_ts.mutations():
+                    site = mutated_ts.site(mutation.site)
+                    if tree.interval[0] < site.position < tree.interval[1]:
+                        mutations.append({
+                            "site_position": int(site.position),  # Convert to int
+                            "node": mutation.node,
+                            "time": mutation.time
+                        })
+                tree_data = {
+                    "tree_index": tree_index,
+                    "interval": interval,
+                    "nodes": nodes,
+                    "edges": edges,
+                    "mutations": mutations,
+                }
+
+                if not first_tree:
+                    f.write(",\n")  # Separate JSON objects
+                first_tree = False
+
+                json.dump(tree_data, f, indent=4)
+
+            f.write('\n]')  # End JSON array
 
     except Exception as e:
         print(f"❌ MSpangepop -> Error saving output: {e}", file=sys.stderr)
         sys.exit(1)
+
 
 def simulate_chromosome_evolution(fai_file, population_size, mutation_rate, recombination_rate, sample_size, output_dir, chromosome_name, model):
     """
@@ -103,23 +109,31 @@ def simulate_chromosome_evolution(fai_file, population_size, mutation_rate, reco
             recombination_rate=recombination_map,
             population_size=population_size
         ).simplify()
-        mutated_ts = msprime.sim_mutations(ancestry_ts, rate=mutation_rate, discrete_genome=True, model=model)
 
-        ts_chrom = mutated_ts.keep_intervals([[0, chrom_length]], simplify=False).trim()
-
-        end_time = time.time()
-        elapsed_time = end_time - start_time
-        print(f"✅ MSpangepop -> Simulation for chromosome {chromosome_name} completed in {elapsed_time/60:.2f} min.")
-
-        print(ts_chrom.draw_text())
-
-        os.makedirs(output_dir, exist_ok=True)
-        print(f"✅ MSpangepop -> Saving output for chromosome {chromosome_name} to {output_dir}/")
-        plt = ts_chrom.draw_svg()
-        with open(os.path.join(output_dir, f"chr_{chromosome_name}_tree.svg"), "w") as f:
+        plt = ancestry_ts.draw_svg()
+        with open(os.path.join(output_dir, f"chr_{chromosome_name}_ancestery.svg"), "w") as f:
             f.write(plt)
 
-        save_output(ts_chrom, chromosome_name, output_dir)
+        mutated_ts = msprime.sim_mutations(ancestry_ts, rate=mutation_rate, discrete_genome=True, model=model)
+        mutated_ts = mutated_ts.keep_intervals([[0, chrom_length]], simplify=True).trim()
+
+
+        print(f"✅ MSpangepop -> Simulation for chromosome {chromosome_name}")
+
+        print(mutated_ts.draw_text())
+
+        os.makedirs(output_dir, exist_ok=True)
+        print(f"🔹 MSpangepop -> Saving output for chromosome {chromosome_name} to {output_dir}/")
+        
+        plt = mutated_ts.draw_svg()
+        with open(os.path.join(output_dir, f"chr_{chromosome_name}_mutations.svg"), "w") as f:
+            f.write(plt)
+
+        save_output(mutated_ts, chromosome_name, output_dir)
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+        print(f"✅ MSpangepop -> Simulation saved for chromosome {chromosome_name} completed in {elapsed_time/60:.2f} min.")
+        
 
     except FileNotFoundError as e:
         print(f"❌ MSpangepop -> File error: {e}", file=sys.stderr)
