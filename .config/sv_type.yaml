@@ -1,8 +1,8 @@
 # Percentage of each variant type in the simulation
 # Sum of values MUST be 100
 SNP: 50
-Deletion: 25
-Insertion: 25
+DEL: 25
+INS: 25
 
 # Todo after testing 
 # Inversion:
