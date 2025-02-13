@@ -22,21 +22,8 @@
     # If you want to (un)track a given file, just comment toggle the respective line.
     # of course, one can add new patterns at will.
 !*.csv
-#!*.cfg
-!*.dummy
-#!*.err
-#!*.error
-#!*.errors
 !.gitignore
-#!*.html
-!*.jl
-!.keep
-#!*Makefile*
 !*.md
-#!*.ods
-#!*.odt
-#!*.pptx
-!*.pl
 !*.py
 !*README*
 !*.R
@@ -44,22 +31,16 @@
 !*.r
 !*.rmd
 !*.sh
-#!*.template
-#!*.txt
 !*.yml
 !Snakefile
-!*.def
-!tes
-!settings.json
-
-# 3) add a pattern to track the file patterns of section2 even if they are in subdirectories
 !*/
 !**.smk
-# 4) specific files or folder to TRACK (the '**' sign means 'any path')
 !/simulation_data/**
-!test**fa.gz
+!small_test_genome.fa.gz
 !**setting.json
 !slurm_logs/
 !.config/**
 !temporary_dependencies/*.txt
-# 5) specific folders to UNTRACK (wherever it may be in the treeview)
+results
+**__pycache__
+.snakemake
