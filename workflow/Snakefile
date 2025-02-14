@@ -1,4 +1,5 @@
 # Load the configuration file
+
 configfile: ".config/masterconfig.yaml"
 
 import os
@@ -22,7 +23,9 @@ def get_input_files():
 
 rule all:
     input:
-        get_input_files()
+        get_input_files(),
+        expand(os.path.join(output_dir, "{sample}_results", "{sample}_params_recap.txt"), sample=config["samples"].keys())
+        
 
 rule samtools_index:
     input:
@@ -31,7 +34,7 @@ rule samtools_index:
         fai=os.path.join(output_dir, "{sample}_results", "01_chromosome_index", "{sample}_full.fai")
     threads: 1
     resources:
-        mem_mb=lambda wildcards: int(10000 * memory_multiplier),
+        mem_mb=lambda wildcards: int(50000 * memory_multiplier),
         time="10:00:00"
     params: 
         out=os.path.join(output_dir, "{sample}_results", "01_chromosome_index")  
@@ -62,8 +65,8 @@ rule msprime_simulation:
         out_svg = os.path.join(output_dir, "{sample}_results", "02_msprime_simulation"),
         model=lambda wildcards: config["samples"][wildcards.sample]["model"]
     resources:
-        mem_mb=lambda wildcards: int(8000 * memory_multiplier),
-        time="10:00:00"
+        mem_mb=lambda wildcards: int(200000 * memory_multiplier),
+        time="60:00:00"
     benchmark:
         os.path.join(output_dir, "{sample}_results", "benchmark", "msprime_chr_{chromosome}_benchmark.txt")
     container:
@@ -85,7 +88,7 @@ rule generate_variant_type:
         minimal_variant_size=lambda wildcards: config["samples"][wildcards.sample]["minimal_variant_size"]
     threads: 4
     resources:
-        mem_mb=lambda wildcards: int(8000 * memory_multiplier),
+        mem_mb=lambda wildcards: int(10000 * memory_multiplier),
         time="10:00:00"
     container:
         "./temporary_dependencies/msprime_box.sif"
@@ -103,7 +106,7 @@ rule split_recombination:
     output:
         os.path.join(output_dir, "{sample}_results", "temp", "chr_{chromosome}_recombinations.fasta.gz")
     resources:
-        mem_mb=lambda wildcards: int(8000 * memory_multiplier),
+        mem_mb=lambda wildcards: int(50000 * memory_multiplier),
         time="10:00:00"
     benchmark:
         os.path.join(output_dir, "{sample}_results", "benchmark", "split_recombination_chr_{chromosome}_benchmark.txt")
@@ -121,7 +124,7 @@ rule create_graph:
     output:
         os.path.join(output_dir, "{sample}_results", "04_gfa", "chr_{chromosome}_graph.gfa")
     resources:
-        mem_mb=lambda wildcards: int(8000 * memory_multiplier),
+        mem_mb=lambda wildcards: int(50000 * memory_multiplier),
         time="10:00:00"
     benchmark:
         os.path.join(output_dir, "{sample}_results", "benchmark", "create_graph_chr_{chromosome}_benchmark.txt")
@@ -131,4 +134,20 @@ rule create_graph:
         """
         python3 workflow/scripts/fasta_to_gfa.py --splited_fasta {input.splited_fasta} --output_file {output}
         python3 workflow/scripts/json_preorder_traversal.py --json {input.json} --chromosome {wildcards.chromosome}
+        """
+
+rule save_recap:
+    input:
+        configfile= ".config/masterconfig.yaml"
+    output:
+        recap_file=os.path.join(output_dir, "{sample}_results", "{sample}_params_recap.txt")
+    params:
+        output_dir=os.path.join(output_dir, "{sample}_results"),
+        current_run="{sample}"
+    resources:
+        mem_mb=lambda wildcards: int(1000),
+        time="00:30:00"
+    shell:
+        """
+        python3 workflow/scripts/recap.py {input.configfile} {params.output_dir} {params.current_run}
         """

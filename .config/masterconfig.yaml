@@ -12,7 +12,7 @@ samples:
     recombination_rate: 1e-3
     sample_size: 2
     model: binary
-    minimal_variant_size: 0
+    minimal_variant_size: 1
 
 # samples:
 #   test_sample1:                  # One sample per simulation (whole genome)   
@@ -25,7 +25,7 @@ samples:
 #     model: str                   # Mutation model for msprime ['binary', 'infinite_alleles', 'jc69']
 #     minimal_indel_size: int      # Minimal size for generated variants
 
-memory_multiplier: 100  # Multiplier for scaling memory across all rules
+memory_multiplier: 1  # Multiplier for scaling memory across all rules
 container_registry: "docker://registry.forgemia.inra.fr/pangepop/mspangepop" # Workflow image source
 output_dir: "results/" # Output directory name
 sv_type_file: ".config/sv_type.yaml" # Variant probability generation path
