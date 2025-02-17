@@ -1,10 +1,11 @@
 import argparse
 import itertools
+import random
 from readfile import read_fasta_gz
+from graph_utils import merge_nodes, save_to_gfa
 
 class Node:
-    """Represents a node in a directed graph, containing a single nucleotide."""
-    
+    """Represents a node in the graph, containing a single nucleotide."""
     def __init__(self, base: str, node_id: int):
         self.id: int = node_id
         self.base: bytes = base.encode("utf-8")  # Store as a single byte to save memory
@@ -19,10 +20,9 @@ class Node:
     def __repr__(self) -> str:
         return f"Node(ID={self.id}, {self.base.decode()}, out={len(self.out_edges)}, in={len(self.in_edges)})"
 
-
 class Graph:
-    """Represents a directed graph where nodes contain single nucleotides (A, T, C, G)."""
-    
+    """Represents a directed graph"""
+
     _id_counter = itertools.count(1)  # Unique ID generator for graphs
 
     def __init__(self, node_id_generator: itertools.count):
@@ -64,7 +64,7 @@ class Graph:
     def build_from_sequence(self, sequence: str) -> None:
         """Constructs a graph from a nucleotide sequence."""
         if not sequence:
-            raise ValueError("❌ Cannot build a graph from an empty sequence.")
+            raise ValueError("❌ MSpangepop -> Cannot build a graph from an empty sequence.")
         
         prev_node = self.add_node(sequence[0])
         self._start_node = prev_node
@@ -76,9 +76,15 @@ class Graph:
         
         self._end_node = prev_node
 
-    def __repr__(self) -> str:
-        return f"Graph(ID={self.id}, {len(self.nodes)} nodes, start={self.start_node}, end={self.end_node})"
+    def add_snp(self) -> None:
+        """Adds an SNP at node index 3 if possible."""
+        if len(self.nodes) > 3:
+            snp = SNP(self.nodes[3])
+            new_node = snp.compute_alt_seq(self._node_id_generator)
+            self.nodes.append(new_node)
 
+    def __repr__(self) -> str:
+        return f"Graph({self.id}, {len(self.nodes)} nodes, ->{self.start_node}-{self.end_node}->)"
 
 class GraphEnsemble:
     """Manages multiple graphs and allows linking them together."""
@@ -94,9 +100,8 @@ class GraphEnsemble:
         return f"GraphEnsemble({len(self.graphs)} graphs)"
     
     def add_graph(self, graph: Graph) -> None:
-        """Enables using += to add a graph to the ensemble."""
+        """Adds a graph to the ensemble."""
         self.graphs.append(graph)
-        return self
     
     def create_empty_graph(self) -> Graph:
         """Creates a new empty graph and adds it to the ensemble."""
@@ -104,43 +109,85 @@ class GraphEnsemble:
         self.add_graph(graph)
         return graph
 
-def save_to_gfa(ensemble: GraphEnsemble, filename: str) -> None:
-    """Saves the concatenated graphs to a GFA file."""
-    if not ensemble.graphs:
-        print("⚠️  No graphs to save.")
-        return
+    @staticmethod
+    def concatenate_graphs(ensemble: "GraphEnsemble") -> Graph:
+        """Concatenates all graphs in the ensemble and returns the merged graph."""
+        if not ensemble.graphs:
+            raise ValueError("⚠️ No graphs to concatenate.")
 
-    concatenated_graph = ensemble.graphs[0]
-    for graph in ensemble.graphs[1:]:
-        concatenated_graph += graph
+        concatenated_graph = ensemble.graphs[0]
+        for graph in ensemble.graphs[1:]:
+            concatenated_graph += graph
 
-    with open(filename, 'w') as f:
-        for node in concatenated_graph.nodes:
-            f.write(f"S\t{node.id}\t{node.base.decode()}\n")
-        for node in concatenated_graph.nodes:
-            for out_node in node.out_edges:
-                f.write(f"L\t{node.id}\t+\t{out_node.id}\t+\t0M\n")
-    print(f"✅ Graph ensemble saved to {filename}")
+        merge_nodes(concatenated_graph)
+        return concatenated_graph
 
-def main(splited_fasta: str, output_file: str) -> None:
+class Variant:
+    """Base class for genetic variants."""
+    bases="ATCG"
+    def __init__(self, start_node: Node, length: int):
+        self.length: int = length
+        self.start_node: Node = start_node
+
+    def compute_alt_seq(self):
+        raise NotImplementedError("Subclasses must implement this method.")
+
+class SNP(Variant):
+    """Represents a Single Nucleotide Polymorphism (SNP)."""
+    
+    def __init__(self, start_node: Node):
+        super().__init__(start_node, 1)
+
+    def compute_alt_seq(self, node_id_generator: itertools.count) -> Node:
+        """Creates an alternative nucleotide at the SNP position."""
+        original_base = self.start_node.base.decode()
+        possible_bases = [b for b in self.bases if b != original_base]
+        new_base = random.choice(possible_bases)
+        new_node = Node(new_base, next(node_id_generator))
+
+        # Copy edges
+        new_node.in_edges = list(self.start_node.in_edges)
+        new_node.out_edges = list(self.start_node.out_edges)
+
+        # Update graph connections
+        for in_node in new_node.in_edges:
+            in_node.out_edges.append(new_node)
+        for out_node in new_node.out_edges:
+            out_node.in_edges.append(new_node)
+        
+        return new_node
+
+def main(splited_fasta: str, output_file: str, sample: str, chromosome: str) -> None:
     """Reads a FASTA file and constructs graphs from the sequences."""
     sequences = read_fasta_gz(splited_fasta)
     ensemble = GraphEnsemble()
-
+    
+    print(f"\n🔹 MSpangepop -> Constructing sub graphs for {sample}, chr {chromosome}")
     for record in sequences:
         header = record.id  
         seq = str(record.seq)  
-        print(f"\n🔹 Constructing graph for {header}")
+        print(f"\t🔹 Handling {header}")
         graph = ensemble.create_empty_graph()
         graph.build_from_sequence(seq)
-        print("✅", graph)
-        
-    save_to_gfa(ensemble, output_file)
+        graph.add_snp()
+    
+    print(f"\t✅ MSpangepop -> Constructed {len(sequences)} graphs for {sample}, chr {chromosome}")
+    
+    print(f"\n🔹 MSpangepop -> Starting to concatenate graphs for {sample}, chr {chromosome}")
+    concatenated_graph = GraphEnsemble.concatenate_graphs(ensemble)
+    print(f"✅ MSpangepop -> Graph concatenation successful for {sample}, chr {chromosome}")
+
+    print(f"\n🔹 MSpangepop -> Saving graph to {output_file}")
+    save_to_gfa(concatenated_graph, output_file)
+    print(f"✅ MSpangepop -> Graph saved to {output_file}")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Construct a nucleotide graph from an interval FASTA file.")
     parser.add_argument("--splited_fasta", required=True, help="Path to the gzipped FASTA file.")
     parser.add_argument("--output_file", required=True, help="Path to the output file.")
+    parser.add_argument("--sample", required=True, help="Current sample")
+    parser.add_argument("--chromosome", required=True, help="Current chromosome")
     
     args = parser.parse_args()
-    main(args.splited_fasta, args.output_file)
+    main(args.splited_fasta, args.output_file, args.sample, args.chromosome)
