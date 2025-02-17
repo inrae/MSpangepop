@@ -1,8 +1,8 @@
 import argparse
 import itertools
-import random
 from readfile import read_fasta_gz
 from graph_utils import merge_nodes, save_to_gfa
+from variants_class import *
 
 class Node:
     """Represents a node in the graph, containing a single nucleotide."""
@@ -121,41 +121,6 @@ class GraphEnsemble:
 
         merge_nodes(concatenated_graph)
         return concatenated_graph
-
-class Variant:
-    """Base class for genetic variants."""
-    bases="ATCG"
-    def __init__(self, start_node: Node, length: int):
-        self.length: int = length
-        self.start_node: Node = start_node
-
-    def compute_alt_seq(self):
-        raise NotImplementedError("Subclasses must implement this method.")
-
-class SNP(Variant):
-    """Represents a Single Nucleotide Polymorphism (SNP)."""
-    
-    def __init__(self, start_node: Node):
-        super().__init__(start_node, 1)
-
-    def compute_alt_seq(self, node_id_generator: itertools.count) -> Node:
-        """Creates an alternative nucleotide at the SNP position."""
-        original_base = self.start_node.base.decode()
-        possible_bases = [b for b in self.bases if b != original_base]
-        new_base = random.choice(possible_bases)
-        new_node = Node(new_base, next(node_id_generator))
-
-        # Copy edges
-        new_node.in_edges = list(self.start_node.in_edges)
-        new_node.out_edges = list(self.start_node.out_edges)
-
-        # Update graph connections
-        for in_node in new_node.in_edges:
-            in_node.out_edges.append(new_node)
-        for out_node in new_node.out_edges:
-            out_node.in_edges.append(new_node)
-        
-        return new_node
 
 def main(splited_fasta: str, output_file: str, sample: str, chromosome: str) -> None:
     """Reads a FASTA file and constructs graphs from the sequences."""
