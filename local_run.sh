@@ -42,11 +42,14 @@ run_snakemake() {
             snakemake --use-singularity --singularity-args "-B $SNG_BIND" -j $(nproc) --unlock
             ;;
         run)
-            snakemake --use-singularity --singularity-args "-B $SNG_BIND" -j $(nproc) 
+            snakemake --use-singularity --singularity-args "-B $SNG_BIND" -j $(nproc) -k -q rules
+            ;;
+        verbose)
+            snakemake --use-singularity --singularity-args "-B $SNG_BIND" -j $(nproc) -k --verbose
             ;;
         *)
             echo "Invalid option: $option"
-            echo "Usage: $0 [dry|run|dag|rulegraph|unlock]"
+            echo "Usage: $0 [dry|run|dag|rulegraph|unlock|verbose]"
             exit 1
             ;;
     esac
@@ -65,11 +68,12 @@ if [ $# -ne 1 ] || [ "$1" == "help" ]; then
     echo "Use this script to run MSpangepop localy or on a single HPC node"
     echo ""
     echo "Usage: $0 [dry|run|dag|rulegraph|unlock]"
-    echo "    dry - run the specified Snakefile in dry-run mode"
-    echo "    run - run the specified Snakefile normally"
-    echo "    dag - generate the directed acyclic graph for the specified Snakefile"
-    echo "    rulegraph - generate the rulegraph for the specified Snakefile"
-    echo "    unlock - Unlock the directory if snakemake crashed"
+    echo "    dry - run in dry-run mode"
+    echo "    run - run normally"
+    echo "    dag - generate the directed acyclic graph"
+    echo "    rulegraph - generate the rulegraph"
+    echo "    unlock - unlock the directory if snakemake crashed"
+    echo "    verbose - run in verbose debug mode"
     exit 1
 fi
 
