@@ -91,7 +91,8 @@ def main(json_file, output_json_file, yaml_file, chromosome, num_threads, minima
         length_files = {}
         for var_type, file_path in {
             'DEL': 'simulation_data/test.tsv',
-            'INS': 'simulation_data/test.tsv'
+            'INS': 'simulation_data/test.tsv',
+            'INV': 'simulation_data/test.tsv'
         }.items():
             if not os.path.exists(file_path):
                 print(f"⚠️ MSpangepop -> Length distribution file missing for {var_type}.", file=sys.stderr)
@@ -115,7 +116,6 @@ def main(json_file, output_json_file, yaml_file, chromosome, num_threads, minima
     except Exception as e:
         print(f"❌ MSpangepop -> Critical error processing (Chromosome {chromosome}): {e}", file=sys.stderr)
         sys.exit(1)
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Augment JSON file with variant type and size.")
