@@ -1,8 +1,8 @@
-import argparse
 import itertools
+import argparse
 from readfile import read_fasta_gz
 from graph_utils import merge_nodes, save_to_gfa
-from variants_class import *
+from variants_lib import *
 
 class Node:
     """Represents a node in the graph, containing a single nucleotide."""
@@ -20,6 +20,18 @@ class Node:
     def __repr__(self) -> str:
         return f"Node(ID={self.id}, {self.base.decode()}, out={len(self.out_edges)}, in={len(self.in_edges)})"
 
+class Path:
+    """Represents a path in a graph, consisting of a sequence of nodes."""
+    def __init__(self, lineage: str, ancesters: set, nodes: list[Node] = []):
+        self.lineage: int = lineage
+        self.nodes: list[Node] = nodes  # List of nodes in the path
+        self.ancesters: set = ancesters  # A set representing the lineage of the path
+
+    def __repr__(self) -> str:
+        """String representation of the path."""
+        node_ids = [node.id for node in self.nodes]
+        return f"Path(path={self.name}, nodes={node_ids})"
+
 class Graph:
     """Represents a directed graph"""
 
@@ -29,6 +41,7 @@ class Graph:
         self.id: int = next(self._id_counter)
         self._node_id_generator: itertools.count = node_id_generator
         self.nodes: list[Node] = []
+        self.paths: dict[int, Path] = {}  # Dictionary to store paths by lineage
         self._start_node: Node = None
         self._end_node: Node = None
 
@@ -37,7 +50,25 @@ class Graph:
         node = Node(base, next(self._node_id_generator))
         self.nodes.append(node)
         return node
+
+    def get_path(self, lineage: int) -> Path:
+        """Retrieves a path by its lineage."""
+        return self.paths.get(lineage, None)
     
+    def initialize_paths(self, paths: set[Path]) -> None:
+        """
+        Initializes the given set of paths, ensuring that:
+        - Each path receives an ordered list of nodes from the graph.
+        - Each path has a unique lineage in the graph.
+        """
+        for path in paths:
+            if path.lineage in self.paths:
+                raise ValueError(f"Path with lineage {path.lineage} already exists in the graph.")
+
+            # Assign the ordered nodes from the graph to the path
+            path.nodes = self.nodes[:]  # Shallow copy of the current nodes list
+            self.paths[path.lineage] = path
+
     def __getitem__(self, i: int) -> Node:
         return self.nodes[i]
 
@@ -45,16 +76,31 @@ class Graph:
         return len(self.nodes)
 
     def __iadd__(self, other: "Graph") -> "Graph":
-        """Concatenates another graph by linking the last node of this one to the first node of the other."""
+        """Concatenates another graph by linking the last node of this one to the first node of the other.
+        Also merges paths that share the same lineage.
+        """
         if not self.nodes or not other.nodes:
             raise ValueError("Cannot concatenate empty graphs.")
+
+        # Connect the end node of this graph to the start node of the other graph
         self.end_node.connect(other.start_node)
         self.nodes.extend(other.nodes)
         self._end_node = other.end_node
+
+        # Merge paths based on lineage
+        for lineage, path in other.paths.items():
+            if lineage in self.paths:
+                # Concatenate paths with the same lineage
+                self.paths[lineage].nodes.extend(path.nodes)
+                self.paths[lineage].ancesters.update(path.ancesters)
+            else:
+                # Add new paths that don't exist in self
+                self.paths[lineage] = path
+
         return self
 
     def __repr__(self) -> str:
-        return f"Graph({self.id}, {len(self.nodes)} nodes, ->{self.start_node}-{self.end_node}->)"
+        return f"Graph({self.id}, {len(self.nodes)} nodes, {len(self.paths)} paths, ->{self.start_node}-{self.end_node}->)"
 
     @property
     def start_node(self) -> Node:
@@ -65,10 +111,10 @@ class Graph:
         return self._end_node
 
     def build_from_sequence(self, sequence: str) -> None:
-        """Constructs a graph from a nucleotide sequence."""
+        """Constructs a graph and creates an associated path from a nucleotide sequence."""
         if not sequence:
             raise ValueError("❌ MSpangepop -> Cannot build a graph from an empty sequence.")
-        
+
         prev_node = self.add_node(sequence[0])
         self._start_node = prev_node
 
@@ -76,34 +122,32 @@ class Graph:
             new_node = self.add_node(base)
             prev_node.connect(new_node)
             prev_node = new_node
-        
-        self._end_node = prev_node
 
+        self._end_node = prev_node
+    
     def add_snp(self, idx: int) -> None:
-        """Adds an SNP at index if possible."""
         snp = SNP(A=self.nodes[idx-1], B=self.nodes[idx], D=self.nodes[idx+1])
         new_node = snp.compute_alt_seq(self._node_id_generator)
         self.nodes.append(new_node)
 
     def add_deletion(self, start_idx: int, end_idx: int) -> None:
-        """Removes nodes between start_idx and end_idx, linking the preceding and following nodes."""
-        deletion = Deletion(A=self.nodes[start_idx], D=self.nodes[end_idx])
+        deletion = DEL(A=self.nodes[start_idx], D=self.nodes[end_idx])
         deletion.compute_alt_seq()
 
     def add_insertion(self, idx: int, length) -> None:
-        """Inserts 'length' random base nodes at index 'idx'."""
-        insertion = Insertion(A=self.nodes[idx], D=self.nodes[idx + 1], length=length)
+        insertion = INS(A=self.nodes[idx], D=self.nodes[idx + 1], length=length)
         inserted_nodes = insertion.compute_alt_seq(self._node_id_generator)
         self.nodes = self.nodes + inserted_nodes 
     
     def add_inversion(self, start_idx: int, end_idx: int) -> None:
-        inversion = Inversion(A=self.nodes[start_idx], B=self.nodes[start_idx+1], C=self.nodes[end_idx-1], D=self.nodes[end_idx])
+        inversion = INV(A=self.nodes[start_idx], B=self.nodes[start_idx+1], C=self.nodes[end_idx-1], D=self.nodes[end_idx])
         inversion.compute_alt_seq()
 
     def add_duplication(self, start_idx: int, end_idx: int) -> None:
-        duplication = Duplication(A=self.nodes[start_idx], D=self.nodes[end_idx])
+        duplication = DUP(A=self.nodes[start_idx], D=self.nodes[end_idx])
         duplication.compute_alt_seq()
 
+        
 class GraphEnsemble:
     """Manages multiple graphs and allows linking them together."""
     
@@ -137,8 +181,8 @@ class GraphEnsemble:
         for graph in ensemble.graphs[1:]:
             concatenated_graph += graph
 
-        merge_nodes(concatenated_graph)
         return concatenated_graph
+
 
 def main(splited_fasta: str, output_file: str, sample: str, chromosome: str) -> None:
     """Reads a FASTA file and constructs graphs from the sequences."""
@@ -152,6 +196,9 @@ def main(splited_fasta: str, output_file: str, sample: str, chromosome: str) -> 
         print(f"\t🔹 Handling {header}")
         graph = ensemble.create_empty_graph()
         graph.build_from_sequence(seq)
+
+        path = Path(lineage=1, ancesters={1, 2, 3})
+        graph.initialize_paths({path})
         
         graph.add_snp(3)  # Add SNP at index 3
         graph.add_deletion(5, 10)  # Delete bases between 5 and 10
@@ -159,13 +206,22 @@ def main(splited_fasta: str, output_file: str, sample: str, chromosome: str) -> 
         graph.add_insertion(110, 5)
         graph.add_inversion(40, 80)
         graph.add_duplication(25,35)
+        graph.add_snp(10)
+        graph.add_snp(5)
+        graph.add_snp(8)
+        graph.add_snp(50)
+        graph.add_snp(83)
 
 
     print(f"\t✅ MSpangepop -> Constructed {len(sequences)} graphs for {sample}, chr {chromosome}")
     
     print(f"\n🔹 MSpangepop -> Starting to concatenate graphs for {sample}, chr {chromosome}")
     concatenated_graph = GraphEnsemble.concatenate_graphs(ensemble)
-    print(f"✅ MSpangepop -> Graph concatenation successful for {sample}, chr {chromosome}")
+    print(f"✅ MSpangepop -> Graph concatenation  for {sample}, chr {chromosome}")
+
+    print(f"\n🔹 MSpangepop -> Merge nodes for {sample}, chr {chromosome}")
+    merge_nodes(concatenated_graph)
+    print(f"✅ MSpangepop -> Nodes merged successfuly for {sample}, chr {chromosome}")
 
     print(f"\n🔹 MSpangepop -> Saving graph to {output_file}")
     save_to_gfa(concatenated_graph, output_file, sample, chromosome)
