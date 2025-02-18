@@ -4,4 +4,5 @@
 SNP: 25
 DEL: 25
 INS: 25
-INV: 25
+INV: 15
+DUP: 10

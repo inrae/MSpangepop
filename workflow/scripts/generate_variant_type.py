@@ -92,7 +92,8 @@ def main(json_file, output_json_file, yaml_file, chromosome, num_threads, minima
         for var_type, file_path in {
             'DEL': 'simulation_data/test.tsv',
             'INS': 'simulation_data/test.tsv',
-            'INV': 'simulation_data/test.tsv'
+            'INV': 'simulation_data/test.tsv',
+            'DUP': 'simulation_data/test.tsv'
         }.items():
             if not os.path.exists(file_path):
                 print(f"⚠️ MSpangepop -> Length distribution file missing for {var_type}.", file=sys.stderr)

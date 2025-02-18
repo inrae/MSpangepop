@@ -79,39 +79,30 @@ class Graph:
         
         self._end_node = prev_node
 
-    def add_snp(self) -> None:
-        """Adds an SNP at node index 3 if possible."""
-        if len(self.nodes) >= 4:
-            snp = SNP(A=self.nodes[2], B=self.nodes[3], D=self.nodes[4])
-            new_node = snp.compute_alt_seq(self._node_id_generator)
-            self.nodes.append(new_node)
+    def add_snp(self, idx: int) -> None:
+        """Adds an SNP at index if possible."""
+        snp = SNP(A=self.nodes[idx-1], B=self.nodes[idx], D=self.nodes[idx+1])
+        new_node = snp.compute_alt_seq(self._node_id_generator)
+        self.nodes.append(new_node)
 
     def add_deletion(self, start_idx: int, end_idx: int) -> None:
         """Removes nodes between start_idx and end_idx, linking the preceding and following nodes."""
-        if end_idx >= len(self.nodes):
-            return
-
         deletion = Deletion(A=self.nodes[start_idx], D=self.nodes[end_idx])
         deletion.compute_alt_seq()
 
     def add_insertion(self, idx: int, length) -> None:
         """Inserts 'length' random base nodes at index 'idx'."""
-        if idx >= len(self.nodes) - 1:
-            return
-
-        start_node = self.nodes[idx]
-        end_node = self.nodes[idx + 1]
-
-        insertion = Insertion(A=start_node, D=end_node, length=length)
+        insertion = Insertion(A=self.nodes[idx], D=self.nodes[idx + 1], length=length)
         inserted_nodes = insertion.compute_alt_seq(self._node_id_generator)
-
         self.nodes = self.nodes + inserted_nodes 
     
     def add_inversion(self, start_idx: int, end_idx: int) -> None:
-        if end_idx >= len(self.nodes):
-            return
         inversion = Inversion(A=self.nodes[start_idx], B=self.nodes[start_idx+1], C=self.nodes[end_idx-1], D=self.nodes[end_idx])
         inversion.compute_alt_seq()
+
+    def add_duplication(self, start_idx: int, end_idx: int) -> None:
+        duplication = Duplication(A=self.nodes[start_idx], D=self.nodes[end_idx])
+        duplication.compute_alt_seq()
 
 class GraphEnsemble:
     """Manages multiple graphs and allows linking them together."""
@@ -162,11 +153,12 @@ def main(splited_fasta: str, output_file: str, sample: str, chromosome: str) -> 
         graph = ensemble.create_empty_graph()
         graph.build_from_sequence(seq)
         
-        graph.add_snp()  # Add SNP at index 3
+        graph.add_snp(3)  # Add SNP at index 3
         graph.add_deletion(5, 10)  # Delete bases between 5 and 10
         graph.add_insertion(15, 20)  # Insert 10 random bases at position 15
         graph.add_insertion(110, 5)
         graph.add_inversion(40, 80)
+        graph.add_duplication(25,35)
 
 
     print(f"\t✅ MSpangepop -> Constructed {len(sequences)} graphs for {sample}, chr {chromosome}")
@@ -176,7 +168,7 @@ def main(splited_fasta: str, output_file: str, sample: str, chromosome: str) -> 
     print(f"✅ MSpangepop -> Graph concatenation successful for {sample}, chr {chromosome}")
 
     print(f"\n🔹 MSpangepop -> Saving graph to {output_file}")
-    save_to_gfa(concatenated_graph, output_file)
+    save_to_gfa(concatenated_graph, output_file, sample, chromosome)
     print(f"✅ MSpangepop -> Graph saved to {output_file}")
 
 if __name__ == "__main__":
