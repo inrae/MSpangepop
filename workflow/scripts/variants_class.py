@@ -88,7 +88,13 @@ class Inversion(Variant):
     def compute_alt_seq(self) -> None:
         """Reorders nodes B and C in reverse orientation while maintaining connections."""
         self.A.connect(self.C)
-        self.C.connect(self.B)
-        self.B.connect(self.C)
         self.B.connect(self.D)
-    # TODO change this logic
+        
+    # TODO Is this implementation is probably wrong 
+    
+class Duplication(Variant):
+    def __init__(self, A: Node, D: Node):
+        super().__init__(A, None, None, D, 0)
+
+    def compute_alt_seq(self) -> None:
+        self.D.connect(self.A) 
