@@ -37,7 +37,7 @@ def merge_nodes(graph):
                 except Exception as e:
                     raise RuntimeError(f"❌ MSpangepop -> Error merging nodes {parent.id} and {node.id}: {e}")
 
-def save_to_gfa(graph, filename: str) -> None:
+def save_to_gfa(graph, filename: str, sample: str, chromosome: str) -> None:
     """
     Saves the given graph to a GFA (Graphical Fragment Assembly) file.
 
@@ -59,6 +59,8 @@ def save_to_gfa(graph, filename: str) -> None:
     try:
         with open(filename, 'w') as f:
             # Write nodes as segments in GFA format
+            f.write(f"H\t{sample} chr_n{chromosome}\n")
+
             for node in graph.nodes:
                 f.write(f"S\t{node.id}\t{node.base.decode()}\n")
 
