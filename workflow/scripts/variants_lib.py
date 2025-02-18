@@ -1,6 +1,6 @@
 import random
 import itertools
-from fasta_to_gfa import Node
+from json_to_gfa import Node
 from matrix import random_matrix as transition_matrix
 
 class Variant:
@@ -47,14 +47,14 @@ class SNP(Variant):
             k=1
         )[0]
 
-class Deletion(Variant):
+class DEL(Variant):
     def __init__(self, A: Node, D: Node):
         super().__init__(A, None, None, D, 0)
 
     def compute_alt_seq(self) -> None:
         self.A.connect(self.D)  # Bypass intermediate nodes
 
-class Insertion(Variant):
+class INS(Variant):
     def __init__(self, A: Node, D: Node, length: int):
         super().__init__(A, None, None, D, length)
 
@@ -78,7 +78,7 @@ class Insertion(Variant):
 
         return inserted_nodes
 
-class Inversion(Variant):
+class INV(Variant):
     """Represents an inversion mutation in the graph."""
     
     def __init__(self, A: Node, B: Node, C: Node, D: Node):
@@ -91,8 +91,8 @@ class Inversion(Variant):
         self.B.connect(self.D)
         
     # TODO Is this implementation is probably wrong 
-    
-class Duplication(Variant):
+
+class DUP(Variant):
     def __init__(self, A: Node, D: Node):
         super().__init__(A, None, None, D, 0)
 

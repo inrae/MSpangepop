@@ -78,7 +78,7 @@ rule msprime_simulation:
         mv {params.svg} {params.out_svg}
         """
 
-rule generate_variant_type:
+rule draw_variants:
     input:
         json = rules.msprime_simulation.output
     output:
@@ -96,12 +96,12 @@ rule generate_variant_type:
         os.path.join(output_dir, "{sample}_results", "benchmark", "generate_variant_{chromosome}_benchmark.txt")
     shell:
         """
-        python3 workflow/scripts/generate_variant_type.py --json {input.json} --yaml {params.sv_type_file} --output {output} --chromosome {wildcards.chromosome} --threads {threads} --minimal_variant_size {params.minimal_variant_size}
+        python3 workflow/scripts/draw_variants.py --json {input.json} --yaml {params.sv_type_file} --output {output} --chromosome {wildcards.chromosome} --threads {threads} --minimal_variant_size {params.minimal_variant_size}
         """
 
 rule split_recombination:
     input:
-        json = rules.generate_variant_type.output,
+        json = rules.draw_variants.output,
         fasta=lambda wildcards: config["samples"][wildcards.sample]["fasta_gz"]
     output:
         os.path.join(output_dir, "{sample}_results", "temp", "chr_{chromosome}_recombinations.fasta.gz")
@@ -119,7 +119,7 @@ rule split_recombination:
         
 rule create_graph:
     input:
-        json = rules.generate_variant_type.output,
+        json = rules.draw_variants.output,
         splited_fasta=rules.split_recombination.output
     output:
         os.path.join(output_dir, "{sample}_results", "04_gfa", "chr_{chromosome}_graph.gfa")
@@ -132,8 +132,8 @@ rule create_graph:
         "./temporary_dependencies/msprime_box.sif"
     shell:
         """
-        python3 workflow/scripts/fasta_to_gfa.py --splited_fasta {input.splited_fasta} --output_file {output}
-        python3 workflow/scripts/json_preorder_traversal.py --json {input.json} --chromosome {wildcards.chromosome}
+        python3 workflow/scripts/json_to_gfa.py --splited_fasta {input.splited_fasta} --output_file {output} --sample {wildcards.sample} --chromosome {wildcards.chromosome}
+        #python3 workflow/scripts/json_preorder_traversal.py --json {input.json} --chromosome {wildcards.chromosome}
         """
 
 rule save_recap:
