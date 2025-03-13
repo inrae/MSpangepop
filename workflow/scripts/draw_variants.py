@@ -12,7 +12,7 @@ import os
 import sys
 import time
 import concurrent.futures
-from readfile import read_json, save_json, read_variant_length_file, read_yaml
+from data_handler import MSpangepopDataHandler
 
 def set_length(length_df, max_length, minimal_variant_size):
     """Determines the variant length based on the length distribution provided and tree boundaries."""
@@ -72,18 +72,14 @@ def main(json_file, output_json_file, yaml_file, chromosome, num_threads, minima
         
         if minimal_variant_size < 1:
             raise ValueError(f"\n❌ MSpangepop -> minimal_variant_size cant be less than 1")
-        if not os.path.exists(json_file):
-            raise FileNotFoundError(f"\n❌ MSpangepop -> Input JSON file not found: {json_file}")
-        if not os.path.exists(yaml_file):
-            raise FileNotFoundError(f"\n❌ MSpangepop -> YAML configuration file not found: {yaml_file}")
 
         # Read variant probabilities (only once)
-        variant_probabilities = read_yaml(yaml_file)
+        variant_probabilities = MSpangepopDataHandler.read_yaml(yaml_file)
         if not isinstance(variant_probabilities, dict) or not variant_probabilities:
             raise ValueError("\n❌ MSpangepop -> Variant probabilities file is empty or improperly formatted.")
 
         # Read tree data (only once)
-        tree_list = read_json(json_file)
+        tree_list = MSpangepopDataHandler.read_json(json_file)
         if not isinstance(tree_list, list) or not tree_list:
             raise ValueError("\n❌ MSpangepop -> Tree JSON file is empty or improperly formatted.")
 
@@ -98,7 +94,7 @@ def main(json_file, output_json_file, yaml_file, chromosome, num_threads, minima
             if not os.path.exists(file_path):
                 print(f"⚠️ MSpangepop -> Length distribution file missing for {var_type}.", file=sys.stderr)
                 continue
-            length_files[var_type] = read_variant_length_file(file_path)
+            length_files[var_type] = MSpangepopDataHandler.read_variant_length_file(file_path)
 
         # Process and augment mutations in parallel
         tree_list = process_trees_in_parallel(tree_list, length_files, variant_probabilities, num_threads, minimal_variant_size)
@@ -107,7 +103,7 @@ def main(json_file, output_json_file, yaml_file, chromosome, num_threads, minima
         total_mutations = sum(len(tree.get("mutations", [])) for tree in tree_list)
 
         # Save output
-        save_json(tree_list, output_json_file)
+        MSpangepopDataHandler.save_json(tree_list, output_json_file)
 
         # Print summary
         end_time = time.time()

@@ -1,6 +1,6 @@
 import itertools
 import argparse
-from readfile import read_fasta
+from data_handler import MSpangepopDataHandler
 from graph_utils import merge_nodes, save_to_gfa
 from variants_lib import *
 
@@ -183,10 +183,9 @@ class GraphEnsemble:
 
         return concatenated_graph
 
-
 def main(splited_fasta: str, output_file: str, sample: str, chromosome: str) -> None:
     """Reads a FASTA file and constructs graphs from the sequences."""
-    sequences = read_fasta(splited_fasta)
+    sequences = MSpangepopDataHandler.read_fasta(splited_fasta)
     ensemble = GraphEnsemble()
     
     print(f"\n🔹 MSpangepop -> Constructing sub graphs for {sample}, chr {chromosome}")

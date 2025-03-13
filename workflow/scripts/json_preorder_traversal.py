@@ -2,7 +2,7 @@ import argparse
 import json
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
-from readfile import read_json, save_json
+from data_handler import MSpangepopDataHandler
 
 class TreeNode:
     def __init__(self, node_id, time):
@@ -73,14 +73,14 @@ def process_tree(tree_data):
     return tree.get_preorder_traversal()
 
 def main(json_file, chromosome, output_file, threads):
-    json_data = read_json(json_file)
+    json_data = MSpangepopDataHandler.read_json(json_file)
     
     print(f"🔹Asm4pg -> Processing traversal of chromosome {chromosome} with {threads} threads")
     
     with ThreadPoolExecutor(max_workers=threads) as executor:
         results = list(executor.map(process_tree, json_data))
     
-    save_json(results, output_file)
+    MSpangepopDataHandler.save_json(results, output_file)
 
     print(f"✅ Asm4pg -> Serialized traversal of chromosome {chromosome}")
 

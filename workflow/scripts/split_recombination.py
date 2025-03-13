@@ -9,7 +9,7 @@ Project: PangenOak
 import argparse
 import sys
 import gzip
-from readfile import read_json, read_fasta
+from data_handler import MSpangepopDataHandler
 
 def extract_intervals(fasta_sequences, json_data, chromosome_number, output_file):
     """
@@ -64,17 +64,9 @@ def main(json_file, fasta_file, chromosome_number, output_file):
         chromosome_number (int): Chromosome number (1-based index).
         output_file (str): Path to the output file (will be bgzipped).
     """
-    try:
-        fasta_sequences = read_fasta(fasta_file)
-    except Exception as e:
-        print(f"❌ Error reading FASTA file: {e}")
-        sys.exit(1)
 
-    try:
-        json_data = read_json(json_file)
-    except Exception as e:
-        print(f"❌ Error reading JSON file: {e}")
-        sys.exit(1)
+    fasta_sequences = MSpangepopDataHandler.read_fasta(fasta_file)
+    json_data = MSpangepopDataHandler.read_json(json_file)
 
     print(f"🔹 MSpangepop -> Starting to split chr {chromosome_number} between recombination.")
     extract_intervals(fasta_sequences, json_data, chromosome_number, output_file)
