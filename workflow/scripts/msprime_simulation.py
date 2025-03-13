@@ -1,15 +1,11 @@
 # -*- coding: utf-8 -*-
 """
 Author: Sukanya Denni, Lucien Piat
-Date: 28 Oct 2024
 Institution: INRAe
 Project: PangenOak
 
 This script generates a JSON file for a specified chromosome using msprime simulations.
 It utilizes recombination and mutation rates provided by the user and outputs the result to a specified directory.
-
-Usage:
-    python script_name.py -fai reference.fai -p 1000 -m 1e-8 -r 1e-8 -n 10 -o output_directory -c chromosome_name
 """
 
 import pandas as pd
