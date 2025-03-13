@@ -26,7 +26,6 @@ rule all:
         get_input_files(),
         expand(os.path.join(output_dir, "{sample}_results", "{sample}_params_recap.txt"), sample=config["samples"].keys())
         
-
 rule samtools_index:
     input:
         fasta=lambda wildcards: config["samples"][wildcards.sample]["fasta_gz"]
@@ -147,7 +146,17 @@ rule save_recap:
     resources:
         mem_mb=lambda wildcards: int(1000),
         time="00:30:00"
+    container:
+        "./temporary_dependencies/msprime_box.sif"
     shell:
         """
         python3 workflow/scripts/recap.py {input.configfile} {params.output_dir} {params.current_run}
         """
+
+onsuccess:
+    print("✅ MSpangepop -> Workflow completed successfully")
+    shell("date")
+
+onerror: 
+    print("❌ MSpangepop -> Workflow failed, check logs")
+    shell("date")

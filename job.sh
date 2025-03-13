@@ -47,12 +47,7 @@ run_snakemake() {
         usage  # Display usage if option is invalid
     fi
 
-    # Check if the Snakemake command was successful
-    if [ $? -eq 0 ]; then
-        echo "$snakefile completed successfully."
-    else
-        echo "Error: $snakefile failed."
-    fi
+
 }
 
 # Determine the workflow and option based on the arguments

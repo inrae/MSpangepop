@@ -53,14 +53,6 @@ run_snakemake() {
             exit 1
             ;;
     esac
-
-    # Check if the Snakemake command was successful
-    if [ $? -eq 0 ]; then
-        echo "✅ MSpangepop -> Snakemake workflow completed successfully."
-    else
-        echo "❌ MSpangepop -> Error: Snakemake workflow execution failed."
-        exit 1
-    fi
 }
 
 # Verify arguments
