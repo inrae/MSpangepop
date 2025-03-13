@@ -11,6 +11,7 @@ import json
 import pandas as pd
 from Bio import SeqIO
 import gzip
+import os
 
 def read_json(json_path):
     """
@@ -97,18 +98,28 @@ def read_yaml(yaml_file):
         raise
 
 
-def read_fasta_gz(fasta_gz_file):
+def read_fasta(fasta_file):
     """
-    Reads a FASTA file and returns a dictionary of sequences.
+    Reads a FASTA (possibly gzipped) file and returns a list of sequences.
     
     Parameters:
-        input_fasta (str): Path to the FASTA file.
+        fasta_file (str): Path to the FASTA file (compressed or uncompressed).
         
     Returns:
-        dict: A dictionary with sequence IDs as keys and sequence data as values.
+        list: A list of SeqRecord objects from the FASTA file.
     """
     try:
-        with gzip.open(fasta_gz_file, "rt") as handle:  # "rt" means read as text
+        with gzip.open(fasta_file, "rt") as handle:
             return list(SeqIO.parse(handle, "fasta"))
     except Exception as e:
-        print(f"❌ MSpangepop -> Error reading FASTA gz file: {e}")
+        print(f"⚠️ MSpangepop -> Unable to read compressed file, trying uncompressed version...")
+
+        try:
+            with open(fasta_file, "r") as handle:
+                data = list(SeqIO.parse(handle, "fasta"))
+                print("⚠️ MSpangepop -> We recommend compressing the fasta file with bgzip for better performance.")
+                return data
+        except Exception as e:
+            print(f"❌ MSpangepop -> {e}")
+
+        raise IOError("❌ MSpangepop -> Unable to read FASTA file ")

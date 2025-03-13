@@ -1,6 +1,6 @@
 import itertools
 import argparse
-from readfile import read_fasta_gz
+from readfile import read_fasta
 from graph_utils import merge_nodes, save_to_gfa
 from variants_lib import *
 
@@ -186,7 +186,7 @@ class GraphEnsemble:
 
 def main(splited_fasta: str, output_file: str, sample: str, chromosome: str) -> None:
     """Reads a FASTA file and constructs graphs from the sequences."""
-    sequences = read_fasta_gz(splited_fasta)
+    sequences = read_fasta(splited_fasta)
     ensemble = GraphEnsemble()
     
     print(f"\n🔹 MSpangepop -> Constructing sub graphs for {sample}, chr {chromosome}")

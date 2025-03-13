@@ -9,7 +9,7 @@ Project: PangenOak
 import argparse
 import sys
 import gzip
-from readfile import read_json, read_fasta_gz
+from readfile import read_json, read_fasta
 
 def extract_intervals(fasta_sequences, json_data, chromosome_number, output_file):
     """
@@ -65,7 +65,7 @@ def main(json_file, fasta_file, chromosome_number, output_file):
         output_file (str): Path to the output file (will be bgzipped).
     """
     try:
-        fasta_sequences = read_fasta_gz(fasta_file)
+        fasta_sequences = read_fasta(fasta_file)
     except Exception as e:
         print(f"❌ Error reading FASTA file: {e}")
         sys.exit(1)
