@@ -200,32 +200,23 @@ def main(splited_fasta: str, output_file: str, sample: str, chromosome: str) -> 
         path = Path(lineage=1, ancesters={1, 2, 3})
         graph.initialize_paths({path})
         
-        graph.add_snp(3)  # Add SNP at index 3
-        graph.add_deletion(5, 10)  # Delete bases between 5 and 10
-        graph.add_insertion(15, 20)  # Insert 10 random bases at position 15
-        graph.add_insertion(110, 5)
-        graph.add_inversion(40, 80)
-        graph.add_duplication(25,35)
-        graph.add_snp(10)
-        graph.add_snp(5)
-        graph.add_snp(8)
-        graph.add_snp(50)
-        graph.add_snp(83)
-
-
+        graph.add_snp(3)  
+        graph.add_deletion(5, 7)  
+        graph.add_insertion(8, length= 3)  
+        graph.add_inversion(10, 13)
+        graph.add_duplication(14,16)
+    
     print(f"\t✅ MSpangepop -> Constructed {len(sequences)} graphs for {sample}, chr {chromosome}")
     
     print(f"\n🔹 MSpangepop -> Starting to concatenate graphs for {sample}, chr {chromosome}")
     concatenated_graph = GraphEnsemble.concatenate_graphs(ensemble)
-    print(f"✅ MSpangepop -> Graph concatenation  for {sample}, chr {chromosome}")
 
-    print(f"\n🔹 MSpangepop -> Merge nodes for {sample}, chr {chromosome}")
+    print(f"🔹 MSpangepop -> Merging nodes for {sample}, chr {chromosome}")
     merge_nodes(concatenated_graph)
-    print(f"✅ MSpangepop -> Nodes merged successfuly for {sample}, chr {chromosome}")
 
-    print(f"\n🔹 MSpangepop -> Saving graph to {output_file}")
+    print(f"🔹 MSpangepop -> Saving graph for {sample}, chr {chromosome}")
     save_to_gfa(concatenated_graph, output_file, sample, chromosome)
-    print(f"✅ MSpangepop -> Graph saved to {output_file}")
+    print(f"✅ MSpangepop -> Graph saved for {sample}, chr {chromosome}\n")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Construct a nucleotide graph from an interval FASTA file.")
