@@ -10,41 +10,40 @@ def merge_nodes(graph):
     Returns:
         None (modifies the graph in place).
     """
-
+    
     if not graph.nodes:
         raise ValueError("⚠️ MSpangepop -> Cannot merge nodes in an empty graph.")
 
-    merged = set()
+    merged_nodes = set()  # Track nodes to remove
 
     # Traverse nodes in reverse order to prevent modifying the list while iterating
     for node in reversed(graph.nodes):
-        if node in merged:
+        if node in merged_nodes:
             continue  # Skip already merged nodes
 
         if len(node.in_edges) == 1:
             parent = node.in_edges[0]
             if len(parent.out_edges) == 1:
-                try:
-                    # Merge node into its parent
-                    parent.base += node.base
-                    parent.out_edges = node.out_edges
-                    for child in node.out_edges:
-                        child.in_edges.remove(node)
-                        child.in_edges.append(parent)
+                # Merge node into its parent
+                parent.base += node.base
+                parent.out_edges = node.out_edges
+                
+                for child in node.out_edges:
+                    child.in_edges.remove(node)
+                    child.in_edges.append(parent)
 
-                    # Update paths: replace merged node with its parent
-                    for path in graph.paths.values():
-                        if node in path.nodes:
-                            node_index = path.nodes.index(node)
-                            path.nodes[node_index] = parent  # Replace with merged parent
-                            path.nodes = list(dict.fromkeys(path.nodes))  # Remove duplicates
+                # Update paths: replace merged node with its parent
+                for path in graph.paths.values():
+                    if node in path.nodes:
+                        node_index = path.nodes.index(node)
+                        path.nodes[node_index] = parent  # Replace with merged parent
+                        path.nodes = list(dict.fromkeys(path.nodes))  # Remove duplicates
 
-                    # Mark the merged node to avoid processing it again
-                    merged.add(node)
-                    graph.nodes.remove(node)
+                # Mark node for removal
+                merged_nodes.add(node)
 
-                except Exception as e:
-                    raise RuntimeError(f"❌ MSpangepop -> Error merging nodes {parent.id} and {node.id}: {e}")
+    # Remove merged nodes in one go (avoids O(n²) slow removals)
+    graph.nodes = [node for node in graph.nodes if node not in merged_nodes]
 
 def save_to_gfa(graph, filename: str, sample: str, chromosome: str) -> None:
     """
