@@ -45,7 +45,7 @@ class MSpangepopDataHandler:
             raise FileReadError(f"Error reading JSON file: {e}")
     
     @staticmethod
-    def save_json(data, output_path):
+    def save_json(data, output_path, readble_json = False):
         """
         Saves data to a JSON file at the specified output path.
         
@@ -56,9 +56,13 @@ class MSpangepopDataHandler:
         Raises:
             FileReadError: If there is an issue saving the JSON file.
         """
+        if readble_json:
+            indent = 4
+        else :
+            indent = None
         try:
             with open(output_path, 'w') as file:
-                json.dump(data, file, indent=4)
+                json.dump(data, file, indent=indent) # Set indent to none to reduce json file size
         except Exception as e:
             raise FileReadError(f"Error saving JSON file: {e}")
     

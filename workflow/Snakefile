@@ -1,5 +1,3 @@
-# Load the configuration file
-
 configfile: ".config/masterconfig.yaml"
 
 import os
@@ -18,7 +16,6 @@ def get_input_files():
         chr_n = config["samples"][sample]["chr_n"]
         chromosomes = [f"{i}" for i in range(1, chr_n + 1)]
         inputs.extend([os.path.join(output_dir, f"{sample}_results", "04_gfa", f"chr_{chromosome}_graph.gfa") for chromosome in chromosomes])
-        inputs.extend([os.path.join(output_dir, f"{sample}_results", "02_msprime_simulation", f"chr_{chromosome}_augmented_ms_sim.json") for chromosome in chromosomes])
     return inputs
 
 rule all:
@@ -45,8 +42,10 @@ rule samtools_index:
         """
         echo '🔹 MSpangepop -> Starting {wildcards.sample} indexing...' && 
         samtools faidx {input.fasta} &&
-        mv {input.fasta}.fai {output.fai} && echo '✅ MSpangepop -> {wildcards.sample} indexing successful.' &&
-        rm {input.fasta}.gzi || true 
+        mv {input.fasta}.fai {output.fai} && echo '✅ MSpangepop -> {wildcards.sample} indexing successful.' 
+        if [ -f {input.fasta}.gzi ]; then 
+            rm {input.fasta}.gzi
+        fi
         """
 
 rule msprime_simulation:    
@@ -85,7 +84,7 @@ rule draw_variants:
     params:
         sv_type_file = config.get("sv_type_file"),
         minimal_variant_size=lambda wildcards: config["samples"][wildcards.sample]["minimal_variant_size"]
-    threads: 4
+    threads: 10
     resources:
         mem_mb=lambda wildcards: int(10000 * memory_multiplier),
         time="10:00:00"
@@ -100,7 +99,7 @@ rule draw_variants:
 
 rule split_recombination:
     input:
-        json = rules.draw_variants.output,
+        json = rules.msprime_simulation.output,
         fasta=lambda wildcards: config["samples"][wildcards.sample]["fasta_gz"]
     output:
         os.path.join(output_dir, "{sample}_results", "temp", "chr_{chromosome}_recombinations.fasta.gz")
@@ -115,13 +114,33 @@ rule split_recombination:
         """
         python3 workflow/scripts/split_recombination.py --json {input.json} --fasta {input.fasta} --chromosome {wildcards.chromosome} --output {output} 
         """       
-        
+
+rule coalescent_preorder_traversal:
+    input:
+        json = rules.draw_variants.output
+    output:
+        traversal = os.path.join(output_dir, "{sample}_results", "04_gfa", "chr_{chromosome}_traversal.json")
+    params:
+        readble_json=lambda wildcards: config["samples"][wildcards.sample].get("readble_json", False) 
+    resources:
+        mem_mb=lambda wildcards: int(50000 * memory_multiplier),
+        time="10:00:00"
+    threads: 10
+    benchmark:
+        os.path.join(output_dir, "{sample}_results", "benchmark", "coalescent_preorder_traversal_chr_{chromosome}_benchmark.txt")
+    container:
+        "./temporary_dependencies/msprime_box.sif"
+    shell: 
+        """
+        python3 workflow/scripts/coalescent_preorder_traversal.py --json {input.json} --chromosome {wildcards.chromosome} --output_file {output.traversal} --threads {threads} --readble_json {params.readble_json}
+        """
+    
 rule create_graph:
     input:
-        json = rules.draw_variants.output,
-        splited_fasta=rules.split_recombination.output
+        splited_fasta=rules.split_recombination.output,
+        traversal = rules.coalescent_preorder_traversal.output.traversal,
     output:
-        os.path.join(output_dir, "{sample}_results", "04_gfa", "chr_{chromosome}_graph.gfa")
+        gfa = os.path.join(output_dir, "{sample}_results", "04_gfa", "chr_{chromosome}_graph.gfa"),
     resources:
         mem_mb=lambda wildcards: int(50000 * memory_multiplier),
         time="10:00:00"
@@ -129,10 +148,10 @@ rule create_graph:
         os.path.join(output_dir, "{sample}_results", "benchmark", "create_graph_chr_{chromosome}_benchmark.txt")
     container:
         "./temporary_dependencies/msprime_box.sif"
+    threads:4
     shell:
         """
-        python3 workflow/scripts/json_to_gfa.py --splited_fasta {input.splited_fasta} --output_file {output} --sample {wildcards.sample} --chromosome {wildcards.chromosome}
-        #python3 workflow/scripts/json_preorder_traversal.py --json {input.json} --chromosome {wildcards.chromosome}
+        python3 workflow/scripts/json_to_gfa.py --splited_fasta {input.splited_fasta} --output_file {output.gfa} --sample {wildcards.sample} --chromosome {wildcards.chromosome} 
         """
 
 rule save_recap:
