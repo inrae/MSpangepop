@@ -11,13 +11,46 @@ import yaml
 import pandas as pd
 from Bio import SeqIO
 import gzip
+import sys
+import os
 
-class FileReadError(Exception):
-    """
-    Custom exception for file read errors.
-    """
+import sys
+import os
+
+class MSLogger:
+    """Base logging class that prints messages with a standardized prefix."""
+    
+    def __init__(self, prefix, message):
+        self.script = os.path.basename(sys.argv[0])  # Get the script that is running
+        print(f"{prefix} [{self.script}] {message}")
+
+
+class MSsuccess(MSLogger):
+    """Logs a success message."""
     def __init__(self, message):
-        super().__init__(f"❌ MSpangepop -> {message}")
+        super().__init__("✅ MSpangepop ->", message)
+
+
+class MScompute(MSLogger):
+    """Logs a compute-related message."""
+    def __init__(self, message):
+        super().__init__("🔹MSpangepop ->", message)
+
+
+class MSwarning(MSLogger):
+    """Logs a warning message."""
+    def __init__(self, message):
+        super().__init__("⚠️ MSpangepop ->", message)
+
+
+class MSerror(Exception):
+    """Custom exception for MSpangepop errors."""
+    
+    def __init__(self, message):
+        self.script = os.path.basename(sys.argv[0])  # Get the script that triggered the error
+        self.message = f"❌ MSpangepop -> [{self.script}] {message}"
+        super().__init__(self.message)
+
 
 class MSpangepopDataHandler:
     """
@@ -42,7 +75,7 @@ class MSpangepopDataHandler:
             with open(json_path, 'r') as file:
                 return json.load(file)
         except Exception as e:
-            raise FileReadError(f"Error reading JSON file: {e}")
+            MSerror(f"Error reading JSON file: {e}")
     
     @staticmethod
     def save_json(data, output_path, readble_json = False):
@@ -64,7 +97,7 @@ class MSpangepopDataHandler:
             with open(output_path, 'w') as file:
                 json.dump(data, file, indent=indent) # Set indent to none to reduce json file size
         except Exception as e:
-            raise FileReadError(f"Error saving JSON file: {e}")
+            MSerror(f"Error saving JSON file: {e}")
     
     @staticmethod
     def read_yaml(yaml_file):
@@ -88,7 +121,7 @@ class MSpangepopDataHandler:
                 raise ValueError("Sum of variant probabilities in YAML must equal 100.")
             return variant_probabilities
         except Exception as e:
-            raise FileReadError(f"Error reading YAML file: {e}")
+            MSerror(f"Error reading YAML file: {e}")
     
     @staticmethod
     def read_fasta(fasta_file):
@@ -108,14 +141,14 @@ class MSpangepopDataHandler:
             with gzip.open(fasta_file, "rt") as handle:
                 return list(SeqIO.parse(handle, "fasta"))
         except Exception:
-            print("⚠️ MSpangepop -> Unable to read compressed file, trying uncompressed version...")
+            MSwarning("Unable to read compressed file, trying uncompressed version...")
             try:
                 with open(fasta_file, "r") as handle:
                     data = list(SeqIO.parse(handle, "fasta"))
-                    print("⚠️ MSpangepop -> Consider compressing the fasta file with bgzip for better performance.")
+                    MSwarning("Consider compressing the fasta file with bgzip for better performance.")
                     return data
             except Exception as e:
-                raise FileReadError(f"Unable to read FASTA file: {e}")
+                MSerror(f"Unable to read FASTA file: {e}")
     
     @staticmethod
     def read_variant_length_file(file_path):
@@ -138,4 +171,4 @@ class MSpangepopDataHandler:
                 print(f"⚠️ MSpangepop -> Warning: The cumulative probability of {file_path} is less than 1.")
             return df
         except Exception as e:
-            raise FileReadError(f"Error reading variant length file {file_path}: {e}")
+            MSerror(f"Error reading variant length file {file_path}: {e}")
