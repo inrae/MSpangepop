@@ -1,3 +1,5 @@
+from io_handler import MSerror
+
 def merge_nodes(graph):
     """
     Merges nodes in the graph based on the following rule:
@@ -12,7 +14,7 @@ def merge_nodes(graph):
     """
     
     if not graph.nodes:
-        raise ValueError("⚠️ MSpangepop -> Cannot merge nodes in an empty graph.")
+        raise MSerror("Cannot merge nodes in an empty graph.")
 
     merged_nodes = set()  # Track nodes to remove
 
@@ -63,7 +65,7 @@ def save_to_gfa(graph, filename: str, sample: str, chromosome: str) -> None:
     """
     
     if not graph.nodes:
-        raise ValueError("⚠️ MSpangepop -> Cannot save an empty graph to GFA.")
+        raise MSerror("Cannot save an empty graph to GFA.")
 
     try:
         with open(filename, 'w') as f:
@@ -85,4 +87,4 @@ def save_to_gfa(graph, filename: str, sample: str, chromosome: str) -> None:
                 f.write(f"P\tlineage_{path.lineage}\t{node_order}\n")
 
     except IOError as e:
-        raise IOError(f"❌ MSpangepop -> Error writing to {filename}: {e}")
+        raise MSerror(f"Error writing to {filename}: {e}")

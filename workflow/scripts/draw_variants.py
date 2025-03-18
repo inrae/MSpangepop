@@ -12,7 +12,7 @@ import os
 import sys
 import time
 import concurrent.futures
-from data_handler import MSpangepopDataHandler
+from io_handler import MSpangepopDataHandler, MSerror, MSsuccess, MScompute
 
 def set_length(length_df, max_length, minimal_variant_size):
     """Determines the variant length based on the length distribution provided and tree boundaries."""
@@ -23,16 +23,16 @@ def set_length(length_df, max_length, minimal_variant_size):
         length = random.randint(int(lower_bound), int(upper_bound))
         return max(min(minimal_variant_size, max_length), min(length, max_length))  # Ensure length does not exceed the boundary and is not 0
     except Exception as e:
-        print(f"❌ MSpangepop -> Error in selecting variant length : {e}", file=sys.stderr)
-        sys.exit(1)
+        raise MSerror(f"Error in selecting variant length : {e}")
+
 
 def select_variant_type(variant_probabilities):
     """Selects a variant type based on predefined probabilities."""
     try:
         return random.choices(list(variant_probabilities.keys()), weights=variant_probabilities.values())[0]
     except Exception as e:
-        print(f"❌ MSpangepop -> Error selecting variant type : {e}", file=sys.stderr)
-        sys.exit(1)
+        raise MSerror(f"Error in selecting type length : {e}")
+
 
 def augment_tree_mutations(tree, length_files, variant_probabilities, minimal_variant_size):
     """Augments mutations in a tree with variant type and length based on distributions."""
@@ -46,14 +46,14 @@ def augment_tree_mutations(tree, length_files, variant_probabilities, minimal_va
             else:
                 length_df = length_files.get(variant_type)
                 if length_df is None:
-                    raise ValueError(f"❌ MSpangepop -> No length distribution data for variant type '{variant_type}'.")
+                    raise MSerror(f"No length distribution data for variant type '{variant_type}")
                 max_length = tree["interval"][1] - mutation["site_position"]
                 mutation["len"] = set_length(length_df, max_length, minimal_variant_size)
 
         return tree
 
     except Exception as e:
-        print(f"❌ MSpangepop -> Error augmenting mutations : {e}", file=sys.stderr)
+        MSerror(f"Error augmenting mutations : {e}")
         return None
 
 def process_single_tree(tree, length_files, variant_probabilities, minimal_variant_size):
@@ -68,20 +68,20 @@ def main(json_file, output_json_file, yaml_file, chromosome, num_threads, minima
     """Processes a JSON list of trees, augmenting mutations with variant type and size."""
     try:
         start_time = time.time()
-        print(f"🔹 MSpangepop -> Generating variants for chromosome {chromosome} using {num_threads} threads")
+        MScompute(f"Generating variants for chromosome {chromosome} using {num_threads} threads")
         
         if minimal_variant_size < 1:
-            raise ValueError(f"\n❌ MSpangepop -> minimal_variant_size cant be less than 1")
+            raise MSerror('minimal_variant_size cant be less than 1')
 
         # Read variant probabilities (only once)
         variant_probabilities = MSpangepopDataHandler.read_yaml(yaml_file)
         if not isinstance(variant_probabilities, dict) or not variant_probabilities:
-            raise ValueError("\n❌ MSpangepop -> Variant probabilities file is empty or improperly formatted.")
+            raise MSerror('Variant probabilities file is empty or improperly formatted.')
 
         # Read tree data (only once)
         tree_list = MSpangepopDataHandler.read_json(json_file)
         if not isinstance(tree_list, list) or not tree_list:
-            raise ValueError("\n❌ MSpangepop -> Tree JSON file is empty or improperly formatted.")
+            raise MSerror('Tree JSON file is empty or improperly formatted.')
 
         # Read length distribution files (only once)
         length_files = {}
@@ -92,8 +92,7 @@ def main(json_file, output_json_file, yaml_file, chromosome, num_threads, minima
             'DUP': 'simulation_data/test.tsv'
         }.items():
             if not os.path.exists(file_path):
-                print(f"⚠️ MSpangepop -> Length distribution file missing for {var_type}.", file=sys.stderr)
-                continue
+                raise MSerror("Length distribution file missing for {var_type}.")
             length_files[var_type] = MSpangepopDataHandler.read_variant_length_file(file_path)
 
         # Process and augment mutations in parallel
@@ -108,11 +107,11 @@ def main(json_file, output_json_file, yaml_file, chromosome, num_threads, minima
         # Print summary
         end_time = time.time()
         elapsed_time = end_time - start_time
-        print(f"✅ MSpangepop -> Successfully processed chromosome {chromosome}, {total_mutations} mutations handled in {elapsed_time:.2f} sec.")
+        MSsuccess(f"Successfully processed chromosome {chromosome}, {total_mutations} mutations handled in {elapsed_time:.2f} sec.")
 
     except Exception as e:
-        print(f"❌ MSpangepop -> Critical error processing (Chromosome {chromosome}): {e}", file=sys.stderr)
-        sys.exit(1)
+        raise MSerror(f"Critical error processing (Chromosome {chromosome}): {e}")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Augment JSON file with variant type and size.")

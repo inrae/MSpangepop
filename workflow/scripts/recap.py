@@ -6,6 +6,7 @@ import argparse
 import socket
 import datetime
 import platform
+from io_handler import MSsuccess
 
 def parse_args():
     """Parse command-line arguments."""
@@ -25,11 +26,6 @@ def main():
 
     # Ensure the output directory exists
     os.makedirs(args.output_dir, exist_ok=True)
-
-    # Read the configuration file
-    if not os.path.exists(args.config_file):
-        print(f"❌ Error: Configuration file {args.config_file} not found!")
-        exit(1)
 
     with open(args.config_file, "r") as f:
         config = yaml.safe_load(f)
@@ -73,7 +69,7 @@ def main():
         else:
             f.write(f"⚠️ Warning: No parameters found for {args.current_run}\n")
 
-    print(f"✅ MSpangepop -> Recap file saved: {recap_file}")
+    MSsuccess(f"Recap file saved: {recap_file}")
 
 if __name__ == "__main__":
     main()

@@ -9,7 +9,7 @@ Project: PangenOak
 import argparse
 import sys
 import gzip
-from data_handler import MSpangepopDataHandler
+from io_handler import MSpangepopDataHandler, MSsuccess, MSerror, MScompute, MSwarning
 
 def extract_intervals(fasta_sequences, json_data, chromosome_number, output_file):
     """
@@ -24,14 +24,13 @@ def extract_intervals(fasta_sequences, json_data, chromosome_number, output_file
     chrom_index = chromosome_number - 1  # Convert 1-based index to 0-based
     
     if chrom_index < 0 or chrom_index >= len(fasta_sequences):
-        print(f"❌ Error: Chromosome {chromosome_number} not found in FASTA file.")
-        sys.exit(1)
+        raise MSerror(f"Chromosome {chromosome_number} not found in FASTA file.")
+
 
     try:
         chrom_seq = fasta_sequences[chrom_index].seq  # Retrieve chromosome sequence
     except AttributeError:
-        print(f"❌ Error: Invalid sequence format for chromosome {chromosome_number}.")
-        sys.exit(1)
+        raise MSerror(f"Invalid sequence format for chromosome {chromosome_number}.")
 
     bgzip_output_file = output_file if output_file.endswith(".gz") else output_file + ".gz"
 
@@ -41,18 +40,18 @@ def extract_intervals(fasta_sequences, json_data, chromosome_number, output_file
                 try:
                     start, end = map(int, entry["interval"])  # Convert float to int for slicing
                     if start < 0 or end > len(chrom_seq):
-                        print(f"⚠️ Warning: Interval {start}-{end} is out of bounds for chromosome {chromosome_number}. Skipping.")
+                        MSwarning(f"Interval {start}-{end} is out of bounds for chromosome {chromosome_number}. Skipping.")
                         continue
                     
                     extracted_seq = chrom_seq[start:end]  # Extract sequence for the interval
                     output_line = f">Chromosome{chromosome_number}_Interval_{start}_{end}\n{extracted_seq}\n"
                     out.write(output_line)  # Write to bgzipped file
-                    print(f"✅ MSpangepop -> Saved interval {start}-{end} from chromosome {chromosome_number}")
+                    MSsuccess(f"Saved interval {start}-{end} from chromosome {chromosome_number}")
                 except (KeyError, TypeError, ValueError) as e:
-                    print(f"⚠️ Warning: Skipping invalid JSON entry {entry}. Error: {e}")
+                    raise MSerror(f"Skipping invalid JSON entry {e}")
     except IOError as e:
-        print(f"❌ Error writing to output file {bgzip_output_file}: {e}")
-        sys.exit(1)
+        raise MSerror(f"Error writing to output file {bgzip_output_file}: {e}")
+
 
 def main(json_file, fasta_file, chromosome_number, output_file):
     """
@@ -68,9 +67,9 @@ def main(json_file, fasta_file, chromosome_number, output_file):
     fasta_sequences = MSpangepopDataHandler.read_fasta(fasta_file)
     json_data = MSpangepopDataHandler.read_json(json_file)
 
-    print(f"🔹 MSpangepop -> Starting to split chr {chromosome_number} between recombination.")
+    MScompute(f"Starting to split chr {chromosome_number} between recombination.")
     extract_intervals(fasta_sequences, json_data, chromosome_number, output_file)
-    print(f"✅ MSpangepop -> Split successful on chr {chromosome_number}, output saved as {output_file}")
+    MSsuccess(f"Split successful on chr {chromosome_number}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Extract sequences for given intervals from a FASTA file and save to a bgzipped output file.")

@@ -1,11 +1,11 @@
 import itertools
 import argparse
-from data_handler import MSpangepopDataHandler
+from io_handler import MSpangepopDataHandler, MSerror, MSsuccess, MScompute
 from graph_utils import merge_nodes, save_to_gfa
 from variants_lib import *
 
 class Node:
-    """Represents a node in the graph, containing a single nucleotide."""
+    """Represents a node in the graph"""
     def __init__(self, base: str, node_id: int):
         self.id: int = node_id
         self.base: bytes = base.encode("utf-8")  # Store as a single byte to save memory
@@ -27,10 +27,6 @@ class Path:
         self.nodes: list[Node] = nodes  # List of nodes in the path
         self.ancesters: set = ancesters  # A set representing the lineage of the path
 
-    def __repr__(self) -> str:
-        """String representation of the path."""
-        node_ids = [node.id for node in self.nodes]
-        return f"Path(path={self.name}, nodes={node_ids})"
 
 class Graph:
     """Represents a directed graph"""
@@ -41,7 +37,7 @@ class Graph:
         self.id: int = next(self._id_counter)
         self._node_id_generator: itertools.count = node_id_generator
         self.nodes: list[Node] = []
-        self.paths: dict[int, Path] = {}  # Dictionary to store paths by lineage
+        self.paths: dict[int, Path] = {} 
         self._start_node: Node = None
         self._end_node: Node = None
 
@@ -63,7 +59,7 @@ class Graph:
         """
         for path in paths:
             if path.lineage in self.paths:
-                raise ValueError(f"Path with lineage {path.lineage} already exists in the graph.")
+                raise MSerror(f"Path with lineage {path.lineage} already exists in the graph.")
 
             # Assign the ordered nodes from the graph to the path
             path.nodes = self.nodes[:]  # Shallow copy of the current nodes list
@@ -80,7 +76,7 @@ class Graph:
         Also merges paths that share the same lineage.
         """
         if not self.nodes or not other.nodes:
-            raise ValueError("Cannot concatenate empty graphs.")
+            raise MSerror("Cannot concatenate empty graphs.")
 
         # Connect the end node of this graph to the start node of the other graph
         self.end_node.connect(other.start_node)
@@ -113,7 +109,7 @@ class Graph:
     def build_from_sequence(self, sequence: str) -> None:
         """Constructs a graph and creates an associated path from a nucleotide sequence."""
         if not sequence:
-            raise ValueError("❌ MSpangepop -> Cannot build a graph from an empty sequence.")
+            raise MSerror("Cannot build a graph from an empty sequence.")
 
         prev_node = self.add_node(sequence[0])
         self._start_node = prev_node
@@ -175,7 +171,7 @@ class GraphEnsemble:
     def concatenate_graphs(ensemble: "GraphEnsemble") -> Graph:
         """Concatenates all graphs in the ensemble and returns the merged graph."""
         if not ensemble.graphs:
-            raise ValueError("⚠️ No graphs to concatenate.")
+            raise MSerror("No graphs to concatenate.")
 
         concatenated_graph = ensemble.graphs[0]
         for graph in ensemble.graphs[1:]:
@@ -199,23 +195,24 @@ def main(splited_fasta: str, output_file: str, sample: str, chromosome: str) -> 
         path = Path(lineage=1, ancesters={1, 2, 3})
         graph.initialize_paths({path})
         
-        graph.add_snp(3)  
+        graph.add_snp(1)  
         graph.add_deletion(5, 7)  
-        graph.add_insertion(8, length= 3)  
+        graph.add_insertion(2, length= 3)  
         graph.add_inversion(10, 13)
         graph.add_duplication(14,16)
+        #merge_nodes(graph)
+            
+    MSsuccess(f"Constructed {len(sequences)} graphs for {sample}, chr {chromosome}")
     
-    print(f"\t✅ MSpangepop -> Constructed {len(sequences)} graphs for {sample}, chr {chromosome}")
-    
-    print(f"\n🔹 MSpangepop -> Starting to concatenate graphs for {sample}, chr {chromosome}")
+    MScompute(f"Starting to concatenate graphs for {sample}, chr {chromosome}")
     concatenated_graph = GraphEnsemble.concatenate_graphs(ensemble)
 
-    print(f"🔹 MSpangepop -> Merging nodes for {sample}, chr {chromosome}")
+    MScompute(f"Merging nodes for {sample}, chr {chromosome}")
     merge_nodes(concatenated_graph)
 
-    print(f"🔹 MSpangepop -> Saving graph for {sample}, chr {chromosome}")
+    MScompute(f"Saving graph for {sample}, chr {chromosome}")
     save_to_gfa(concatenated_graph, output_file, sample, chromosome)
-    print(f"✅ MSpangepop -> Graph saved for {sample}, chr {chromosome}\n")
+    MSsuccess(f"Graph saved for {sample}, chr {chromosome}\n")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Construct a nucleotide graph from an interval FASTA file.")

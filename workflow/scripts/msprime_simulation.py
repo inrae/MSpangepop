@@ -16,6 +16,8 @@ import json
 import time
 import sys
 
+from io_handler import MSerror, MSsuccess, MScompute
+
 def get_chromosome_bounds(chrom_length):
     """Define the chromosome boundaries based on length."""
     return [0, chrom_length]
@@ -26,8 +28,7 @@ def create_recombination_map(chrom_length, recombination_rate):
         chrom_positions = get_chromosome_bounds(chrom_length)
         return msprime.RateMap(position=chrom_positions, rate=[recombination_rate])
     except Exception as e:
-        print(f"❌ MSpangepop -> Error creating recombination map: {e}", file=sys.stderr)
-        sys.exit(1)
+        MSerror(f"Error creating recombination map: {e}")
 
 def save_output(mutated_ts, chromosome_name, output_dir="results"):
     """
@@ -75,8 +76,8 @@ def save_output(mutated_ts, chromosome_name, output_dir="results"):
             f.write('\n]')  # End JSON array
 
     except Exception as e:
-        print(f"❌ MSpangepop -> Error saving output: {e}", file=sys.stderr)
-        sys.exit(1)
+        raise MSerror(f"Error saving output: {e}")
+
 
 
 def simulate_chromosome_evolution(fai_file, population_size, mutation_rate, recombination_rate, sample_size, output_dir, chromosome_name, model):
@@ -87,17 +88,17 @@ def simulate_chromosome_evolution(fai_file, population_size, mutation_rate, reco
         start_time = time.time()
         
         if not os.path.exists(fai_file):
-            raise FileNotFoundError(f"❌ MSpangepop -> FAI file not found: {fai_file}")
+            raise MSerror(f"FAI file not found: {fai_file}")
 
         print("🔹 MSpangepop -> Gathering length for chromosome:", chromosome_name)
         chrom_lengths = pd.read_table(fai_file, header=None, usecols=[1], names=["length"])["length"].values
         
         if not chromosome_name.isdigit() or int(chromosome_name) - 1 >= len(chrom_lengths):
-            raise ValueError(f"❌ MSpangepop ->  Invalid chromosome number: {chromosome_name}")
+            raise MSerror(f"Invalid chromosome number: {chromosome_name}")
         
         chrom_length = chrom_lengths[int(chromosome_name) - 1]
-        print(f"✅ MSpangepop -> Found chr {chromosome_name} of length: {chrom_length},\n\t🔹 Starting MSprime simulation...")
-
+        MSsuccess(f"Found chr {chromosome_name} of length: {chrom_length}")
+        MScompute("Starting MSprime simulation...")
         recombination_map = create_recombination_map(chrom_length, recombination_rate)
 
         ancestry_ts = msprime.sim_ancestry(
@@ -114,12 +115,12 @@ def simulate_chromosome_evolution(fai_file, population_size, mutation_rate, reco
         mutated_ts = mutated_ts.keep_intervals([[0, chrom_length]], simplify=True).trim()
 
 
-        print(f"✅ MSpangepop -> Simulation for chromosome {chromosome_name}")
+        MSsuccess(f"Simulation for chromosome {chromosome_name}")
 
         print(mutated_ts.draw_text())
 
         os.makedirs(output_dir, exist_ok=True)
-        print(f"🔹 MSpangepop -> Saving output for chromosome {chromosome_name} to {output_dir}/")
+        MScompute(f"Saving output for chromosome {chromosome_name}")
         
         plt = mutated_ts.draw_svg()
         with open(os.path.join(output_dir, f"chr_{chromosome_name}_mutations.svg"), "w") as f:
@@ -128,18 +129,17 @@ def simulate_chromosome_evolution(fai_file, population_size, mutation_rate, reco
         save_output(mutated_ts, chromosome_name, output_dir)
         end_time = time.time()
         elapsed_time = end_time - start_time
-        print(f"✅ MSpangepop -> Simulation saved for chromosome {chromosome_name} completed in {elapsed_time/60:.2f} min.")
+        MSsuccess(f"Simulation saved for chromosome {chromosome_name} completed in {elapsed_time/60:.2f} min.")
         
 
     except FileNotFoundError as e:
-        print(f"❌ MSpangepop -> File error: {e}", file=sys.stderr)
-        sys.exit(1)
+        MSerror(f"❌ MSpangepop -> File error: {e}")
+
     except ValueError as e:
-        print(f"❌ MSpangepop -> Value error: {e}", file=sys.stderr)
-        sys.exit(1)
+        MSerror(f"❌ MSpangepop -> File error: {e}")
+
     except Exception as e:
-        print(f"❌ MSpangepop -> Unexpected error: {e}", file=sys.stderr)
-        sys.exit(1)
+        MSerror(f"❌ MSpangepop -> File error: {e}")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Generate a .json for a specific chromosome using msprime simulations.")

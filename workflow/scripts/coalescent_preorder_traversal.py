@@ -2,7 +2,7 @@ import argparse
 import json
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
-from data_handler import MSpangepopDataHandler
+from io_handler import MSpangepopDataHandler, MScompute, MSsuccess
 
 class TreeNode:
     """Represents a node in the binary tree."""
@@ -145,8 +145,8 @@ def main(json_file, chromosome, output_file, threads, readble_json):
     
     # Load input data
     json_data = MSpangepopDataHandler.read_json(json_file)
-
-    print(f"🔹Asm4pg -> Processing traversal of chromosome {chromosome} with {threads} threads")
+    
+    MScompute(f"Processing traversal of chromosome {chromosome} with {threads} threads")
 
     # Process trees in parallel using ThreadPoolExecutor
     with ThreadPoolExecutor(max_workers=threads) as executor:
@@ -155,7 +155,7 @@ def main(json_file, chromosome, output_file, threads, readble_json):
     # Save output JSON, which now includes all leaves inside each tree
     MSpangepopDataHandler.save_json(list(results), output_file, readble_json)
 
-    print(f"✅ Asm4pg -> Serialized traversal for chromosome {chromosome}")
+    MSsuccess(f"Serialized traversal for chromosome {chromosome}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Serialize the preorder traversal including affected leaves into JSON.")
