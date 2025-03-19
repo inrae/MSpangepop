@@ -84,6 +84,8 @@ def simulate_chromosome_evolution(fai_file, population_size, mutation_rate, reco
     try:
         start_time = time.time()
         
+        output_dir = os.path.join(output_dir, f"chr_{chromosome_name}")
+
         if not os.path.exists(fai_file):
             raise MSerror(f"FAI file not found: {fai_file}")
 
@@ -146,6 +148,8 @@ if __name__ == '__main__':
     parser.add_argument('-r', '--recombination_rate', type=float, required=True, help='Recombination rate per base pair.')
     parser.add_argument('-n', '--sample_size', type=int, required=True, help='Sample size (number of individuals to simulate).')
     parser.add_argument('-o', '--output_dir', type=str, required=True, help='Directory to save the output file.')
+
+
     parser.add_argument('-c', '--chromosome', type=str, required=True, help='Chromosome number (1-based index).')
     parser.add_argument('-mo', '--model', type=str, required=True, help='msprime mutation model')
     args = parser.parse_args()
