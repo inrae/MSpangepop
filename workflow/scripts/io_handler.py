@@ -19,11 +19,9 @@ import os
 
 class MSLogger:
     """Base logging class that prints messages with a standardized prefix."""
-    
     def __init__(self, prefix, message):
         self.script = os.path.basename(sys.argv[0])  # Get the script that is running
         print(f"{prefix} [{self.script}] {message}")
-
 
 class MSsuccess(MSLogger):
     """Logs a success message."""
@@ -42,15 +40,12 @@ class MSwarning(MSLogger):
     def __init__(self, message):
         super().__init__("⚠️ MSpangepop ->", message)
 
-
 class MSerror(Exception):
     """Custom exception for MSpangepop errors."""
-    
     def __init__(self, message):
         self.script = os.path.basename(sys.argv[0])  # Get the script that triggered the error
         self.message = f"❌ MSpangepop -> [{self.script}] {message}"
         super().__init__(self.message)
-
 
 class MSpangepopDataHandler:
     """
