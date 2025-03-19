@@ -15,19 +15,19 @@ def get_input_files():
     for sample in config["samples"].keys():
         chr_n = config["samples"][sample]["chr_n"]
         chromosomes = [f"{i}" for i in range(1, chr_n + 1)]
-        inputs.extend([os.path.join(output_dir, f"{sample}_results", "04_gfa", f"chr_{chromosome}_graph.gfa") for chromosome in chromosomes])
+        inputs.extend([os.path.join(output_dir, f"{sample}_results", "temp", f"chr_{chromosome}_msprime_simulation.json") for chromosome in chromosomes])
     return inputs
 
 rule all:
     input:
         get_input_files(),
         expand(os.path.join(output_dir, "{sample}_results", "{sample}_params_recap.txt"), sample=config["samples"].keys())
-        
+
 rule samtools_index:
     input:
         fasta=lambda wildcards: config["samples"][wildcards.sample]["fasta_gz"]
     output:
-        fai=os.path.join(output_dir, "{sample}_results", "01_chromosome_index", "{sample}_full.fai")
+        fai=temp(os.path.join(output_dir, "{sample}_results", "temp", "{sample}_full.fai"))
     threads: 1
     resources:
         mem_mb=lambda wildcards: int(50000 * memory_multiplier),
@@ -41,8 +41,10 @@ rule samtools_index:
     shell:
         """
         echo '🔹 MSpangepop -> Starting {wildcards.sample} indexing...' && 
-        samtools faidx {input.fasta} &&
-        mv {input.fasta}.fai {output.fai} && echo '✅ MSpangepop -> {wildcards.sample} indexing successful.' 
+        samtools faidx {input.fasta} && \
+            mv {input.fasta}.fai {output.fai} && \
+            echo '✅ MSpangepop -> {wildcards.sample} indexing successful.'
+            
         if [ -f {input.fasta}.gzi ]; then 
             rm {input.fasta}.gzi
         fi
@@ -72,7 +74,16 @@ rule msprime_simulation:
     shell:
         """
         mkdir -p {params.out_svg}
-        python3 workflow/scripts/msprime_simulation.py -fai {input.fai} -p {params.pop_size} -mu {params.mut_rate} -r {params.reco_rate} -n {params.n} -o {params.out} -c {wildcards.chromosome} -mo '{params.model}'
+        python3 workflow/scripts/msprime_simulation.py \
+            -fai {input.fai} \
+            -p {params.pop_size} \
+            -mu {params.mut_rate} \
+            -r {params.reco_rate} \
+            -n {params.n} \
+            -o {params.out} \
+            -c {wildcards.chromosome} \
+            -mo '{params.model}'
+            
         mv {params.svg} {params.out_svg}
         """
 
