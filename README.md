@@ -11,7 +11,7 @@ git clone https://forgemia.inra.fr/pangepop/MSpangepop.git && cd MSpangepop
 ```
 
 ### 2. Add your files
-- Add a `.fasta.gz` file; an example can be found in the repository.
+- Add a `.fasta.gz` (recomended) or `.fasta` file; an example can be found in the repository.
 
 ### 3. Configure the pipeline
 - Edit the `masterconfig` file in the `.config/` directory with your sample information. 
