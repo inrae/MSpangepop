@@ -9,8 +9,8 @@ class Node:
     def __init__(self, base: str, node_id: int):
         self.id: int = node_id
         self.base: bytes = base.encode("utf-8")  # Store as a single byte to save memory
-        self.out_edges: list[Node] = []
-        self.in_edges: list[Node] = []
+        self.out_edges: list[Node] = [] #TODO This can be sets ? 
+        self.in_edges: list[Node] = [] #TODO This can be sets ?
 
     def connect(self, node: "Node") -> None:
         """Creates a directed edge from this node to another node."""
@@ -25,8 +25,7 @@ class Path:
     def __init__(self, lineage: str, ancesters: set, nodes: list[Node] = []):
         self.lineage: int = lineage
         self.nodes: list[Node] = nodes  # List of nodes in the path
-        self.ancesters: set = ancesters  # A set representing the lineage of the path
-
+        self.ancesters: set = ancesters  # A set representing the lineage of the path #TODO, this class needs to be revised
 
 class Graph:
     """Represents a directed graph"""
@@ -91,7 +90,7 @@ class Graph:
                 self.paths[lineage].ancesters.update(path.ancesters)
             else:
                 # Add new paths that don't exist in self
-                self.paths[lineage] = path
+                self.paths[lineage] = path #Useless
 
         return self
 
@@ -195,11 +194,13 @@ def main(splited_fasta: str, output_file: str, sample: str, chromosome: str) -> 
         path = Path(lineage=1, ancesters={1, 2, 3})
         graph.initialize_paths({path})
         
-        graph.add_snp(1)  
-        graph.add_deletion(5, 7)  
-        graph.add_insertion(2, length= 3)  
-        graph.add_inversion(10, 13)
-        graph.add_duplication(14,16)
+        #graph.add_snp(4)  
+        #graph.add_deletion(10, 15)
+        #graph.add_insertion(20, length= 50)  
+        #graph.add_snp(25)
+        #graph.add_snp(130)
+        #graph.add_inversion(10, 20)
+        #graph.add_duplication(30,35)
         #merge_nodes(graph)
             
     MSsuccess(f"Constructed {len(sequences)} graphs for {sample}, chr {chromosome}")

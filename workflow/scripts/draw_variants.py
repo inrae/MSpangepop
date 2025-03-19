@@ -102,7 +102,7 @@ def main(json_file, output_json_file, yaml_file, chromosome, num_threads, minima
         total_mutations = sum(len(tree.get("mutations", [])) for tree in tree_list)
 
         # Save output
-        MSpangepopDataHandler.save_json(tree_list, output_json_file)
+        MSpangepopDataHandler.save_json(tree_list, output_json_file, readble_json=True) #TODO cange this for config parameters
 
         # Print summary
         end_time = time.time()
