@@ -14,7 +14,6 @@ import argparse
 import os
 import json
 import time
-import sys
 
 from io_handler import MSerror, MSsuccess, MScompute
 
@@ -78,8 +77,6 @@ def save_output(mutated_ts, chromosome_name, output_dir="results"):
     except Exception as e:
         raise MSerror(f"Error saving output: {e}")
 
-
-
 def simulate_chromosome_evolution(fai_file, population_size, mutation_rate, recombination_rate, sample_size, output_dir, chromosome_name, model):
     """
     Main function to generate a .json for a specified chromosome using msprime simulations.
@@ -108,7 +105,7 @@ def simulate_chromosome_evolution(fai_file, population_size, mutation_rate, reco
         ).simplify()
 
         plt = ancestry_ts.draw_svg()
-        with open(os.path.join(output_dir, f"chr_{chromosome_name}_ancestery.svg"), "w") as f:
+        with open(os.path.join(output_dir, f"chr_{chromosome_name}_ancestry.svg"), "w") as f:
             f.write(plt)
 
         mutated_ts = msprime.sim_mutations(ancestry_ts, rate=mutation_rate, discrete_genome=True, model=model)
