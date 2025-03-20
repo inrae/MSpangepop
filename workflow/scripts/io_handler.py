@@ -42,10 +42,17 @@ class MSwarning(MSLogger):
 
 class MSerror(Exception):
     """Custom exception for MSpangepop errors."""
-    def __init__(self, message):
-        self.script = os.path.basename(sys.argv[0])  # Get the script that triggered the error
-        self.message = f"❌ MSpangepop -> [{self.script}] {message}"
-        super().__init__(self.message)
+
+    def __init__(self, message="An unknown MSpangepop error occurred."):
+        script = os.path.basename(sys.argv[0])  # Get script name
+        formatted_message = f"❌ MSpangepop -> [{script}] {message}"
+        super().__init__(formatted_message)
+
+def get_indent(readable_json):
+    if readable_json == True or readable_json == "True":
+        return 4
+    else :
+        return None
 
 class MSpangepopDataHandler:
     """
@@ -70,10 +77,10 @@ class MSpangepopDataHandler:
             with open(json_path, 'r') as file:
                 return json.load(file)
         except Exception as e:
-            MSerror(f"Error reading JSON file: {e}")
+            raise MSerror(f"Error reading JSON file: {e}")
     
     @staticmethod
-    def save_json(data, output_path, readble_json = False):
+    def save_json(data, output_path, readable_json):
         """
         Saves data to a JSON file at the specified output path.
         
@@ -84,15 +91,12 @@ class MSpangepopDataHandler:
         Raises:
             FileReadError: If there is an issue saving the JSON file.
         """
-        if readble_json:
-            indent = 4
-        else :
-            indent = None
+
         try:
             with open(output_path, 'w') as file:
-                json.dump(data, file, indent=indent) # Set indent to none to reduce json file size
+                json.dump(data, file, indent=get_indent(readable_json)) # Set indent to none to reduce json file size
         except Exception as e:
-            MSerror(f"Error saving JSON file: {e}")
+            raise MSerror(f"Error saving JSON file: {e}")
     
     @staticmethod
     def read_yaml(yaml_file):
@@ -113,10 +117,10 @@ class MSpangepopDataHandler:
             with open(yaml_file, 'r') as file:
                 variant_probabilities = yaml.safe_load(file)
             if sum(variant_probabilities.values()) != 100:
-                raise ValueError("Sum of variant probabilities in YAML must equal 100.")
+                raise MSerror("Sum of variant probabilities in YAML must equal 100.")
             return variant_probabilities
         except Exception as e:
-            MSerror(f"Error reading YAML file: {e}")
+            raise MSerror(f"Error reading YAML file: {e}")
     
     @staticmethod
     def read_fasta(fasta_file):
@@ -143,7 +147,7 @@ class MSpangepopDataHandler:
                     MSwarning("Consider compressing the fasta file with bgzip for better performance.")
                     return data
             except Exception as e:
-                MSerror(f"Unable to read FASTA file: {e}")
+                raise MSerror(f"Unable to read FASTA file: {e}")
     
     @staticmethod
     def read_variant_length_file(file_path):
@@ -166,4 +170,25 @@ class MSpangepopDataHandler:
                 print(f"⚠️ MSpangepop -> Warning: The cumulative probability of {file_path} is less than 1.")
             return df
         except Exception as e:
-            MSerror(f"Error reading variant length file {file_path}: {e}")
+            raise MSerror(f"Error reading variant length file {file_path}: {e}")
+
+    @staticmethod
+    def read_fai(fai_file):
+        """
+        Reads a FASTA index (.fai) file and extracts chromosome names and their lengths.
+
+        Parameters:
+            fai_file (str): Path to the .fai file.
+
+        Returns:
+            numpy.ndarray: A one dimsensional arrray of lenght
+
+        Raises:
+            MSerror: If the .fai file does not exist or cannot be read.
+        """
+        if not os.path.exists(fai_file):
+            raise MSerror(f"FAI file not found: {fai_file}")
+        try:
+            return pd.read_table(fai_file, header=None, usecols=[1], names=["length"])["length"].values
+        except Exception as e:
+            raise MSerror(f"Error reading FAI file {fai_file}: {e}")
