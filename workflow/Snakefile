@@ -16,6 +16,7 @@ def get_input_files():
         chr_n = config["samples"][sample]["chr_n"]
         chromosomes = [f"{i}" for i in range(1, chr_n + 1)]
         inputs.extend([os.path.join(output_dir, f"{sample}_results", "temp", f"chr_{chromosome}", f"chr_{chromosome}_msprime_simulation.json") for chromosome in chromosomes])
+        inputs.extend([os.path.join(output_dir, f"{sample}_results", "temp", f"chr_{chromosome}", f"chr_{chromosome}_traversal.json") for chromosome in chromosomes])
     return inputs
 
 rule all:
@@ -23,12 +24,29 @@ rule all:
         get_input_files(),
         expand(os.path.join(output_dir, "{sample}_results", "{sample}_params_recap.txt"), sample=config["samples"].keys())
 
+rule save_recap:
+    input:
+        configfile= ".config/masterconfig.yaml"
+    output:
+        recap_file=os.path.join(output_dir, "{sample}_results", "{sample}_params_recap.txt")
+    params:
+        output_dir=os.path.join(output_dir, "{sample}_results"),
+        current_run="{sample}"
+    resources:
+        mem_mb=lambda wildcards: int(1000),
+        time="00:10:00"
+    container:
+        "./temporary_dependencies/msprime_box.sif"
+    shell:
+        """
+        python3 workflow/scripts/recap.py {input.configfile} {params.output_dir} {params.current_run}
+        """
+
 rule samtools_index:
     input:
         fasta=lambda wildcards: config["samples"][wildcards.sample]["fasta_gz"]
     output:
         fai=temp(os.path.join(output_dir, "{sample}_results", "temp", "{sample}_full.fai"))
-    threads: 1
     resources:
         mem_mb=lambda wildcards: int(50000 * memory_multiplier),
         time="10:00:00"
@@ -54,16 +72,15 @@ rule msprime_simulation:
     input:
         fai=rules.samtools_index.output
     output:
-        json = temp(os.path.join(output_dir, "{sample}_results", "temp", "chr_{chromosome}", "chr_{chromosome}_msprime_simulation.json")),
-        ancestry_svg = temp(os.path.join(output_dir, "{sample}_results", "temp", "chr_{chromosome}", "chr_{chromosome}_ancestry.svg")),
-        mutations_svg = temp(os.path.join(output_dir, "{sample}_results", "temp", "chr_{chromosome}", "chr_{chromosome}_mutations.svg"))
+        json = temp(os.path.join(output_dir, "{sample}_results", "temp", "chr_{chromosome}", "chr_{chromosome}_msprime_simulation.json"))
     params:
         pop_size=lambda wildcards: config["samples"][wildcards.sample]["population_size"],
         mut_rate=lambda wildcards: config["samples"][wildcards.sample]["mutation_rate"],
         reco_rate=lambda wildcards: config["samples"][wildcards.sample]["recombination_rate"],
         n=lambda wildcards: config["samples"][wildcards.sample]["sample_size"],
         out=lambda wildcards: os.path.join(output_dir, f"{wildcards.sample}_results", "temp"),
-        model=lambda wildcards: config["samples"][wildcards.sample]["model"]
+        model=lambda wildcards: config["samples"][wildcards.sample]["model"],
+        readable_json=lambda wildcards: config["samples"][wildcards.sample].get("readable_json", False)
     resources:
         mem_mb=lambda wildcards: int(200000 * memory_multiplier),
         time="60:00:00"
@@ -81,7 +98,28 @@ rule msprime_simulation:
             -n {params.n} \
             -o {params.out} \
             -c {wildcards.chromosome} \
-            -mo {params.model}
+            -mo {params.model} \
+            --readable_json {params.readable_json}
+        """
+
+rule coalescent_preorder_traversal:
+    input:
+        json = rules.msprime_simulation.output.json
+    output:
+        traversal = temp(os.path.join(output_dir, "{sample}_results", "temp", "chr_{chromosome}", "chr_{chromosome}_traversal.json"))
+    params:
+        readable_json=lambda wildcards: config["samples"][wildcards.sample].get("readable_json", False) 
+    resources:
+        mem_mb=lambda wildcards: int(50000 * memory_multiplier),
+        time="10:00:00"
+    threads: 10
+    benchmark:
+        os.path.join(output_dir, "{sample}_results", "benchmark", "coalescent_preorder_traversal_chr_{chromosome}_benchmark.txt")
+    container:
+        "./temporary_dependencies/msprime_box.sif"
+    shell: 
+        """
+        python3 workflow/scripts/coalescent_preorder_traversal.py --json {input.json} --chromosome {wildcards.chromosome} --output_file {output.traversal} --threads {threads} --readable_json {params.readable_json}
         """
 
 rule draw_variants:
@@ -123,26 +161,6 @@ rule split_recombination:
         python3 workflow/scripts/split_recombination.py --json {input.json} --fasta {input.fasta} --chromosome {wildcards.chromosome} --output {output} 
         """       
 
-rule coalescent_preorder_traversal:
-    input:
-        json = rules.draw_variants.output
-    output:
-        traversal = os.path.join(output_dir, "{sample}_results", "04_gfa", "chr_{chromosome}_traversal.json")
-    params:
-        readble_json=lambda wildcards: config["samples"][wildcards.sample].get("readble_json", False) 
-    resources:
-        mem_mb=lambda wildcards: int(50000 * memory_multiplier),
-        time="10:00:00"
-    threads: 10
-    benchmark:
-        os.path.join(output_dir, "{sample}_results", "benchmark", "coalescent_preorder_traversal_chr_{chromosome}_benchmark.txt")
-    container:
-        "./temporary_dependencies/msprime_box.sif"
-    shell: 
-        """
-        python3 workflow/scripts/coalescent_preorder_traversal.py --json {input.json} --chromosome {wildcards.chromosome} --output_file {output.traversal} --threads {threads} --readble_json {params.readble_json}
-        """
-    
 rule create_graph:
     input:
         splited_fasta=rules.split_recombination.output,
@@ -160,24 +178,6 @@ rule create_graph:
     shell:
         """
         python3 workflow/scripts/json_to_gfa.py --splited_fasta {input.splited_fasta} --output_file {output.gfa} --sample {wildcards.sample} --chromosome {wildcards.chromosome} 
-        """
-
-rule save_recap:
-    input:
-        configfile= ".config/masterconfig.yaml"
-    output:
-        recap_file=os.path.join(output_dir, "{sample}_results", "{sample}_params_recap.txt")
-    params:
-        output_dir=os.path.join(output_dir, "{sample}_results"),
-        current_run="{sample}"
-    resources:
-        mem_mb=lambda wildcards: int(1000),
-        time="00:30:00"
-    container:
-        "./temporary_dependencies/msprime_box.sif"
-    shell:
-        """
-        python3 workflow/scripts/recap.py {input.configfile} {params.output_dir} {params.current_run}
         """
 
 onsuccess:
