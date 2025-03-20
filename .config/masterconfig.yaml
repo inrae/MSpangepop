@@ -8,12 +8,12 @@ samples:
     fasta_gz: "small_test_genome.fa.gz"
     chr_n: 1
     population_size: 5
-    mutation_rate: 1e-3
+    mutation_rate: 1e-2
     recombination_rate: 1e-3
     sample_size: 5
     model: binary
     minimal_variant_size: 1
-    readble_json: True
+    readable_json: True
 
 # samples:
 #   test_sample1:                  # One sample per simulation (whole genome)   
@@ -25,6 +25,7 @@ samples:
 #     sample_size: int             # Number of individual samples to simulate
 #     model: str                   # Mutation model for msprime ['binary', 'infinite_alleles', 'jc69']
 #     minimal_indel_size: int      # Minimal size for generated variants
+#     readable_json: [True, False] # If set to true output a human readble json (bigger file size)
 
 memory_multiplier: 1  # Multiplier for scaling memory across all rules
 container_registry: "docker://registry.forgemia.inra.fr/pangepop/mspangepop" # Workflow image source
