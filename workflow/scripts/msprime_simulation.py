@@ -54,7 +54,7 @@ def save_output(mutated_ts, chromosome_name: str, output_dir: str, readable_json
 
                 # Collect mutations within tree interval
                 mutations = [
-                    {"node": mutation.node, "time": mutation.time}
+                    {"node": mutation.node}
                     for mutation in mutated_ts.mutations()
                     if tree.interval[0] < mutated_ts.site(mutation.site).position < tree.interval[1]
                 ]
