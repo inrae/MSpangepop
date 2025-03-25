@@ -102,7 +102,7 @@ rule msprime_simulation:
             --readable_json {params.readable_json}
         """
 
-rule coalescent_preorder_traversal:
+rule coalescent_traversal:
     input:
         json = rules.msprime_simulation.output.json
     output:
@@ -114,12 +114,12 @@ rule coalescent_preorder_traversal:
         time="10:00:00"
     threads: 10
     benchmark:
-        os.path.join(output_dir, "{sample}_results", "benchmark", "coalescent_preorder_traversal_chr_{chromosome}_benchmark.txt")
+        os.path.join(output_dir, "{sample}_results", "benchmark", "coalescent_traversal_chr_{chromosome}_benchmark.txt")
     container:
         "./temporary_dependencies/msprime_box.sif"
     shell: 
         """
-        python3 workflow/scripts/coalescent_preorder_traversal.py --json {input.json} --chromosome {wildcards.chromosome} --output_file {output.traversal} --threads {threads} --readable_json {params.readable_json}
+        python3 workflow/scripts/coalescent_traversal.py --json {input.json} --chromosome {wildcards.chromosome} --output_file {output.traversal} --threads {threads} --readable_json {params.readable_json}
         """
 
 rule draw_variants:
@@ -164,7 +164,7 @@ rule split_recombination:
 rule create_graph:
     input:
         splited_fasta=rules.split_recombination.output,
-        traversal = rules.coalescent_preorder_traversal.output.traversal,
+        traversal = rules.coalescent_traversal.output.traversal,
     output:
         gfa = os.path.join(output_dir, "{sample}_results", "04_gfa", "chr_{chromosome}_graph.gfa"),
     resources:
