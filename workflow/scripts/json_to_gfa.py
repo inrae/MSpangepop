@@ -94,7 +94,7 @@ class Path:
 
         # Then for each edge, append the node2 id (only if it's not the first node)
         for edge in self.edges:
-            path_repr += f"{'<' if edge.side1 == edge.side2 else '>'}{edge.node2.id}"
+            path_repr += f"{'<' if not edge.side2  else '>'}{edge.node2.id}"
 
         return path_repr
     
@@ -106,7 +106,7 @@ class Path:
         path_repr = f"{self.edges[0].node1}"
 
         for edge in self.edges:
-            path_repr += f"{edge.node2.reversed if edge.side1 == edge.side2 else edge.node2}"
+            path_repr += f"{edge.node2.reversed if not edge.side2 else edge.node2}"
 
         return path_repr
     
