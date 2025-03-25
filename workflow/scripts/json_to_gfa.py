@@ -1,32 +1,140 @@
 import itertools
 import argparse
+from bitarray import bitarray
 from io_handler import MSpangepopDataHandler, MSerror, MSsuccess, MScompute
 from graph_utils import merge_nodes, save_to_gfa
 from variants_lib import *
 
 class Node:
-    """Represents a node in the graph"""
-    def __init__(self, base: str, node_id: int):
-        self.id: int = node_id
-        self.base: bytes = base.encode("utf-8")  # Store as a single byte to save memory
-        self.out_edges: list[Node] = [] #TODO This can be sets ? 
-        self.in_edges: list[Node] = [] #TODO This can be sets ?
+    """Represents a node in the graph."""
 
-    def connect(self, node: "Node") -> None:
-        """Creates a directed edge from this node to another node."""
-        self.out_edges.append(node)
-        node.in_edges.append(self)
+    def __init__(self, base, node_id: int):
+        self.id: int = node_id
+        if isinstance(base, str):
+            self.bases: bitarray = bitarray()
+            self.bases.frombytes(base.encode("utf-8"))  # Encode string as bitarray
+        else:
+            self.base: bitarray = base  # Store bitarray directly
+        
+        self.outgoing_links: set["Edge"] = set()  # Store outgoing edges as Edge objects
+
+    def decode_base(self) -> str:
+        """Decodes the bitarray back into a DNA sequence string."""
+        return self.bases.tobytes().decode("utf-8")
 
     def __repr__(self) -> str:
-        return f"Node(ID={self.id}, {self.base.decode()}, out={len(self.out_edges)}, in={len(self.in_edges)})"
+        """Returns only the raw DNA sequence as a string."""
+        return self.decode_base()
+    
+    @property
+    def reversed(self) -> str:
+        string = self.__repr__()
+        return string[::-1]
+
+class Edge:
+    """Represents a directed edge between two nodes, keeping track of the side of each node involved."""
+    
+    def __init__(self, node1: Node, side1, node2: Node, side2):
+        """
+        Creates an edge between two nodes.
+
+        Parameters:
+        - node1 (Node): First node
+        - side1 (bool): Side of the first node (True for 3', False for 5')
+        - node2 (Node): Second node
+        - side2 (bool): Side of the second node (True for 3', False for 5')
+        """
+        if isinstance(side1, str):
+            if side1 == "+" :
+                self.side1 = True 
+            elif side1 == "-" :
+                self.side1 = False
+
+            if side2 == "+" :
+                self.side2 = True 
+            elif side2 == "-" :
+                self.side2 = False
+        else :
+            self.side1 = side1
+            self.side2 = side2
+
+        self.node1 = node1
+        self.node2 = node2
+
+        # Add this edge to the outgoing links of node1
+        node1.outgoing_links.add(self)
+
+
 
 class Path:
-    """Represents a path in a graph, consisting of a sequence of nodes."""
-    def __init__(self, lineage: str, ancesters: set, nodes: list[Node] = []):
-        self.lineage: int = lineage
-        self.nodes: list[Node] = nodes  # List of nodes in the path
-        self.ancesters: set = ancesters  # A set representing the lineage of the path #TODO, this class needs to be revised
+    """Represents a path in the graph, consisting of a sequence of edges."""
+    
+    def __init__(self, lineage: int, edges: list[Edge] = None):
+        """
+        Initializes a Path.
 
+        Parameters:
+        - lineage (int): A unique identifier for the path.
+        - edges (list[Edge]): A list of Edge objects forming the path.
+        """
+        self.lineage: int = lineage
+        self.edges: list[Edge] = edges if edges else []
+
+    def add_edge(self, edge: Edge) -> None:
+        """Adds an edge to the path."""
+        self.edges.append(edge)
+
+    def __repr__(self) -> str:
+        """Returns a readable representation of the path without repeating nodes."""
+        if not self.edges:
+            return ""  # If there are no edges, return an empty string
+
+        # Start with the first node
+        path_repr = f"{self.edges[0].node1.id}"
+
+        # Then for each edge, append the node2 id (only if it's not the first node)
+        for edge in self.edges:
+            path_repr += f"{'<' if edge.side1 == edge.side2 else '>'}{edge.node2.id}"
+
+        return path_repr
+    
+    def __str__(self) -> str: 
+        """Returns a string of the path"""
+        if not self.edges:
+            return ""  
+
+        path_repr = f"{self.edges[0].node1}"
+
+        for edge in self.edges:
+            path_repr += f"{edge.node2.reversed if edge.side1 == edge.side2 else edge.node2}"
+
+        return path_repr
+    
+if __name__ == "__main__":
+    # Create some nodes
+    node_a = Node("Bonjour", node_id=1)
+    node_b = Node("Bonjour", node_id=2)
+    node_c = Node("Bonjour", node_id=3)
+    node_d = Node("Bonjour", node_id=4)
+
+    # Create edges
+    edge1 = Edge(node_a, "+", node_b, "-") 
+    edge2 = Edge(node_b, True, node_c, True) 
+    edge3 = Edge(node_c, True, node_c, False)  
+    edge4 = Edge(node_c, False, node_d, True)  
+
+    # Create a path and add edges
+    path = Path(lineage=101)
+    path.add_edge(edge1)
+    path.add_edge(edge2)
+    path.add_edge(edge3)
+    path.add_edge(edge4)
+
+    # Print the path
+    print(repr(path))  
+    print(str(path))  
+
+'''
 class Graph:
     """Represents a directed graph"""
 
@@ -35,7 +143,7 @@ class Graph:
     def __init__(self, node_id_generator: itertools.count):
         self.id: int = next(self._id_counter)
         self._node_id_generator: itertools.count = node_id_generator
-        self.nodes: list[Node] = []
+        self.nodes: set[Node] = []
         self.paths: dict[int, Path] = {} 
         self._start_node: Node = None
         self._end_node: Node = None
@@ -215,6 +323,7 @@ def main(splited_fasta: str, output_file: str, sample: str, chromosome: str) -> 
     save_to_gfa(concatenated_graph, output_file, sample, chromosome)
     MSsuccess(f"Graph saved for {sample}, chr {chromosome}\n")
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Construct a nucleotide graph from an interval FASTA file.")
     parser.add_argument("--splited_fasta", required=True, help="Path to the gzipped FASTA file.")
@@ -223,4 +332,6 @@ if __name__ == "__main__":
     parser.add_argument("--chromosome", required=True, help="Current chromosome")
     
     args = parser.parse_args()
-    main(args.splited_fasta, args.output_file, args.sample, args.chromosome)
+    main(args.splited_fasta, args.output_file, args.sample, args.chromosome)'
+''' 
+
