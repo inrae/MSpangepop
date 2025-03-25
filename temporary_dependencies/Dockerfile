@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y \
 COPY . /app
 
 RUN pip install --upgrade pip
-RUN pip install msprime tskit pandas h5py numpy matplotlib ipython pyyaml biopython pytest
+RUN pip install msprime tskit pandas h5py numpy matplotlib ipython pyyaml biopython pytest bitarray
 
 EXPOSE 5000
 
