@@ -18,7 +18,6 @@ def merge_nodes(graph):
 
     merged_nodes = set()  # Track nodes to remove
 
-    # Traverse nodes in reverse order to prevent modifying the list while iterating
     for node in reversed(graph.nodes):
         if node in merged_nodes:
             continue  # Skip already merged nodes
