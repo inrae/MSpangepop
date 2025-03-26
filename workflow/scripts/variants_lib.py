@@ -1,3 +1,9 @@
+"""
+Author: Lucien Piat
+Institution: INRAe
+Project: PangenOak
+"""
+
 import random
 import itertools
 from json_to_gfa import Node
