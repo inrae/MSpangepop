@@ -173,7 +173,7 @@ def simulate_chromosome_evolution(
             recap_file.write(f"Mutation Model: {model}\n")
             recap_file.write(f"Output Directory: {output_dir}\n\n")
             recap_file.write(f"Total Trees: {mutated_ts.num_trees}\n")
-            recap_file.write(f"Total Nodes: {mutated_ts.num_nodes}\n")
+            recap_file.write(f"Total Nodes: {mutated_ts.num_nodes} (can be shared between Trees)\n")
             recap_file.write(f"Total Mutations: {mutated_ts.num_mutations}\n")
             recap_file.write(f"Total Edges: {mutated_ts.num_edges}\n\n")
             recap_file.write(f"Time Taken for Simulation: {simulation_time:.2f} seconds\n")
