@@ -14,9 +14,6 @@ import gzip
 import sys
 import os
 
-import sys
-import os
-
 class MSLogger:
     """Base logging class that prints messages with a standardized prefix."""
     def __init__(self, prefix, message):
@@ -32,8 +29,7 @@ class MSsuccess(MSLogger):
 class MScompute(MSLogger):
     """Logs a compute-related message."""
     def __init__(self, message):
-        super().__init__("🔹MSpangepop ->", message)
-
+        super().__init__("🔹 MSpangepop ->", message)
 
 class MSwarning(MSLogger):
     """Logs a warning message."""
