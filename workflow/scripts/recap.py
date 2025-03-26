@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
 
+"""
+Author: Lucien Piat
+Institution: INRAe
+Project: PangenOak
+
+Usage : Creat a recap for MSpangepop simulation
+"""
+
 import os
 import yaml
 import argparse
@@ -39,10 +47,7 @@ def main():
 
     # Write the recap file
     with open(recap_file, "w") as f:
-        # Header
         f.write(f"🔹 MSpangepop Recap File for: {args.current_run}\n\n")
-
-        # Global Run Information
         f.write("🔹 Global Run Information:\n")
         f.write("-" * 30 + "\n")
         f.write(f"Machine Name       : {machine_name}\n")
@@ -50,16 +55,12 @@ def main():
         f.write(f"Python Version     : {python_version}\n")
         f.write(f"Operating System   : {os_info}\n")
         f.write(f"Current Directory  : {current_dir}\n\n")
-
-        # General Configuration
         f.write("🔹 General Configuration:\n")
         f.write("-" * 30 + "\n")
         f.write(f"Container Registry  : {config.get('container_registry', 'N/A')}\n")
         f.write(f"Output Directory    : {args.output_dir}\n")
         f.write(f"Memory Multiplier   : {config.get('memory_multiplier', 'N/A')}\n")
         f.write(f"SV Type File        : {config.get('sv_type_file', 'N/A')}\n\n")
-
-        # Current Run Parameters
         f.write("🔹 Run Parameters:\n")
         f.write("-" * 30 + "\n")
         samples = config.get("samples", {})
