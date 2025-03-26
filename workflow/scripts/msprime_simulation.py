@@ -128,8 +128,6 @@ def simulate_chromosome_evolution(
             population_size=population_size
         ).simplify()
 
-
-
         # Simulate mutations
         mutated_ts = msprime.sim_mutations(ancestry_ts, rate=mutation_rate, discrete_genome=True, model=model)
         mutated_ts = mutated_ts.keep_intervals([[0, chrom_length]], simplify=True).trim()
@@ -137,7 +135,7 @@ def simulate_chromosome_evolution(
         simulation_time = time.time() - start_time  # Time taken for simulation
         MSsuccess(f"Simulation completed for chromosome {chromosome_name}")
 
-        # Print tree structure
+        # Print tree structure (only if there are less than 10 trees)
         total_trees = mutated_ts.num_trees
         if total_trees < 10:
             print(mutated_ts.draw_text())
@@ -150,22 +148,16 @@ def simulate_chromosome_evolution(
             mutation_svg_path = os.path.join(output_dir, f"chr_{chromosome_name}_mutations.svg")
             with open(mutation_svg_path, "w") as f:
                 f.write(mutated_ts.draw_svg())
-
+        else :
+            MSsuccess(f"Total number of trees simulated : {total_trees} (see recap file for more data)")
 
         # Save mutation visualization
         MScompute(f"Saving output for chromosome {chromosome_name}")
-
 
         # Record time taken for saving output
         save_start_time = time.time()
         save_output(mutated_ts, chromosome_name, output_dir, readable_json)
         save_time = time.time() - save_start_time  # Time taken to save output
-
-        # Gather statistics
-        total_trees = mutated_ts.num_trees
-        total_nodes = mutated_ts.num_nodes
-        total_mutations = mutated_ts.num_mutations
-        total_edges = mutated_ts.num_edges
 
         # Write recap file
         recap_file_path = os.path.join(output_dir, f"chr_{chromosome_name}_simulation_recap.txt")
@@ -180,12 +172,10 @@ def simulate_chromosome_evolution(
             recap_file.write(f"Sample Size: {sample_size} individuals\n")
             recap_file.write(f"Mutation Model: {model}\n")
             recap_file.write(f"Output Directory: {output_dir}\n\n")
-
-            recap_file.write(f"Total Trees: {total_trees}\n")
-            recap_file.write(f"Total Nodes: {total_nodes}\n")
-            recap_file.write(f"Total Mutations: {total_mutations}\n")
-            recap_file.write(f"Total Edges: {total_edges}\n\n")
-
+            recap_file.write(f"Total Trees: {mutated_ts.num_trees}\n")
+            recap_file.write(f"Total Nodes: {mutated_ts.num_nodes}\n")
+            recap_file.write(f"Total Mutations: {mutated_ts.num_mutations}\n")
+            recap_file.write(f"Total Edges: {mutated_ts.num_edges}\n\n")
             recap_file.write(f"Time Taken for Simulation: {simulation_time:.2f} seconds\n")
             recap_file.write(f"Time Taken for Saving Output: {save_time:.2f} seconds\n")
             recap_file.write("-" * 40 + "\n")
