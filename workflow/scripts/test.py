@@ -1,3 +1,9 @@
+"""
+Author: Lucien Piat
+Institution: INRAe
+Project: PangenOak
+"""
+
 import pytest
 import msprime
 from io_handler import MSerror
