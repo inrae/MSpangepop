@@ -5,7 +5,7 @@ Author: Lucien Piat
 Institution: INRAe
 Project: PangenOak
 
-Usage : Creat a recap for MSpangepop simulation
+Usage : Create a recap for MSpangepop simulation
 """
 
 import os
@@ -15,6 +15,9 @@ import socket
 import datetime
 import platform
 from io_handler import MSsuccess
+
+# Import necessary libraries to get their versions
+import msprime, tskit, pandas, numpy, matplotlib, IPython, yaml, Bio
 
 def parse_args():
     """Parse command-line arguments."""
@@ -45,23 +48,43 @@ def main():
     os_info        = f"{platform.system()} {platform.release()}"
     current_dir    = os.getcwd()
 
+    # Get package versions
+    package_versions = {
+        "msprime": msprime.__version__,
+        "tskit": tskit.__version__,
+        "pandas": pandas.__version__,
+        "numpy": numpy.__version__,
+        "matplotlib": matplotlib.__version__,
+        "IPython": IPython.__version__,
+        "pyyaml": yaml.__version__,
+        "biopython": Bio.__version__,
+    }
+
     # Write the recap file
     with open(recap_file, "w") as f:
-        f.write(f"🔹 MSpangepop Recap File for: {args.current_run}\n\n")
-        f.write("🔹 Global Run Information:\n")
+        f.write(f"\U0001F539 MSpangepop Recap File for: {args.current_run}\n\n")
+        f.write("\U0001F539 Global Run Information:\n")
         f.write("-" * 30 + "\n")
         f.write(f"Machine Name       : {machine_name}\n")
         f.write(f"Date/Time          : {current_date}\n")
         f.write(f"Python Version     : {python_version}\n")
         f.write(f"Operating System   : {os_info}\n")
         f.write(f"Current Directory  : {current_dir}\n\n")
-        f.write("🔹 General Configuration:\n")
+        
+        f.write("\U0001F539 Installed Package Versions:\n")
+        f.write("-" * 30 + "\n")
+        for pkg, version in package_versions.items():
+            f.write(f"{pkg:12}: {version}\n")
+        f.write("\n")
+        
+        f.write("\U0001F539 General Configuration:\n")
         f.write("-" * 30 + "\n")
         f.write(f"Container Registry  : {config.get('container_registry', 'N/A')}\n")
         f.write(f"Output Directory    : {args.output_dir}\n")
         f.write(f"Memory Multiplier   : {config.get('memory_multiplier', 'N/A')}\n")
         f.write(f"SV Type File        : {config.get('sv_type_file', 'N/A')}\n\n")
-        f.write("🔹 Run Parameters:\n")
+        
+        f.write("\U0001F539 Run Parameters:\n")
         f.write("-" * 30 + "\n")
         samples = config.get("samples", {})
         if args.current_run in samples:
