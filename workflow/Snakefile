@@ -15,22 +15,22 @@ def get_input_files():
     for sample in config["samples"].keys():
         chr_n = config["samples"][sample]["chr_n"]
         chromosomes = [f"{i}" for i in range(1, chr_n + 1)]
-        inputs.extend([os.path.join(output_dir, f"{sample}_results", "temp", f"chr_{chromosome}", f"chr_{chromosome}_augmented_traversal.json") for chromosome in chromosomes])
-        inputs.extend([os.path.join(output_dir, f"{sample}_results", "temp", f"chr_{chromosome}", f"chr_{chromosome}_recombinations.fasta.gz") for chromosome in chromosomes])
+        inputs.extend([os.path.join(output_dir, f"{sample}", "temp", f"chr_{chromosome}", f"chr_{chromosome}_augmented_traversal.json") for chromosome in chromosomes])
+        inputs.extend([os.path.join(output_dir, f"{sample}", "temp", f"chr_{chromosome}", f"chr_{chromosome}_recombinations.fasta.gz") for chromosome in chromosomes])
     return inputs
 
 rule all:
     input:
         get_input_files(),
-        expand(os.path.join(output_dir, "{sample}_results", "{sample}_params_recap.txt"), sample=config["samples"].keys())
+        expand(os.path.join(output_dir, "{sample}", "{sample}_params_recap.txt"), sample=config["samples"].keys())
 
 rule save_recap:
     input:
         configfile= ".config/masterconfig.yaml"
     output:
-        recap_file=os.path.join(output_dir, "{sample}_results", "{sample}_params_recap.txt")
+        recap_file=os.path.join(output_dir, "{sample}", "{sample}_params_recap.txt")
     params:
-        output_dir=os.path.join(output_dir, "{sample}_results"),
+        output_dir=os.path.join(output_dir, "{sample}"),
         current_run="{sample}"
     resources:
         mem_mb=lambda wildcards: int(1000),
@@ -46,16 +46,16 @@ rule samtools_index:
     input:
         fasta=lambda wildcards: config["samples"][wildcards.sample]["fasta_gz"]
     output:
-        fai=temp(os.path.join(output_dir, "{sample}_results", "temp", "{sample}_full.fai"))
+        fai=temp(os.path.join(output_dir, "{sample}", "temp", "{sample}_full.fai"))
     resources:
         mem_mb=lambda wildcards: int(50000 * memory_multiplier),
         time="10:00:00"
     params: 
-        out=os.path.join(output_dir, "{sample}_results", "01_chromosome_index")  
+        out=os.path.join(output_dir, "{sample}", "01_chromosome_index")  
     container:
         f"{container_registry}/samtool:1.21"
     benchmark:
-        os.path.join(output_dir, "{sample}_results", "benchmark", "samtools_index_benchmark.txt")
+        os.path.join(output_dir, "{sample}", "benchmark", "samtools_index_benchmark.txt")
     shell:
         """
         echo '🔹 MSpangepop -> Starting {wildcards.sample} indexing...' && 
@@ -72,20 +72,21 @@ rule msprime_simulation:
     input:
         fai=rules.samtools_index.output
     output:
-        json = temp(os.path.join(output_dir, "{sample}_results", "temp", "chr_{chromosome}", "chr_{chromosome}_msprime_simulation.json"))
+        json = temp(os.path.join(output_dir, "{sample}", "temp", "chr_{chromosome}", "chr_{chromosome}_msprime_simulation.json"))
     params:
         pop_size=lambda wildcards: config["samples"][wildcards.sample]["population_size"],
         mut_rate=lambda wildcards: config["samples"][wildcards.sample]["mutation_rate"],
         reco_rate=lambda wildcards: config["samples"][wildcards.sample]["recombination_rate"],
         n=lambda wildcards: config["samples"][wildcards.sample]["sample_size"],
-        out=lambda wildcards: os.path.join(output_dir, f"{wildcards.sample}_results", "temp"),
+        out=lambda wildcards: os.path.join(output_dir, f"{wildcards.sample}", "temp"),
         model=lambda wildcards: config["samples"][wildcards.sample]["model"],
-        readable_json=lambda wildcards: config["samples"][wildcards.sample].get("readable_json", False)
+        readable_json=lambda wildcards: config["samples"][wildcards.sample].get("readable_json", False), 
+        seed=lambda wildcards: config["samples"][wildcards.sample].get("seed", None) 
     resources:
         mem_mb=lambda wildcards: int(200000 * memory_multiplier),
         time="60:00:00"
     benchmark:
-        os.path.join(output_dir, "{sample}_results", "benchmark", "msprime_chr_{chromosome}_benchmark.txt")
+        os.path.join(output_dir, "{sample}", "benchmark", "msprime_chr_{chromosome}_benchmark.txt")
     container:
         "./temporary_dependencies/msprime_box.sif"
     shell:
@@ -99,14 +100,15 @@ rule msprime_simulation:
             -o {params.out} \
             -c {wildcards.chromosome} \
             -mo {params.model} \
-            --readable_json {params.readable_json}
+            --readable_json {params.readable_json} \
+            --seed {params.seed}
         """
 
 rule coalescent_traversal:
     input:
         json = rules.msprime_simulation.output.json
     output:
-        traversal = temp(os.path.join(output_dir, "{sample}_results", "temp", "chr_{chromosome}", "chr_{chromosome}_traversal.json"))
+        traversal = temp(os.path.join(output_dir, "{sample}", "temp", "chr_{chromosome}", "chr_{chromosome}_traversal.json"))
     params:
         readable_json=lambda wildcards: config["samples"][wildcards.sample].get("readable_json", False) 
     resources:
@@ -114,7 +116,7 @@ rule coalescent_traversal:
         time="10:00:00"
     threads: 10
     benchmark:
-        os.path.join(output_dir, "{sample}_results", "benchmark", "coalescent_traversal_chr_{chromosome}_benchmark.txt")
+        os.path.join(output_dir, "{sample}", "benchmark", "coalescent_traversal_chr_{chromosome}_benchmark.txt")
     container:
         "./temporary_dependencies/msprime_box.sif"
     shell: 
@@ -127,12 +129,12 @@ rule split_recombination:
         json = rules.msprime_simulation.output.json,
         fasta=lambda wildcards: config["samples"][wildcards.sample]["fasta_gz"]
     output:
-        os.path.join(output_dir, "{sample}_results", "temp", "chr_{chromosome}", "chr_{chromosome}_recombinations.fasta.gz")
+        os.path.join(output_dir, "{sample}", "temp", "chr_{chromosome}", "chr_{chromosome}_recombinations.fasta.gz")
     resources:
         mem_mb=lambda wildcards: int(50000 * memory_multiplier),
         time="10:00:00"
     benchmark:
-        os.path.join(output_dir, "{sample}_results", "benchmark", "split_recombination_chr_{chromosome}_benchmark.txt")
+        os.path.join(output_dir, "{sample}", "benchmark", "split_recombination_chr_{chromosome}_benchmark.txt")
     container:
         "./temporary_dependencies/msprime_box.sif"
     shell:
@@ -144,7 +146,7 @@ rule draw_variants:
     input:
         json = rules.coalescent_traversal.output.traversal
     output:
-        os.path.join(output_dir, "{sample}_results", "temp", "chr_{chromosome}", "chr_{chromosome}_augmented_traversal.json")
+        os.path.join(output_dir, "{sample}", "temp", "chr_{chromosome}", "chr_{chromosome}_augmented_traversal.json")
     params:
         sv_type_file = config.get("sv_type_file"),
         minimal_variant_size=lambda wildcards: config["samples"][wildcards.sample]["minimal_variant_size"],
@@ -156,7 +158,7 @@ rule draw_variants:
     container:
         "./temporary_dependencies/msprime_box.sif"
     benchmark:
-        os.path.join(output_dir, "{sample}_results", "benchmark", "generate_variant_{chromosome}_benchmark.txt")
+        os.path.join(output_dir, "{sample}", "benchmark", "generate_variant_{chromosome}_benchmark.txt")
     shell:
         """
         python3 workflow/scripts/draw_variants.py --json {input.json} --yaml {params.sv_type_file} --output {output} --chromosome {wildcards.chromosome} --threads {threads} --minimal_variant_size {params.minimal_variant_size} --readable_json {params.readable_json}
@@ -167,12 +169,12 @@ rule create_graph:
         splited_fasta=rules.split_recombination.output,
         traversal = rules.coalescent_traversal.output.traversal,
     output:
-        gfa = os.path.join(output_dir, "{sample}_results", "04_gfa", "chr_{chromosome}_graph.gfa"),
+        gfa = os.path.join(output_dir, "{sample}", "04_gfa", "chr_{chromosome}_graph.gfa"),
     resources:
         mem_mb=lambda wildcards: int(50000 * memory_multiplier),
         time="10:00:00"
     benchmark:
-        os.path.join(output_dir, "{sample}_results", "benchmark", "create_graph_chr_{chromosome}_benchmark.txt")
+        os.path.join(output_dir, "{sample}", "benchmark", "create_graph_chr_{chromosome}_benchmark.txt")
     container:
         "./temporary_dependencies/msprime_box.sif"
     threads:4
