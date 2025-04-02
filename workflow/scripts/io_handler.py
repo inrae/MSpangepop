@@ -34,7 +34,7 @@ class MScompute(MSLogger):
 class MSwarning(MSLogger):
     """Logs a warning message."""
     def __init__(self, message):
-        super().__init__("⚠️ MSpangepop ->", message)
+        super().__init__("⚠️  MSpangepop ->", message)
 
 class MSerror(Exception):
     """Custom exception for MSpangepop errors."""
@@ -49,6 +49,17 @@ def get_indent(readable_json):
         return 4
     else :
         return None
+    
+def process_seed(seed):
+    if isinstance(seed, str):
+        if seed.lower() == "none":
+            return None
+        else:
+            return min(int.from_bytes(seed.encode(), 'big'), 2**32 - 1)
+    elif isinstance(seed, int):
+        return max(1, min(seed, 2**32 - 1))
+    else:
+        raise ValueError("Seed must be either a string or an integer")
 
 class MSpangepopDataHandler:
     """
