@@ -1,4 +1,4 @@
-FROM python:3.9-slim
+FROM python:3.11-slim
 
 WORKDIR /app
 
@@ -21,4 +21,4 @@ ENV PYTHONUNBUFFERED=1
 
 # Add maintainer information using LABEL
 LABEL maintainer="Lucien Piat" \
-      description="This image is used for the MSpangepop workflow at INRAe." 
+      description="This image is used for the MSpangepop workflow at INRAe."
