@@ -14,7 +14,7 @@ import os
 import json
 import time
 
-from io_handler import MSpangepopDataHandler, MSerror, MSsuccess, MScompute, get_indent
+from io_handler import MSpangepopDataHandler, MSerror, MSsuccess, MScompute, get_indent, process_seed
 
 def get_chromosome_bounds(chrom_length: int) -> tuple:
     """Define the chromosome boundaries based on length."""
@@ -104,11 +104,12 @@ def get_chromosome_length(fai_file, chromosome_name):
 
 def simulate_chromosome_evolution(
     fai_file: str, population_size: int, mutation_rate: float, recombination_rate: float, 
-    sample_size: int, output_dir: str, chromosome_name: str, model: str, readable_json
+    sample_size: int, output_dir: str, chromosome_name: str, model: str, readable_json, seed
 ):
     """
     Simulates chromosome evolution and generates a recap file with details.
     """
+    seed = process_seed(seed)
     try:
         start_time = time.time()
         output_dir = os.path.join(output_dir, f"chr_{chromosome_name}")
@@ -125,11 +126,18 @@ def simulate_chromosome_evolution(
         ancestry_ts = msprime.sim_ancestry(
             samples=sample_size,
             recombination_rate=recombination_map,
-            population_size=population_size
+            population_size=population_size,
+            random_seed=seed
         ).simplify()
 
         # Simulate mutations
-        mutated_ts = msprime.sim_mutations(ancestry_ts, rate=mutation_rate, discrete_genome=True, model=model)
+        mutated_ts = msprime.sim_mutations(
+            ancestry_ts,
+            rate=mutation_rate,
+            discrete_genome=True,
+            model=model,
+            random_seed=seed)
+
         mutated_ts = mutated_ts.keep_intervals([[0, chrom_length]], simplify=True).trim()
 
         simulation_time = time.time() - start_time  # Time taken for simulation
@@ -137,7 +145,7 @@ def simulate_chromosome_evolution(
 
         # Print tree structure (only if there are less than 10 trees)
         total_trees = mutated_ts.num_trees
-        if total_trees < 10:
+        if total_trees < 10 and sample_size <= 20:
             print(mutated_ts.draw_text())
                     
             # Save ancestry tree visualization
@@ -164,6 +172,7 @@ def simulate_chromosome_evolution(
         with open(recap_file_path, "w") as recap_file:
             recap_file.write("🔹 MSpangepop MSprime Simulation Recap \n")
             recap_file.write("-" * 40 + "\n")
+            recap_file.write(f"Seed specified : {seed}\n")
             recap_file.write(f"Chromosome indice (from fai): {chromosome_name}\n")
             recap_file.write(f"Chromosome Length: {chrom_length} bp\n")
             recap_file.write(f"Effective Population Size (Ne): {population_size}\n")
@@ -223,7 +232,7 @@ if __name__ == '__main__':
     parser.add_argument("--readable_json", type=lambda x: x.lower() == 'true',
                         choices=[True, False],
                         help="Save JSON in a human-readable format (True/False, default: False).")
-    
+    parser.add_argument('-s', '--seed')
     args = parser.parse_args()
 
     # Input validation
@@ -247,5 +256,6 @@ if __name__ == '__main__':
         output_dir=args.output_dir,
         chromosome_name=args.chromosome,
         model=args.model,
-        readable_json=args.readable_json
+        readable_json=args.readable_json,
+        seed=args.seed
     )
