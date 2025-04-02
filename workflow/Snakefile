@@ -6,6 +6,7 @@ import yaml
 # Retrieve variables from the config file
 container_registry = config.get("container_registry", "docker://registry.forgemia.inra.fr/pangepop/mspangepop")
 output_dir = config.get("output_dir", "results/")
+temp_dir= config.get("tempfile_location", "temp/")
 
 # Retrieve memory multiplier from config
 memory_multiplier = config.get("memory_multiplier", 1)
@@ -15,8 +16,8 @@ def get_input_files():
     for sample in config["samples"].keys():
         chr_n = config["samples"][sample]["chr_n"]
         chromosomes = [f"{i}" for i in range(1, chr_n + 1)]
-        inputs.extend([os.path.join(output_dir, f"{sample}", "temp", f"chr_{chromosome}", f"chr_{chromosome}_augmented_traversal.json") for chromosome in chromosomes])
-        inputs.extend([os.path.join(output_dir, f"{sample}", "temp", f"chr_{chromosome}", f"chr_{chromosome}_recombinations.fasta.gz") for chromosome in chromosomes])
+        inputs.extend([os.path.join(output_dir, f"{sample}", temp_dir, f"chr_{chromosome}", f"chr_{chromosome}_augmented_traversal.json") for chromosome in chromosomes])
+        inputs.extend([os.path.join(output_dir, f"{sample}", temp_dir, f"chr_{chromosome}", f"chr_{chromosome}_recombinations.fasta.gz") for chromosome in chromosomes])
     return inputs
 
 rule all:
@@ -24,7 +25,8 @@ rule all:
         get_input_files(),
         expand(os.path.join(output_dir, "{sample}", "{sample}_params_recap.txt"), sample=config["samples"].keys())
 
-rule save_recap:
+# This rule is uesd to create a recap file for the workflwo
+rule create_recap:
     input:
         configfile= ".config/masterconfig.yaml"
     output:
@@ -37,16 +39,18 @@ rule save_recap:
         time="00:10:00"
     container:
         "./temporary_dependencies/msprime_box.sif"
+    priority: 1
     shell:
         """
         python3 workflow/scripts/recap.py {input.configfile} {params.output_dir} {params.current_run}
         """
 
+# Index the fasta file to gather contig length (used by msprime)
 rule samtools_index:
     input:
         fasta=lambda wildcards: config["samples"][wildcards.sample]["fasta_gz"]
     output:
-        fai=temp(os.path.join(output_dir, "{sample}", "temp", "{sample}_full.fai"))
+        fai=temp(os.path.join(output_dir, "{sample}", temp_dir, "{sample}_full.fai"))
     resources:
         mem_mb=lambda wildcards: int(50000 * memory_multiplier),
         time="10:00:00"
@@ -56,29 +60,30 @@ rule samtools_index:
         f"{container_registry}/samtool:1.21"
     benchmark:
         os.path.join(output_dir, "{sample}", "benchmark", "samtools_index_benchmark.txt")
+    priority: 10
     shell:
         """
         echo '🔹 MSpangepop -> Starting {wildcards.sample} indexing...' && 
         samtools faidx {input.fasta} && \
-            mv {input.fasta}.fai {output.fai} && \
-            echo '✅ MSpangepop -> {wildcards.sample} indexing successful.'
-
+        mv {input.fasta}.fai {output.fai} && \
+        echo '✅ MSpangepop -> {wildcards.sample} indexing successful.'
         if [ -f {input.fasta}.gzi ]; then 
             rm {input.fasta}.gzi
         fi
         """
 
+# Simulate the coalescent and save it to a json file
 rule msprime_simulation:    
     input:
         fai=rules.samtools_index.output
     output:
-        json = temp(os.path.join(output_dir, "{sample}", "temp", "chr_{chromosome}", "chr_{chromosome}_msprime_simulation.json"))
+        json = temp(os.path.join(output_dir, "{sample}", temp_dir, "chr_{chromosome}", "chr_{chromosome}_msprime_simulation.json"))
     params:
         pop_size=lambda wildcards: config["samples"][wildcards.sample]["population_size"],
         mut_rate=lambda wildcards: config["samples"][wildcards.sample]["mutation_rate"],
         reco_rate=lambda wildcards: config["samples"][wildcards.sample]["recombination_rate"],
         n=lambda wildcards: config["samples"][wildcards.sample]["sample_size"],
-        out=lambda wildcards: os.path.join(output_dir, f"{wildcards.sample}", "temp"),
+        out=lambda wildcards: os.path.join(output_dir, f"{wildcards.sample}", temp_dir),
         model=lambda wildcards: config["samples"][wildcards.sample]["model"],
         readable_json=lambda wildcards: config["samples"][wildcards.sample].get("readable_json", False), 
         seed=lambda wildcards: config["samples"][wildcards.sample].get("seed", None) 
@@ -89,6 +94,7 @@ rule msprime_simulation:
         os.path.join(output_dir, "{sample}", "benchmark", "msprime_chr_{chromosome}_benchmark.txt")
     container:
         "./temporary_dependencies/msprime_box.sif"
+    priority: 10
     shell:
         """
         python3 workflow/scripts/msprime_simulation.py \
@@ -104,11 +110,12 @@ rule msprime_simulation:
             --seed {params.seed}
         """
 
+# Use the preorder traversal to get the order in which the mutations should be handeled, save a json
 rule coalescent_traversal:
     input:
         json = rules.msprime_simulation.output.json
     output:
-        traversal = temp(os.path.join(output_dir, "{sample}", "temp", "chr_{chromosome}", "chr_{chromosome}_traversal.json"))
+        traversal = temp(os.path.join(output_dir, "{sample}", temp_dir, "chr_{chromosome}", "chr_{chromosome}_traversal.json"))
     params:
         readable_json=lambda wildcards: config["samples"][wildcards.sample].get("readable_json", False) 
     resources:
@@ -121,15 +128,20 @@ rule coalescent_traversal:
         "./temporary_dependencies/msprime_box.sif"
     shell: 
         """
-        python3 workflow/scripts/coalescent_traversal.py --json {input.json} --chromosome {wildcards.chromosome} --output_file {output.traversal} --threads {threads} --readable_json {params.readable_json}
+        python3 workflow/scripts/coalescent_traversal.py --json {input.json} \
+            --chromosome {wildcards.chromosome} \
+            --output_file {output.traversal} \
+            --threads {threads} \
+            --readable_json {params.readable_json}
         """
 
+# Split fasta file at each recombination event
 rule split_recombination:
     input:
         json = rules.msprime_simulation.output.json,
         fasta=lambda wildcards: config["samples"][wildcards.sample]["fasta_gz"]
     output:
-        os.path.join(output_dir, "{sample}", "temp", "chr_{chromosome}", "chr_{chromosome}_recombinations.fasta.gz")
+        os.path.join(output_dir, "{sample}", temp_dir, "chr_{chromosome}", "chr_{chromosome}_recombinations.fasta.gz")
     resources:
         mem_mb=lambda wildcards: int(50000 * memory_multiplier),
         time="10:00:00"
@@ -139,14 +151,17 @@ rule split_recombination:
         "./temporary_dependencies/msprime_box.sif"
     shell:
         """
-        python3 workflow/scripts/split_recombination.py --json {input.json} --fasta {input.fasta} --chromosome {wildcards.chromosome} --output {output} 
+        python3 workflow/scripts/split_recombination.py --json {input.json} \
+            --fasta {input.fasta} \
+            --chromosome {wildcards.chromosome} \
+            --output {output} 
         """       
 
 rule draw_variants:
     input:
         json = rules.coalescent_traversal.output.traversal
     output:
-        os.path.join(output_dir, "{sample}", "temp", "chr_{chromosome}", "chr_{chromosome}_augmented_traversal.json")
+        os.path.join(output_dir, "{sample}", temp_dir, "chr_{chromosome}", "chr_{chromosome}_augmented_traversal.json")
     params:
         sv_type_file = config.get("sv_type_file"),
         minimal_variant_size=lambda wildcards: config["samples"][wildcards.sample]["minimal_variant_size"],
@@ -161,7 +176,13 @@ rule draw_variants:
         os.path.join(output_dir, "{sample}", "benchmark", "generate_variant_{chromosome}_benchmark.txt")
     shell:
         """
-        python3 workflow/scripts/draw_variants.py --json {input.json} --yaml {params.sv_type_file} --output {output} --chromosome {wildcards.chromosome} --threads {threads} --minimal_variant_size {params.minimal_variant_size} --readable_json {params.readable_json}
+        python3 workflow/scripts/draw_variants.py --json {input.json} \
+            --yaml {params.sv_type_file} \
+            --output {output} \
+            --chromosome {wildcards.chromosome} \
+            --threads {threads} \
+            --minimal_variant_size {params.minimal_variant_size} \
+            --readable_json {params.readable_json}
         """
 
 rule create_graph:
@@ -180,7 +201,11 @@ rule create_graph:
     threads:4
     shell:
         """
-        python3 workflow/scripts/json_to_gfa.py --splited_fasta {input.splited_fasta} --output_file {output.gfa} --sample {wildcards.sample} --chromosome {wildcards.chromosome} 
+        python3 workflow/scripts/json_to_gfa.py \
+            --splited_fasta {input.splited_fasta} \
+            --output_file {output.gfa} \
+            --sample {wildcards.sample} \
+            --chromosome {wildcards.chromosome} 
         """
 
 onsuccess:
