@@ -45,9 +45,28 @@ rule create_recap:
         python3 workflow/scripts/recap.py {input.configfile} {params.output_dir} {params.current_run}
         """
 
+# Check if the input file is usable if not, tell the user why
+rule input_validation:
+    input:
+        fasta=lambda wildcards: config["samples"][wildcards.sample]["fasta_gz"]
+    output:
+        validation_file = temp(os.path.join(output_dir, "{sample}", temp_dir, "valid_input.tmp"))
+    params:
+        chr_n =lambda wildcards: config["samples"][wildcards.sample]["chr_n"]
+    priority: 10
+    container:
+        "./temporary_dependencies/msprime_box.sif"
+    shell:
+        """
+        python3 workflow/scripts/input_validation.py --fasta_file {input.fasta} \
+            --output_file {output.validation_file} \
+            --min_contigs {params.chr_n}
+        """
+
 # Index the fasta file to gather contig length (used by msprime)
 rule samtools_index:
     input:
+        rules.input_validation.output.validation_file,
         fasta=lambda wildcards: config["samples"][wildcards.sample]["fasta_gz"]
     output:
         fai=temp(os.path.join(output_dir, "{sample}", temp_dir, "{sample}_full.fai"))
@@ -122,6 +141,7 @@ rule coalescent_traversal:
         mem_mb=lambda wildcards: int(50000 * memory_multiplier),
         time="10:00:00"
     threads: 10
+    priority: 9
     benchmark:
         os.path.join(output_dir, "{sample}", "benchmark", "coalescent_traversal_chr_{chromosome}_benchmark.txt")
     container:
@@ -147,6 +167,7 @@ rule split_recombination:
         time="10:00:00"
     benchmark:
         os.path.join(output_dir, "{sample}", "benchmark", "split_recombination_chr_{chromosome}_benchmark.txt")
+    priority: 8
     container:
         "./temporary_dependencies/msprime_box.sif"
     shell:
@@ -167,6 +188,7 @@ rule draw_variants:
         minimal_variant_size=lambda wildcards: config["samples"][wildcards.sample]["minimal_variant_size"],
         readable_json=lambda wildcards: config["samples"][wildcards.sample].get("readable_json", False) 
     threads: 10
+    priority: 8
     resources:
         mem_mb=lambda wildcards: int(10000 * memory_multiplier),
         time="10:00:00"
@@ -199,6 +221,7 @@ rule create_graph:
     container:
         "./temporary_dependencies/msprime_box.sif"
     threads:4
+    priority: 7
     shell:
         """
         python3 workflow/scripts/json_to_gfa.py \
