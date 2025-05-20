@@ -109,7 +109,7 @@ def simulate_chromosome_evolution(
     """
     Simulates chromosome evolution and generates a recap file with details.
     """
-    seed = process_seed(seed)
+    pseed = process_seed(seed)
     try:
         start_time = time.time()
         output_dir = os.path.join(output_dir, f"chr_{chromosome_name}")
@@ -127,7 +127,7 @@ def simulate_chromosome_evolution(
             samples=sample_size,
             recombination_rate=recombination_map,
             population_size=population_size,
-            random_seed=seed
+            random_seed=pseed
         ).simplify()
 
         # Simulate mutations
@@ -136,7 +136,7 @@ def simulate_chromosome_evolution(
             rate=mutation_rate,
             discrete_genome=True,
             model=model,
-            random_seed=seed)
+            random_seed=pseed)
 
         mutated_ts = mutated_ts.keep_intervals([[0, chrom_length]], simplify=True).trim()
 
