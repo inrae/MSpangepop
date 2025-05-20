@@ -22,4 +22,4 @@
 results
 **__pycache__
 .snakemake
-mspangepop
+!mspangepop
