@@ -178,6 +178,7 @@ rule split_recombination:
             --output {output} 
         """       
 
+# Script to augment the traversal json file with muations position type and length
 rule draw_variants:
     input:
         json = rules.coalescent_traversal.output.traversal
