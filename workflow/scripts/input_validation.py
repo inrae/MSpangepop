@@ -48,7 +48,7 @@ def main():
         with open(args.output_file, 'w') as out:
             out.write("")
 
-        MSsuccess(f"FASTA file is correctly formatted")
+        MSsuccess("FASTA file is correctly formatted")
 
     except MSerror as e:
         raise e
