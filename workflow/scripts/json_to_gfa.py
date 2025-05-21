@@ -7,7 +7,6 @@ from variants_lib import *
 
 class Node:
     """Represents a node in the graph."""
-
     def __init__(self, base, node_id: int):
         self.id: int = node_id
         if isinstance(base, str):
@@ -62,14 +61,13 @@ class Edge:
 
         self.node1 = node1
         self.node2 = node2
-
         # Add this edge to the outgoing links of node1
         node1.outgoing_links.add(self)
 
 class Path:
     """Represents a path in the graph, consisting of a sequence of edges."""
     
-    def __init__(self, lineage: int, edges: list[Edge] = None):
+    def __init__(self, lineage, edges: list[Edge] = None):
         """
         Initializes a Path.
 
@@ -77,9 +75,9 @@ class Path:
         - lineage (int): A unique identifier for the path.
         - edges (list[Edge]): A list of Edge objects forming the path.
         """
-        self.lineage: int = lineage
+        self.lineage = lineage
         self.edges: list[Edge] = edges if edges else []
-        self.nodes = 0 
+        self.nodes = len(self.edges)
 
     def add_edge(self, edge: Edge) -> None:
         """Adds an edge to the path."""
@@ -112,21 +110,34 @@ class Path:
 
         return path_repr
     
-    def __getitem__(self, i: int) -> Node:
-        """Returns the node at position i in the path"""
-        print(self.nodes)
+    def __getitem__(self, i: int) -> Node: # Ici on est obligé de réimplémanter les fonction des listes
+        """Returns the node at position i in the path, supporting negative indices."""
+        if not self.edges:
+            raise MSerror("Path is empty")
+
+        if i < 0:
+            i = self.nodes + 1 + i  # Convert negative index to positive (like Python lists)
+
         if i < self.nodes:
             return self.edges[i].node1
-        if i == self.nodes:
-            return self.edges[i-1].node2 # Use this tric to be able to get the last node
-        raise MSerror(f"Node number {i} not in Path bounds")
+        elif i == self.nodes:
+            return self.edges[-1].node2
+        else:
+            raise MSerror(f"Node index {i} out of bounds for path with {self.nodes + 1} nodes")
+
     
     def __iadd__(self, other):
+        """Allow concatenation of two paths (or a edge to a path)"""
         if isinstance(other, Edge):
             self.add_edge(other) # Si on essayer d'ajouter un edge
-        if isinstance(other, Path):
-            for edge_ in other:
-                self.add_edge(edge_)
+        elif isinstance(other, Path):
+            for edge_ in other.edges:
+                self.add_edge(edge_) # Si on essaye d'ajouter un path
+        else:
+            MSerror("cant += this type to a path")
+        return self
+
+
 ### YOU STOPED HERE
 
 class Graph:
@@ -142,237 +153,103 @@ class Graph:
         self._start_node: Node = None
         self._end_node: Node = None
 
-    def add_new_node(self, base: str) -> None:
-        """Creates and adds a new node to the graph."""
+    def add_new_node(self, base: str) -> Node:
+        """
+        Creates and adds a new node to the graph, return it"""
         node = Node(base, next(self._node_id_generator))
-        self.nodes.append(node)
+        self.nodes.add(node)
+        return node
     
     def add_node(self, node: Node) -> None:
         """Adds a new node to the graph."""
-        self.nodes.append(node)
-
-    def get_path(self, lineage: int) -> Path:
-        """Retrieves a path by its lineage."""
-        return self.paths.get(lineage, None)
-
-    def initialize_paths(self, paths: set[Path]) -> None:
-        """
-        Initializes the given set of paths, ensuring that:
-        - Each path receives an ordered list of nodes from the graph.
-        - Each path has a unique lineage in the graph.
-        """
-        for path in paths:
-            if path.lineage in self.paths:
-                raise MSerror(f"Path with lineage {path.lineage} already exists in the graph.")
-
-            # Assign the ordered nodes from the graph to the path
-            path.nodes = self.nodes[:]  # Shallow copy of the current nodes list
-            self.paths[path.lineage] = path
-
-
+        self.nodes.add(node)
 
     def __iadd__(self, other: "Graph") -> "Graph":
-        """Cette méthode effectue un += entre deux graphs"""
-         
+        """Merges another graph into this one."""
+
         if not self.nodes or not other.nodes:
             raise MSerror("Cannot concatenate empty graphs.")
 
-        # On ajoute toutes les nodes dans le meme bucket pour garder les pointeurs
-        self.nodes.extend(other.nodes)
+        # Merge all nodes
+        self.nodes.update(other.nodes)
 
-        # On relie le dernier neud de ce graphe au premier de l'autre
-        edge = Edge(self._end_node, True, other._start_node, False) 
-        
-        # On change la derniére node de ce graph 
+        # Create connecting edge between self._end_node and other._start_node
+        connecting_edge = Edge(self._end_node, True, other._start_node, False)
+
+        # Update end node pointer
         self._end_node = other._end_node
 
-        # On merge les paths, en faisant chemin dans ce graph + edge + chemain dans l'autre graphe
-
-
-        self.paths[lineage] + edge
-        # YOU STOPED HERE
-        for lineage, path in other.paths.items():
+        # Merge paths
+        for lineage, o_path in other.paths.items():
             if lineage in self.paths:
-                # Concatenate paths with the same lineage
-                self.paths[lineage].nodes.extend(path.nodes)
-                self.paths[lineage].ancesters.update(path.ancesters)
+                # Get the current path
+                current_path = self.paths[lineage]
+                if current_path[-1] != connecting_edge.node1:
+                    raise MSerror(f"Path discontinuity for lineage {lineage}")
+
+                # Extend the path
+                current_path += connecting_edge
+                current_path += o_path
             else:
-                # Add new paths that don't exist in self
-                self.paths[lineage] = path #Useless
+                # If lineage doesn't exist, copy the path and prepend the connecting edge
+                new_path = Path(lineage)
+                new_path += o_path
+                self.paths[lineage] = new_path
+
         return self
 
-    def __repr__(self) -> str:
-        return f"Graph({self.id}, {len(self.nodes)} nodes, {len(self.paths)} paths, ->{self.start_node}-{self.end_node}->)"
+    def build_from_sequence(self, sequence: str, lineages: set) -> None:
+        """Constructs a graph and creates the associated paths from a nucleotide sequence."""
 
-    @property
-    def start_node(self) -> Node:
-        return self._start_node
-
-    @property
-    def end_node(self) -> Node:
-        return self._end_node
-
-    def build_from_sequence(self, sequence: str) -> None:
-        """Constructs a graph and creates an associated path from a nucleotide sequence."""
         if not sequence:
             raise MSerror("Cannot build a graph from an empty sequence.")
 
-        prev_node = self.add_node(sequence[0])
-        self._start_node = prev_node
+        ancestral_path = Path("Ancestral") # On crée le chemin ancestral
 
-        for base in sequence[1:]:
-            new_node = self.add_node(base)
-            prev_node.connect(new_node)
-            prev_node = new_node
+        self._start_node = Node(sequence[0], next(self._node_id_generator)) # On ajoute la premiére node au grph
+        prev_node = self._start_node
+        self.add_node(self._start_node) # On garde le pointeur
 
-        self._end_node = prev_node
+        for base in sequence[1:]: # Pour chaque bases
+            new_node = self.add_new_node(base) # On crée une nouvelle node
+            ancestral_path += Edge(prev_node, True, new_node, False) # On ajoute un Edge dans le chemin ancestral (+-)
+            prev_node = new_node 
+        self._end_node = prev_node # On garde le pointeur sur la dernière node
+
+        self.paths[ancestral_path.lineage] = ancestral_path
+        for i in lineages:
+            # Create a new path object with a shallow copy of the edges
+            path_copy = Path(i, ancestral_path.edges.copy())
+            self.paths[i] = path_copy
+
+    def __repr__(self) -> str:
+        return f"Graph(id={self.id}, Nodes={len(self.nodes)}, Paths={len(self.paths)})"
     
-    def add_snp(self, idx: int) -> None:
-        snp = SNP(A=self.nodes[idx-1], B=self.nodes[idx], D=self.nodes[idx+1])
-        new_node = snp.compute_alt_seq(self._node_id_generator)
-        self.nodes.append(new_node)
-
-    def add_deletion(self, start_idx: int, end_idx: int) -> None:
-        deletion = DEL(A=self.nodes[start_idx], D=self.nodes[end_idx])
-        deletion.compute_alt_seq()
-
-    def add_insertion(self, idx: int, length) -> None:
-        insertion = INS(A=self.nodes[idx], D=self.nodes[idx + 1], length=length)
-        inserted_nodes = insertion.compute_alt_seq(self._node_id_generator)
-        self.nodes = self.nodes + inserted_nodes 
-    
-    def add_inversion(self, start_idx: int, end_idx: int) -> None:
-        inversion = INV(A=self.nodes[start_idx], B=self.nodes[start_idx+1], C=self.nodes[end_idx-1], D=self.nodes[end_idx])
-        inversion.compute_alt_seq()
-
-    def add_duplication(self, start_idx: int, end_idx: int) -> None:
-        duplication = DUP(A=self.nodes[start_idx], D=self.nodes[end_idx])
-        duplication.compute_alt_seq()
+    @property
+    def details(self):
+        print(self)
+        print("Paths :")
+        for path in self.paths.items() :
+            print(path)
 
 
 if __name__ == "__main__":
-    # Create some nodes
-    node_a = Node("AB", node_id=1)
-    node_b = Node("CD", node_id=2)
-    node_c = Node("EF", node_id=3)
-    node_d = Node("GH", node_id=4)
-
-    # Create edges
-    edge1 = Edge(node_a, True, node_b, "-") 
-    edge2 = Edge(node_b, True, node_c, False) 
-    edge3 = Edge(node_c, True, node_d, False)  
-
-
-    # Create a path and add edges
-    path = Path(lineage=101)
-    path.add_edge(edge1)
-    path.add_edge(edge2)
-    path.add_edge(edge3)
+    count = itertools.count(1)
+    graphA = Graph(count)
+    graphA.build_from_sequence(sequence = "ABC", lineages = [1,2,3])
+    graphA.details
+    print()
+    graphB = Graph(count)
+    graphB.build_from_sequence(sequence = "DEF", lineages = [4])
+    graphB.details
+    print()
+    graphA+=graphB
+    graphA.details
 
 
-    # Print the path
-    print(repr(path))  
-    print(str(path))  
-
-
-    print(path[0])
-    print(path[1])
-    print(path[2])
-    print(path[3])
 '''
 class Graph:
-    """Represents a directed graph"""
 
-    _id_counter = itertools.count(1)  # Unique ID generator for graphs
-
-    def __init__(self, node_id_generator: itertools.count):
-        self.id: int = next(self._id_counter)
-        self._node_id_generator: itertools.count = node_id_generator
-        self.nodes: set[Node] = []
-        self.paths: dict[int, Path] = {} 
-        self._start_node: Node = None
-        self._end_node: Node = None
-
-    def add_node(self, base: str) -> Node:
-        """Creates and adds a new node to the graph."""
-        node = Node(base, next(self._node_id_generator))
-        self.nodes.append(node)
-        return node
-
-    def get_path(self, lineage: int) -> Path:
-        """Retrieves a path by its lineage."""
-        return self.paths.get(lineage, None)
-    
-    def initialize_paths(self, paths: set[Path]) -> None:
-        """
-        Initializes the given set of paths, ensuring that:
-        - Each path receives an ordered list of nodes from the graph.
-        - Each path has a unique lineage in the graph.
-        """
-        for path in paths:
-            if path.lineage in self.paths:
-                raise MSerror(f"Path with lineage {path.lineage} already exists in the graph.")
-
-            # Assign the ordered nodes from the graph to the path
-            path.nodes = self.nodes[:]  # Shallow copy of the current nodes list
-            self.paths[path.lineage] = path
-
-    def __getitem__(self, i: int) -> Node:
-        return self.nodes[i]
-
-    def __len__(self) -> int:
-        return len(self.nodes)
-
-    def __iadd__(self, other: "Graph") -> "Graph":
-        """Concatenates another graph by linking the last node of this one to the first node of the other.
-        Also merges paths that share the same lineage.
-        """
-        if not self.nodes or not other.nodes:
-            raise MSerror("Cannot concatenate empty graphs.")
-
-        # Connect the end node of this graph to the start node of the other graph
-        self.end_node.connect(other.start_node)
-        self.nodes.extend(other.nodes)
-        self._end_node = other.end_node
-
-        # Merge paths based on lineage
-        for lineage, path in other.paths.items():
-            if lineage in self.paths:
-                # Concatenate paths with the same lineage
-                self.paths[lineage].nodes.extend(path.nodes)
-                self.paths[lineage].ancesters.update(path.ancesters)
-            else:
-                # Add new paths that don't exist in self
-                self.paths[lineage] = path #Useless
-
-        return self
-
-    def __repr__(self) -> str:
-        return f"Graph({self.id}, {len(self.nodes)} nodes, {len(self.paths)} paths, ->{self.start_node}-{self.end_node}->)"
-
-    @property
-    def start_node(self) -> Node:
-        return self._start_node
-
-    @property
-    def end_node(self) -> Node:
-        return self._end_node
-
-    def build_from_sequence(self, sequence: str) -> None:
-        """Constructs a graph and creates an associated path from a nucleotide sequence."""
-        if not sequence:
-            raise MSerror("Cannot build a graph from an empty sequence.")
-
-        prev_node = self.add_node(sequence[0])
-        self._start_node = prev_node
-
-        for base in sequence[1:]:
-            new_node = self.add_node(base)
-            prev_node.connect(new_node)
-            prev_node = new_node
-
-        self._end_node = prev_node
-    
     def add_snp(self, idx: int) -> None:
         snp = SNP(A=self.nodes[idx-1], B=self.nodes[idx], D=self.nodes[idx+1])
         new_node = snp.compute_alt_seq(self._node_id_generator)
@@ -394,8 +271,7 @@ class Graph:
     def add_duplication(self, start_idx: int, end_idx: int) -> None:
         duplication = DUP(A=self.nodes[start_idx], D=self.nodes[end_idx])
         duplication.compute_alt_seq()
-
-        
+   
 class GraphEnsemble:
     """Manages multiple graphs and allows linking them together."""
     
