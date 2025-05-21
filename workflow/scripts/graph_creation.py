@@ -137,9 +137,6 @@ class Path:
             MSerror("cant += this type to a path")
         return self
 
-
-### YOU STOPED HERE
-
 class Graph:
     """Represents a directed graph"""
 
@@ -231,6 +228,7 @@ class Graph:
         print("Paths :")
         for path in self.paths.items() :
             print(path)
+
 
 
 if __name__ == "__main__":
