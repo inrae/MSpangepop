@@ -7,25 +7,25 @@ from variants_lib import *
 
 class Node:
     """Represents a node in the graph."""
-    def __init__(self, base, node_id: int):
+    def __init__(self, dna_sequence, node_id: int):
         self.id: int = node_id
-        if isinstance(base, str):
-            self.bases: bitarray = bitarray()
-            self.bases.frombytes(base.encode("utf-8"))  # Encode string as bitarray
+        if isinstance(dna_sequence, str):
+            self.dna_bases: bitarray = bitarray()
+            self.dna_bases.frombytes(dna_sequence.encode("utf-8"))  # Encode string as bitarray
         else:
-            self.base: bitarray = base  # Store bitarray directly
-        
-        self.outgoing_links: set["Edge"] = set()  # Store outgoing edges as Edge objects
+            self.dna_bases: bitarray = dna_sequence  # Store bitarray directly
+
+        self.outgoing_edges: set["Edge"] = set()  # Store outgoing edges as Edge objects
 
     @property
     def __decode(self) -> str:
         """Decodes the bitarray back into a DNA sequence string."""
-        return self.bases.tobytes().decode("utf-8")
+        return self.dna_bases.tobytes().decode("utf-8")
 
     def __repr__(self) -> str:
         """Returns only the raw DNA sequence as a string."""
-        return self.__decode # Using str(Node) will automaticly decode the node
-    
+        return self.__decode # Using str(Node) will automatically decode the node
+
     @property
     def reversed(self) -> str:
         string = self.__repr__()
@@ -33,106 +33,105 @@ class Node:
 
 class Edge:
     """Represents a directed edge between two nodes, keeping track of the side of each node involved."""
-    
-    def __init__(self, node1: Node, side1, node2: Node, side2):
+
+    def __init__(self, node1: Node, node1_side, node2: Node, node2_side):
         """
         Creates an edge between two nodes.
 
         Parameters:
         - node1 (Node): First node
-        - side1 (bool): Side of the first node (True for 3', False for 5')
+        - node1_side (bool): Side of the first node (True for 3', False for 5')
         - node2 (Node): Second node
-        - side2 (bool): Side of the second node (True for 3', False for 5')
+        - node2_side (bool): Side of the second node (True for 3', False for 5')
         """
-        if isinstance(side1, str):
-            if side1 == "+" :
-                self.side1 = True 
-            elif side1 == "-" :
-                self.side1 = False
+        if isinstance(node1_side, str):
+            if node1_side == "+" :
+                self.node1_side = True
+            elif node1_side == "-" :
+                self.node1_side = False
         else :
-            self.side1 = side1
-        if isinstance(side2, str):
-            if side2 == "+" :
-                self.side2 = True 
-            elif side2 == "-" :
-                self.side2 = False
+            self.node1_side = node1_side
+        if isinstance(node2_side, str):
+            if node2_side == "+" :
+                self.node2_side = True
+            elif node2_side == "-" :
+                self.node2_side = False
         else :
-            self.side2 = side2
+            self.node2_side = node2_side
 
         self.node1 = node1
         self.node2 = node2
-        # Add this edge to the outgoing links of node1
-        node1.outgoing_links.add(self)
+        # Add this edge to the outgoing edges of node1
+        node1.outgoing_edges.add(self)
 
 class Path:
     """Represents a path in the graph, consisting of a sequence of edges."""
-    
-    def __init__(self, lineage, edges: list[Edge] = None):
+
+    def __init__(self, lineage, path_edges: list[Edge] = None):
         """
         Initializes a Path.
 
         Parameters:
         - lineage (int): A unique identifier for the path.
-        - edges (list[Edge]): A list of Edge objects forming the path.
+        - path_edges (list[Edge]): A list of Edge objects forming the path.
         """
         self.lineage = lineage
-        self.edges: list[Edge] = edges if edges else []
-        self.nodes = len(self.edges)
+        self.path_edges: list[Edge] = path_edges if path_edges else []
+        self.node_count = len(self.path_edges)
 
     def add_edge(self, edge: Edge) -> None:
         """Adds an edge to the path."""
-        self.edges.append(edge)
-        self.nodes += 1
+        self.path_edges.append(edge)
+        self.node_count += 1
 
     def __repr__(self) -> str:
         """Returns a readable representation of the path without repeating nodes."""
-        if not self.edges:
+        if not self.path_edges:
             return ""  # If there are no edges, return an empty string
 
         # Start with the first node
-        path_repr = f"{self.edges[0].node1.id}"
+        path_repr = f"{self.path_edges[0].node1.id}"
 
         # Then for each edge, append the node2 id (only if it's not the first node)
-        for edge in self.edges:
-            path_repr += f"{'>' if not edge.side2  else '<'}{edge.node2.id}"
+        for edge in self.path_edges:
+            path_repr += f"{'>' if not edge.node2_side else '<'}{edge.node2.id}"
 
         return path_repr
-    
-    def __str__(self) -> str: 
+
+    def __str__(self) -> str:
         """Returns a string of the path"""
-        if not self.edges:
-            return ""  
+        if not self.path_edges:
+            return ""
 
-        path_repr = f"{self.edges[0].node1}"
+        path_repr = f"{self.path_edges[0].node1}"
 
-        for edge in self.edges:
-            path_repr += f"{edge.node2 if not edge.side2 else edge.node2.reversed}"
+        for edge in self.path_edges:
+            path_repr += f"{edge.node2 if not edge.node2_side else edge.node2.reversed}"
 
         return path_repr
-    
-    def __getitem__(self, i: int) -> Node: # Ici on est obligé de réimplémanter les fonction des listes
+
+    def __getitem__(self, i: int) -> Node: # Here we have to reimplement the list functions
         """Returns the node at position i in the path, supporting negative indices."""
-        if not self.edges:
+        if not self.path_edges:
             raise MSerror("Path is empty")
 
         if i < 0:
-            i = self.nodes + 1 + i  # Convert negative index to positive (like Python lists)
+            i = self.node_count + 1 + i  # Convert negative index to positive (like Python lists)
 
-        if i < self.nodes:
-            return self.edges[i].node1
-        elif i == self.nodes:
-            return self.edges[-1].node2
+        if i < self.node_count:
+            return self.path_edges[i].node1
+        elif i == self.node_count:
+            return self.path_edges[-1].node2
         else:
-            raise MSerror(f"Node index {i} out of bounds for path with {self.nodes + 1} nodes")
+            raise MSerror(f"Node index {i} out of bounds for path with {self.node_count + 1} nodes")
 
-    
     def __iadd__(self, other):
-        """Allow concatenation of two paths (or a edge to a path)"""
+        """Allow concatenation of two paths (or an edge to a path)"""
         if isinstance(other, Edge):
-            self.add_edge(other) # Si on essayer d'ajouter un edge
+            self.add_edge(other) # If we try to add an edge
         elif isinstance(other, Path):
-            for edge_ in other.edges:
-                self.add_edge(edge_) # Si on essaye d'ajouter un path
+            for path_edge in other.path_edges:
+                self.add_edge(path_edge) # If we try to add a path
         else:
             MSerror("cant += this type to a path")
         return self
@@ -140,23 +139,23 @@ class Path:
 class Graph:
     """Represents a directed graph"""
 
-    _id_counter = itertools.count(1)  # Unique ID generator for graphs
+    graph_id_generator = itertools.count(1)  # Unique ID generator for graphs
 
     def __init__(self, node_id_generator: itertools.count):
-        self.id: int = next(self._id_counter)
-        self._node_id_generator: itertools.count = node_id_generator
+        self.id: int = next(self.graph_id_generator)
+        self.node_id_generator: itertools.count = node_id_generator
         self.nodes: set[Node] = set()
-        self.paths: dict[int, Path] = {} 
-        self._start_node: Node = None
-        self._end_node: Node = None
+        self.paths: dict[int, Path] = {}
+        self.start_node: Node = None
+        self.end_node: Node = None
 
-    def add_new_node(self, base: str) -> Node:
+    def add_new_node(self, dna_sequence: str) -> Node:
         """
         Creates and adds a new node to the graph, return it"""
-        node = Node(base, next(self._node_id_generator))
+        node = Node(dna_sequence, next(self.node_id_generator))
         self.nodes.add(node)
         return node
-    
+
     def add_node(self, node: Node) -> None:
         """Adds a new node to the graph."""
         self.nodes.add(node)
@@ -170,14 +169,14 @@ class Graph:
         # Merge all nodes
         self.nodes.update(other.nodes)
 
-        # Create connecting edge between self._end_node and other._start_node
-        connecting_edge = Edge(self._end_node, True, other._start_node, False)
+        # Create connecting edge between self.end_node and other.start_node
+        connecting_edge = Edge(self.end_node, True, other.start_node, False)
 
         # Update end node pointer
-        self._end_node = other._end_node
+        self.end_node = other.end_node
 
         # Merge paths
-        for lineage, o_path in other.paths.items():
+        for lineage, other_path in other.paths.items():
             if lineage in self.paths:
                 # Get the current path
                 current_path = self.paths[lineage]
@@ -186,42 +185,42 @@ class Graph:
 
                 # Extend the path
                 current_path += connecting_edge
-                current_path += o_path
+                current_path += other_path
             else:
                 # If lineage doesn't exist, copy the path and prepend the connecting edge
-                new_path = Path(lineage)
-                new_path += o_path
-                self.paths[lineage] = new_path
+                copied_path = Path(lineage)
+                copied_path += other_path
+                self.paths[lineage] = copied_path
 
         return self
 
-    def build_from_sequence(self, sequence: str, lineages: set) -> None:
+    def build_from_sequence(self, nucleotide_sequence: str, lineages: set) -> None:
         """Constructs a graph and creates the associated paths from a nucleotide sequence."""
 
-        if not sequence:
+        if not nucleotide_sequence:
             raise MSerror("Cannot build a graph from an empty sequence.")
 
-        ancestral_path = Path("Ancestral") # On crée le chemin ancestral
+        ancestral_path = Path("Ancestral") # Create the ancestral path
 
-        self._start_node = Node(sequence[0], next(self._node_id_generator)) # On ajoute la premiére node au grph
-        prev_node = self._start_node
-        self.add_node(self._start_node) # On garde le pointeur
+        self.start_node = Node(nucleotide_sequence[0], next(self.node_id_generator)) # Add the first node to the graph
+        previous_node = self.start_node
+        self.add_node(self.start_node) # Keep the pointer
 
-        for base in sequence[1:]: # Pour chaque bases
-            new_node = self.add_new_node(base) # On crée une nouvelle node
-            ancestral_path += Edge(prev_node, True, new_node, False) # On ajoute un Edge dans le chemin ancestral (+-)
-            prev_node = new_node 
-        self._end_node = prev_node # On garde le pointeur sur la dernière node
+        for base in nucleotide_sequence[1:]: # For each base
+            current_node = self.add_new_node(base) # Create a new node
+            ancestral_path += Edge(previous_node, True, current_node, False) # Add an Edge in the ancestral path (+-)
+            previous_node = current_node
+        self.end_node = previous_node # Keep the pointer on the last node
 
         self.paths[ancestral_path.lineage] = ancestral_path
         for i in lineages:
             # Create a new path object with a shallow copy of the edges
-            path_copy = Path(i, ancestral_path.edges.copy())
-            self.paths[i] = path_copy
+            copied_path = Path(i, ancestral_path.path_edges.copy())
+            self.paths[i] = copied_path
 
     def __repr__(self) -> str:
         return f"Graph(id={self.id}, Nodes={len(self.nodes)}, Paths={len(self.paths)})"
-    
+
     @property
     def details(self):
         print(self)
@@ -229,16 +228,14 @@ class Graph:
         for path in self.paths.items() :
             print(path)
 
-
-
 if __name__ == "__main__":
     count = itertools.count(1)
     graphA = Graph(count)
-    graphA.build_from_sequence(sequence = "ABC", lineages = [1,2,3])
+    graphA.build_from_sequence("ABC",[1,2,3])
     graphA.details
     print()
     graphB = Graph(count)
-    graphB.build_from_sequence(sequence = "DEF", lineages = [4])
+    graphB.build_from_sequence("DEF",[4])
     graphB.details
     print()
     graphA+=graphB
