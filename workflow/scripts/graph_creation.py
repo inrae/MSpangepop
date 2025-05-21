@@ -63,6 +63,17 @@ class Edge:
         self.node2 = node2
         # Add this edge to the outgoing edges of node1
         node1.outgoing_edges.add(self)
+    
+    def remove(self) -> None:
+        """
+        Removes this edge from the graph by removing it from node1's outgoing_edges.
+        This effectively "detaches" the edge from the graph structure.
+        """
+        if self in self.node1.outgoing_edges:
+            self.node1.outgoing_edges.remove(self)
+        else:
+            # This should not happen in a well-formed graph, but it's good to handle it
+            raise MSerror(f"Edge between node {self.node1.id} and node {self.node2.id} not found in outgoing edges")
 
 class Path:
     """Represents a path in the graph, consisting of a sequence of edges."""
@@ -135,7 +146,51 @@ class Path:
         else:
             MSerror("cant += this type to a path")
         return self
+    
+    def bypass(self, start: int, end: int) -> None:
+        """
+        Creates a shortcut in the path by creating a direct edge from node at start index
+        to node at end index, and removing all edges between them.
+        
+        Parameters:
+        - start (int): Index of the starting node for the shunt
+        - end (int): Index of the ending node for the shunt
+        """
+        if start < 0 or end < 0:
+            raise MSerror("Start and end indices must be positive")
 
+        if start > self.node_count or end > self.node_count:
+            raise MSerror("Start and end indices out of bounds")
+            
+        if start == end or start + 1 == end:
+            # Nothing to shunt if start and end are the same or adjacent
+            return
+            
+        # Create a new edge from the start node to the end node
+        # The start node is the node1 of the edge at start index
+        # The end node is either node2 of the edge at end-1 index, or node1 of edge at end index if end < len(path_edges)
+        start_node = self[start]
+        end_node = self[end]
+        
+        # Create the new edge - a connection from start to end RETAINING the side of the start node and the end node
+        new_edge = Edge(start_node, # Start node
+                        self.path_edges[start].node1_side, # Side of the start node
+                        end_node, # End node
+                        self.path_edges[end-1].node2_side) # Side of the end node
+        
+        # Store the edges to remove
+        edges_to_remove = self.path_edges[start:end]
+        
+        # Replace the set of edges with the new single edge
+        self.path_edges[start:end] = [new_edge]
+        
+        # Remove the old edges from the graph structure
+        for edge in edges_to_remove:
+            edge.remove()
+            
+        # Update the node count
+        self.node_count = len(self.path_edges)
+        
 class Graph:
     """Represents a directed graph"""
 
@@ -228,7 +283,33 @@ class Graph:
         for path in self.paths.items() :
             print(path)
 
+    def add_del(self, a: int, b: int, paths: set) -> None:
+        """Ajoute    une deletion dans les paths, entre la position a et b"""
+        # YOU STOPED HERE
+
+        
 if __name__ == "__main__":
+    nodeA = Node("|Je|", 1)
+    nodeB = Node("|vais|", 2)
+    nodeC = Node("|au|", 3)
+    nodeD = Node("|concert|", 4)
+    nodeE = Node("|ce|", 5)
+    nodeF = Node("|soir|", 6)
+
+    path = Path(1, [Edge(nodeA, True, nodeB, False),
+                    Edge(nodeB, True, nodeC, True),
+                    Edge(nodeC, True, nodeD, False),
+                    Edge(nodeD, True, nodeE, True),
+                    Edge(nodeE, True, nodeF, False)])
+    print(path)
+    print(repr(path))
+
+    path.bypass(start = 0, end = 4)
+    print(path)
+    print(repr(path))
+
+
+'''
     count = itertools.count(1)
     graphA = Graph(count)
     graphA.build_from_sequence("ABC",[1,2,3])
@@ -240,9 +321,6 @@ if __name__ == "__main__":
     print()
     graphA+=graphB
     graphA.details
-
-
-'''
 class Graph:
 
     def add_snp(self, idx: int) -> None:
