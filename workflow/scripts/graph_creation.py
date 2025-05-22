@@ -239,6 +239,111 @@ class Path:
         # Update the node count
         self.node_count = len(self.path_edges)
 
+    def invert(self, start: int, end: int) -> None:
+        """
+        Create inverted edges in the path between start and end position.
+        This function also inverts the side of which the nodes are read between the two positions.
+        
+        Examples:
+        - invert(1, 1) on AB-CD-EF-GH-IJ -> AB-DC-EF-GH-IJ (node CD becomes DC)
+        - invert(1, 2) on AB-CD-EF-GH-IJ -> AB-FE-DC-GH-IJ (nodes CD-EF become FE-DC)  
+        - invert(1, 3) on AB-CD-EF-GH-IJ -> AB-HG-FE-DC-IJ (nodes CD-EF-GH become HG-FE-DC)
+        
+        Parameters:
+        - start (int): Index of the starting node for the inversion
+        - end (int): Index of the ending node for the inversion (inclusive)
+        """
+        if start < 0 or end < 0: raise MSerror("Start and end indices must be positive")
+        if start > self.node_count or end > self.node_count: raise MSerror("Start and end indices out of bounds")
+        if start > end: raise MSerror("Start index must be less than or equal to end index")
+        
+        # Get the nodes in the range [start, end] that need to be inverted
+        nodes_to_invert = []
+        for i in range(start, end + 1):
+            nodes_to_invert.append(self[i])
+        
+        # Reverse the order of nodes
+        nodes_to_invert.reverse()
+        
+        # Create new edges for the inverted section
+        inverted_edges = []
+        
+        # Handle connection from previous section to inverted section
+        if start > 0:
+            # Connect from the node before start to the first node of inverted section
+            prev_edge = self.path_edges[start - 1]
+            first_inverted_node = nodes_to_invert[0]
+            
+            # Create edge with inverted sides for the first node
+            connection_edge = Edge(
+                prev_edge.node1,
+                prev_edge.node1_side,
+                first_inverted_node,
+                not prev_edge.node2_side  # Invert the side
+            )
+            inverted_edges.append(connection_edge)
+        
+        # Create edges within the inverted section
+        for i in range(len(nodes_to_invert) - 1):
+            current_node = nodes_to_invert[i]
+            next_node = nodes_to_invert[i + 1]
+            
+            # Find the original edge between these nodes (in reverse order)
+            original_edge = None
+            for edge in self.path_edges[start:end]:
+                if edge.node1 == next_node and edge.node2 == current_node:
+                    original_edge = edge
+                    break
+            
+            if original_edge:
+                # Create inverted edge (reverse direction and invert sides)
+                inverted_edge = Edge(
+                    current_node,
+                    not original_edge.node2_side,  # Invert the side
+                    next_node,
+                    not original_edge.node1_side   # Invert the side
+                )
+            else:
+                # Fallback if original edge not found - create with default orientation
+                inverted_edge = Edge(
+                    current_node,
+                    False,  # Default side
+                    next_node,
+                    True    # Default opposite side
+                )
+            
+            inverted_edges.append(inverted_edge)
+        
+        # Handle connection from inverted section to next section
+        if end < self.node_count:
+            # Connect from last inverted node to the next section
+            last_inverted_node = nodes_to_invert[-1]
+            next_edge = self.path_edges[end]
+            
+            connection_edge = Edge(
+                last_inverted_node,
+                not next_edge.node1_side,  # Invert the side
+                next_edge.node2,
+                next_edge.node2_side
+            )
+            # This edge will be part of the next section, so we don't add it to inverted_edges
+            # Instead, we need to modify the existing edge
+        
+        # Calculate the range of edges to replace
+        edge_start = start - 1 if start > 0 else 0
+        edge_end = end if end < self.node_count else self.node_count
+        
+        # Replace the edges in the inverted section
+        if start == 0:
+            # If inverting from the beginning, don't include connection from previous
+            self.path_edges[0:end] = inverted_edges[1:] if len(inverted_edges) > 1 else []
+        else:
+            # Replace the section including the connection edge
+            self.path_edges[edge_start:edge_end] = inverted_edges
+        
+        # Update the node count
+        self.node_count = len(self.path_edges)
+   
 class Graph:
     """Represents a directed graph"""
 
@@ -413,9 +518,9 @@ if __name__ == "__main__":
     nodeF = Node("|soir|", 6)
 
     path = Path(1, [Edge(nodeA, True, nodeB, False),
-                    Edge(nodeB, True, nodeC, True),
+                    Edge(nodeB, True, nodeC, False),
                     Edge(nodeC, True, nodeD, False),
-                    Edge(nodeD, True, nodeE, True),
+                    Edge(nodeD, True, nodeE, False),
                     Edge(nodeE, True, nodeF, False)])
     print(path)
     print(repr(path))
