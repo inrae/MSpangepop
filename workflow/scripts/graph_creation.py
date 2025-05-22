@@ -150,11 +150,12 @@ class Path:
     def bypass(self, start: int, end: int) -> None:
         """
         Creates a shortcut in the path by creating a direct edge from node at start index
-        to node at end index, and removing all edges between them.
+        to node at end index, and removing all edges between them from this path only.
+        Does not remove edges from the graph structure to avoid inconsistencies.
         
         Parameters:
-        - start (int): Index of the starting node for the shunt
-        - end (int): Index of the ending node for the shunt
+        - start (int): Index of the starting node for the bypass
+        - end (int): Index of the ending node for the bypass
         """
         if start < 0 or end < 0:
             raise MSerror("Start and end indices must be positive")
@@ -163,12 +164,10 @@ class Path:
             raise MSerror("Start and end indices out of bounds")
             
         if start == end or start + 1 == end:
-            # Nothing to shunt if start and end are the same or adjacent
+            # Nothing to bypass if start and end are the same or adjacent
             return
             
         # Create a new edge from the start node to the end node
-        # The start node is the node1 of the edge at start index
-        # The end node is either node2 of the edge at end-1 index, or node1 of edge at end index if end < len(path_edges)
         start_node = self[start]
         end_node = self[end]
         
@@ -178,15 +177,9 @@ class Path:
                         end_node, # End node
                         self.path_edges[end-1].node2_side) # Side of the end node
         
-        # Store the edges to remove
-        edges_to_remove = self.path_edges[start:end]
-        
         # Replace the set of edges with the new single edge
+        # Do NOT remove old edges from graph structure to avoid inconsistencies
         self.path_edges[start:end] = [new_edge]
-        
-        # Remove the old edges from the graph structure
-        for edge in edges_to_remove:
-            edge.remove()
             
         # Update the node count
         self.node_count = len(self.path_edges)
@@ -283,12 +276,57 @@ class Graph:
         for path in self.paths.items() :
             print(path)
 
-    def add_del(self, a: int, b: int, paths: set) -> None:
-        """Ajoute    une deletion dans les paths, entre la position a et b"""
-        # YOU STOPED HERE
-
+    def add_del(self, a: int, b: int, affected_lineages: set) -> None:
+        """
+        Adds a deletion in the specified paths, between positions a and b.
+        Creates a bypass in each path to represent the deletion.
+        
+        Parameters:
+        - a (int): Starting position of the deletion
+        - b (int): Ending position of the deletion
+        - affected_lineages (set): Set of path lineages where the deletion should be applied
+    
+        """
+        if a < 0 or b < 0:
+            raise MSerror("Deletion positions must be positive")
+            
+        if a >= b:
+            raise MSerror("End position must be greater than start position")
+        
+        # Keep track of missing paths
+        missing_paths = []
+        
+        # Apply the deletion (bypass) to each specified path
+        for lineage in affected_lineages:
+            if lineage in self.paths:
+                # Get the path
+                path = self.paths[lineage]
+                
+                # Make sure the path is long enough for the deletion
+                if b > path.node_count:
+                    raise MSerror(f"Path with lineage {lineage} is too short for deletion between positions {a} and {b}")
+                
+                # Create a bypass in the path (this will create the deletion)
+                path.bypass(a, b)
+            else:
+                # If a path is not found, add it to missing paths
+                missing_paths.append(lineage)
+        
+        # Warn about missing paths
+        if missing_paths:
+            print(f"Warning: The following paths were not found in the graph: {missing_paths}")
         
 if __name__ == "__main__":
+    count = itertools.count(1)
+    graphA = Graph(count)
+    graphA.build_from_sequence("ABCDEFGHiJKLMNOP",[1,2,3])
+    graphA.details
+    graphA.add_del(1,4, (1, 2))
+    graphA.details
+    graphA.add_del(1,3, {1})
+    graphA.details
+
+    """
     nodeA = Node("|Je|", 1)
     nodeB = Node("|vais|", 2)
     nodeC = Node("|au|", 3)
@@ -307,7 +345,7 @@ if __name__ == "__main__":
     path.bypass(start = 0, end = 4)
     print(path)
     print(repr(path))
-
+    """
 
 '''
     count = itertools.count(1)
