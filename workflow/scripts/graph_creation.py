@@ -183,7 +183,62 @@ class Path:
             
         # Update the node count
         self.node_count = len(self.path_edges)
+
+    def loop(self, start: int, end: int) -> None:
+        """
+        Creates a loop in the path where the nodes between start and end (inclusive) 
+        are traversed twice in sequence.
         
+        Examples:
+        - loop(1, 2) on A-B-C-D creates A-B-C-B-C-D (nodes B and C are traversed twice)
+        - loop(1, 3) on A-B-C-D creates A-B-C-D-B-C-D (nodes B, C, and D are traversed twice)
+        - loop(2, 2) on A-B-C-D creates A-B-C-C-D (node C is traversed twice)
+        
+        Parameters:
+        - start (int): Index of the starting node for the loop
+        - end (int): Index of the ending node for the loop (inclusive)
+        """
+        if start < 0 or end < 0:
+            raise MSerror("Start and end indices must be positive")
+            
+        if start > self.node_count or end > self.node_count:
+            raise MSerror("Start and end indices out of bounds")
+            
+        if start > end:
+            raise MSerror("Start index must be less than or equal to end index")
+        
+        # We need to duplicate the edges that connect the nodes in the range [start, end]
+        # For nodes at indices [start, end], we need edges at indices [start-1, end-1]
+        # But we need to be careful about the boundaries
+        
+        if start == 0:
+            # If we're starting from the first node, we can't duplicate an incoming edge
+            # We need to duplicate the edges from start to end
+            edges_to_duplicate = self.path_edges[start:end]
+        else:
+            # Normal case: duplicate edges from (start-1) to (end-1) inclusive
+            # This will duplicate the traversal of nodes [start, end]
+            edges_to_duplicate = self.path_edges[start-1:end]
+        
+        # Create copies of the edges to duplicate
+        duplicated_edges = []
+        for edge in edges_to_duplicate:
+            # Create a new edge with the same nodes and sides
+            new_edge = Edge(
+                edge.node1,      # Same start node
+                edge.node1_side, # Same start node side
+                edge.node2,      # Same end node  
+                edge.node2_side  # Same end node side
+            )
+            duplicated_edges.append(new_edge)
+        
+        # Insert the duplicated edges after the original section
+        # Insert at position 'end' to place the loop after the original traversal
+        self.path_edges[end:end] = duplicated_edges
+        
+        # Update the node count
+        self.node_count = len(self.path_edges)
+
 class Graph:
     """Represents a directed graph"""
 
@@ -316,16 +371,57 @@ class Graph:
         if missing_paths:
             print(f"Warning: The following paths were not found in the graph: {missing_paths}")
         
+    def add_tdup(self, a: int, b: int, affected_lineages: set) -> None:
+        """
+
+        """
+        # Make sure the arguments are valid
+        if a < 0 or b < 0: raise MSerror("Deletion positions must be positive")
+        if a > b: raise MSerror("End must be > start")
+
+        # Keep track of missing paths
+        missing_paths = []
+        
+        # Apply the tdup to each specified path
+        for lineage in affected_lineages:
+            if lineage in self.paths:
+                path = self.paths[lineage]
+                if b > path.node_count:
+                    raise MSerror(f"Path with lineage {lineage} is too short for deletion between positions {a} and {b}")
+                
+                # Create a tdup in the path (this will create the deletion)
+                path.loop(a, b)
+            else:
+                missing_paths.append(lineage)
+        if missing_paths:
+            print(f"Warning: The following paths were not found in the graph: {missing_paths}")
+
 if __name__ == "__main__":
+    print("start")
     count = itertools.count(1)
     graphA = Graph(count)
-    graphA.build_from_sequence("ABCDEFGHiJKLMNOP",[1,2,3])
+    graphA.build_from_sequence("ABCDEFG",[1,2,3])
     graphA.details
-    graphA.add_del(1,4, (1, 2))
-    graphA.details
-    graphA.add_del(1,3, {1})
+    graphA.add_tdup(4, 4, {1, 2})
     graphA.details
 
+    nodeA = Node("|Je|", 1)
+    nodeB = Node("|vais|", 2)
+    nodeC = Node("|au|", 3)
+    nodeD = Node("|concert|", 4)
+    nodeE = Node("|ce|", 5)
+    nodeF = Node("|soir|", 6)
+
+    path = Path(1, [Edge(nodeA, True, nodeB, False),
+                    Edge(nodeB, True, nodeC, True),
+                    Edge(nodeC, True, nodeD, False),
+                    Edge(nodeD, True, nodeE, True),
+                    Edge(nodeE, True, nodeF, False)])
+    print(path)
+    print(repr(path))
+    path.loop(start = 1, end = 3)
+    print(path)
+    print(repr(path))
     """
     nodeA = Node("|Je|", 1)
     nodeB = Node("|vais|", 2)
@@ -341,8 +437,7 @@ if __name__ == "__main__":
                     Edge(nodeE, True, nodeF, False)])
     print(path)
     print(repr(path))
-
-    path.bypass(start = 0, end = 4)
+    path.loop(start = 1, end = 4)
     print(path)
     print(repr(path))
     """
@@ -359,13 +454,8 @@ if __name__ == "__main__":
     print()
     graphA+=graphB
     graphA.details
+
 class Graph:
-
-    def add_snp(self, idx: int) -> None:
-        snp = SNP(A=self.nodes[idx-1], B=self.nodes[idx], D=self.nodes[idx+1])
-        new_node = snp.compute_alt_seq(self._node_id_generator)
-        self.nodes.append(new_node)
-
     def add_deletion(self, start_idx: int, end_idx: int) -> None:
         deletion = DEL(A=self.nodes[start_idx], D=self.nodes[end_idx])
         deletion.compute_alt_seq()
@@ -378,10 +468,6 @@ class Graph:
     def add_inversion(self, start_idx: int, end_idx: int) -> None:
         inversion = INV(A=self.nodes[start_idx], B=self.nodes[start_idx+1], C=self.nodes[end_idx-1], D=self.nodes[end_idx])
         inversion.compute_alt_seq()
-
-    def add_duplication(self, start_idx: int, end_idx: int) -> None:
-        duplication = DUP(A=self.nodes[start_idx], D=self.nodes[end_idx])
-        duplication.compute_alt_seq()
    
 class GraphEnsemble:
     """Manages multiple graphs and allows linking them together."""
