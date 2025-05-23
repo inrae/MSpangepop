@@ -251,73 +251,110 @@ class Path:
         self.node_count = len(self.path_edges)
 
     def invert(self, start: int, end: int) -> None:
-        if start <= 0 or end <= 0: raise MSerror("Start and end indices must be positive")
-        if start > self.node_count or end+1 > self.node_count: raise MSerror("Start and end indices out of bounds")
-        if start > end: raise MSerror("Start index must be less than or equal to end index")
-        print(self.path_edges)
-        # Single node inversion 
+        """
+        Inverts a section of the path by reversing node order and flipping edge orientations.
+        This represents a genomic inversion where DNA is read in reverse.
+        
+        For path with nodes [0,1,2,3,4] and edges [0>1, 1>2, 2>3, 3>4]:
+        - invert(1,3) reverses nodes [1,2,3] to [3,2,1] and flips all affected edges
+        - Result: [0<3, 3>2, 2<1, 1>4] (nodes 1,2,3 are now read backwards)
+        
+        Parameters:
+        - start (int): Index of first node to invert (1-based for edges, 0-based for nodes)
+        - end (int): Index of last node to invert (inclusive)
+        """
+        # Input validation
+        if start <= 0 or end <= 0: 
+            raise MSerror("Start and end indices must be positive")
+        if start > self.node_count or end + 1 > self.node_count: 
+            raise MSerror("Start and end indices out of bounds")
+        if start > end: 
+            raise MSerror("Start index must be less than or equal to end index")
+        
+        # SINGLE NODE INVERSION
         if start == end:
+            # For single node inversion, we flip the orientations of edges connecting to this node
+            
+            # Flip the edge leading TO this node (if it exists)
             if start > 0:
-                edge_to_node = self.path_edges[start - 1] # The edge going to that node
+                # path_edges[start-1] is the edge that leads TO node at index 'start'
+                # We use start-1 because edge indices are offset by 1 from node indices
+                edge_to_node = self.path_edges[start - 1]
                 new_edge_to_node = Edge(
                     edge_to_node.node1,
-                    edge_to_node.node1_side,        # This dosent change, the previous node is exited the same way
-                    edge_to_node.node2,
-                    not edge_to_node.node2_side     # FLIP the side of the edge
+                    edge_to_node.node1_side,        # Previous node exit side unchanged
+                    edge_to_node.node2,             # Target node unchanged
+                    not edge_to_node.node2_side     # FLIP: invert how target node is entered
                 )
-                self.path_edges[start-1] = new_edge_to_node
-
-            if start < self.node_count: # Flip the edge leading FROM this node (if exists)
-                edge_from_node = self.path_edges[end]
+                self.path_edges[start - 1] = new_edge_to_node
+            
+            # Flip the edge leading FROM this node (if it exists)
+            if start < self.node_count:
+                # path_edges[start] is the edge that leads FROM node at index 'start'
+                edge_from_node = self.path_edges[start]
                 new_edge_from = Edge(
                     edge_from_node.node1,
-                    not edge_from_node.node1_side,  # FLIP the side of the edge
+                    not edge_from_node.node1_side,  # FLIP: invert how source node is exited
                     edge_from_node.node2,
-                    edge_from_node.node2_side   # This dosent change, the next node is entered the same way
+                    edge_from_node.node2_side       # Next node entry side unchanged
                 )
                 self.path_edges[start] = new_edge_from
             return
-
-        # Multi node inversion
-        # First we keep a pointer to the Edges bordering the insetion
-        first_edge = self.path_edges[start-1] # This contains the node before the invertion
-
-        last_edge = self.path_edges[end]        # This contains the node after the invertion
-        print(first_edge, "XXX", last_edge) 
-
-
-        # We isolate the edges in the insertions
-        original_inversion = self.path_edges[start:end] # -1 to get the edge not the node
-        print(original_inversion, "XXX")
-        original_inversion.reverse() # We inverte the order of edges in the insertion
-        inverted_inverison = [] # This will gather all the inverted edges
+        
+        # MULTI-NODE INVERSION
+        
+        # Step 1: Identify boundary edges
+        # These are the edges that connect the inversion to the rest of the path
+        first_edge = self.path_edges[start - 1]  # Edge leading TO first inverted node
+        last_edge = self.path_edges[end]         # Edge leading FROM last inverted node
+        
+        # Step 2: Extract edges within the inversion
+        # path_edges[start:end] gives us edges BETWEEN the inverted nodes
+        # We use start:end (not start-1:end+1) because we want internal edges only
+        original_inversion = self.path_edges[start:end]
+        
+        # Step 3: Reverse and flip the internal edges
+        original_inversion.reverse()  # Reverse order for inversion
+        inverted_inversion = []
+        
         for edge in original_inversion:
-            new_edge = Edge( # Here we completely swap the edge
-                edge.node2,
-                edge.node2_side,
-                edge.node1,
-                edge.node1_side
+            # Completely flip the edge: swap nodes and keep their sides
+            # This reverses the direction while maintaining proper orientation
+            flipped_edge = Edge(
+                edge.node2,      # Destination becomes source
+                edge.node2_side, # Keep the side orientation
+                edge.node1,      # Source becomes destination  
+                edge.node1_side  # Keep the side orientation
             )
-            inverted_inverison.append(new_edge) # Add that edge to the inverted inversion 
-
-        print(inverted_inverison, "Inverted XXX")
-
-
-        # We link link the invertion to the other edges in the path
-        new_first_edge = Edge(first_edge.node1, first_edge.node1_side, inverted_inverison[0].node1, not inverted_inverison[0].node1_side)
-        new_last_edge = Edge(inverted_inverison[-1].node2, not inverted_inverison[-1].node2_side, last_edge.node2,  last_edge.node2_side)
-
-        print(self.path_edges[start-1:end+1],  "to replace")
-
-        self.path_edges[start-1] = new_first_edge
-        self.path_edges[end] = new_last_edge
-
-        final_list = [new_first_edge] + inverted_inverison + [new_last_edge] 
-
-        print(final_list, "total insertion")
-
-        self.path_edges[start-1:end+1] = final_list
-        print(self.path_edges)
+            inverted_inversion.append(flipped_edge)
+        
+        # Step 4: Create new boundary edges
+        # These connect the inverted section to the unchanged parts of the path
+        
+        # New edge connecting previous section to first inverted node
+        new_first_edge = Edge(
+            first_edge.node1,                      # Source: unchanged
+            first_edge.node1_side,                 # Source side: unchanged
+            inverted_inversion[0].node1,          # Target: first node of inverted section
+            not inverted_inversion[0].node1_side   # Target side: FLIPPED to invert reading
+        )
+        
+        # New edge connecting last inverted node to next section
+        new_last_edge = Edge(
+            inverted_inversion[-1].node2,          # Source: last node of inverted section
+            not inverted_inversion[-1].node2_side, # Source side: FLIPPED to invert reading
+            last_edge.node2,                       # Target: unchanged
+            last_edge.node2_side                   # Target side: unchanged
+        )
+        
+        # Step 5: Replace the entire affected section
+        # We replace edges from (start-1) to (end+1) exclusive, which is (start-1) to (end) inclusive
+        # This replaces: [boundary_in, internal_edges..., boundary_out]
+        final_edges = [new_first_edge] + inverted_inversion + [new_last_edge]
+        self.path_edges[start - 1:end + 1] = final_edges
+        
+        # Update node count (should remain the same for inversions)
+        self.node_count = len(self.path_edges)
 
 class Graph:
     """Represents a directed graph"""
@@ -411,72 +448,119 @@ class Graph:
         for path in self.paths.items() :
             print(path)
 
-    def add_del(self, a: int, b: int, affected_lineages: set) -> None:
+    def add_del(self, a: int, b: int, affected_lineages) -> None:
         """
         Adds a deletion in the specified paths, between positions a and b.
         Creates a bypass in each path to represent the deletion.
         
         Parameters:
         - a (int): Starting position of the deletion
-        - b (int): Ending position of the deletion
-        - affected_lineages (set): Set of path lineages where the deletion should be applied
-    
+        - b (int): Ending position of the deletion  
+        - affected_lineages: Single lineage or collection of lineages to modify
         """
-        if a < 0 or b < 0:
-            raise MSerror("Deletion positions must be positive")
-            
-        if a >= b:
-            raise MSerror("End position must be greater than start position")
+        # Validate input parameters
+        if a < 0 or b < 0: raise MSerror("Deletion positions must be positive")
+        if a >= b: raise MSerror("End position must be greater than start position")
         
-        # Keep track of missing paths
+        # Handle single lineage or collection
+        lineages_to_process = [affected_lineages] if isinstance(affected_lineages, (int, str)) else affected_lineages
         missing_paths = []
         
-        # Apply the deletion (bypass) to each specified path
-        for lineage in affected_lineages:
+        # Apply deletion to each specified path
+        for lineage in lineages_to_process:
             if lineage in self.paths:
-                # Get the path
                 path = self.paths[lineage]
-                
-                # Make sure the path is long enough for the deletion
+                # Check path length before operation
                 if b > path.node_count:
-                    raise MSerror(f"Path with lineage {lineage} is too short for deletion between positions {a} and {b}")
-                
-                # Create a bypass in the path (this will create the deletion)
+                    raise MSerror(f"Path {lineage} too short for deletion at positions {a}-{b}")
+                # Apply bypass operation (creates deletion)
                 path.bypass(a, b)
             else:
-                # If a path is not found, add it to missing paths
                 missing_paths.append(lineage)
         
         # Warn about missing paths
         if missing_paths:
-            print(f"Warning: The following paths were not found in the graph: {missing_paths}")
+            print(f"Warning: Paths not found in graph: {missing_paths}")
+
+    def add_tdup(self, a: int, b: int, affected_lineages) -> None:
+        """
+        Adds a tandem duplication in the specified paths, between positions a and b.
+        Creates a loop in each path to represent the duplication.
         
-    def add_tdup(self, a: int, b: int, affected_lineages: set) -> None:
+        Parameters:
+        - a (int): Starting position of the duplication
+        - b (int): Ending position of the duplication
+        - affected_lineages: Single lineage or collection of lineages to modify
         """
-
-        """
-        # Make sure the arguments are valid
-        if a < 0 or b < 0: raise MSerror("Deletion positions must be positive")
+        # Validate input parameters
+        if a < 0 or b < 0: raise MSerror("Duplication positions must be positive")
         if a > b: raise MSerror("End must be > start")
-
-        # Keep track of missing paths
+        
+        # Handle single lineage or collection
+        lineages_to_process = [affected_lineages] if isinstance(affected_lineages, (int, str)) else affected_lineages
         missing_paths = []
         
-        # Apply the tdup to each specified path
-        for lineage in affected_lineages:
+        # Apply tandem duplication to each specified path
+        for lineage in lineages_to_process:
             if lineage in self.paths:
                 path = self.paths[lineage]
+                # Check path length before operation
                 if b > path.node_count:
-                    raise MSerror(f"Path with lineage {lineage} is too short for deletion between positions {a} and {b}")
-                
-                # Create a tdup in the path (this will create the deletion)
+                    raise MSerror(f"Path {lineage} too short for duplication at positions {a}-{b}")
+                # Apply loop operation (creates tandem duplication)
                 path.loop(a, b)
             else:
                 missing_paths.append(lineage)
+        
+        # Warn about missing paths
         if missing_paths:
-            print(f"Warning: The following paths were not found in the graph: {missing_paths}")
+            print(f"Warning: Paths not found in graph: {missing_paths}")
+
+    def add_inv(self, a: int, b: int, affected_lineages) -> None:
+        """
+        Adds an inversion in the specified paths, between positions a and b.
+        Creates an inverted section in each path to represent the inversion.
+        
+        Parameters:
+        - a (int): Starting position of the inversion
+        - b (int): Ending position of the inversion
+        - affected_lineages: Single lineage or collection of lineages to modify
+        """
+        # Validate input parameters
+        if a <= 0 or b <= 0: raise MSerror("Inversion positions must be positive")
+        if a > b: raise MSerror("End must be >= start")
+        
+        # Handle single lineage or collection
+        lineages_to_process = [affected_lineages] if isinstance(affected_lineages, (int, str)) else affected_lineages
+        missing_paths = []
+        
+        # Apply inversion to each specified path
+        for lineage in lineages_to_process:
+            if lineage in self.paths:
+                path = self.paths[lineage]
+                # Check path length before operation
+                if b + 1 > path.node_count:
+                    raise MSerror(f"Path {lineage} too short for inversion at positions {a}-{b}")
+                # Apply invert operation (creates inversion)
+                path.invert(a, b)
+            else:
+                missing_paths.append(lineage)
+        
+        # Warn about missing paths
+        if missing_paths:
+            print(f"Warning: Paths not found in graph: {missing_paths}")
 
 if __name__ == "__main__":
+    count = itertools.count(1)
+    graphA = Graph(count)
+    graphA.build_from_sequence("ABCDEFGHIJK",[1,2,3])
+    graphA.details
+    graphA.add_inv(2, 4, {3})
+    graphA.details
+    graphA.add_inv(1, 6, {3})
+    graphA.details
+    
+    """
     print("start")
     count = itertools.count(1)
     graphA = Graph(count)
@@ -503,38 +587,8 @@ if __name__ == "__main__":
     print(path)
     print(repr(path))
     """
-    nodeA = Node("|Je|", 1)
-    nodeB = Node("|vais|", 2)
-    nodeC = Node("|au|", 3)
-    nodeD = Node("|concert|", 4)
-    nodeE = Node("|ce|", 5)
-    nodeF = Node("|soir|", 6)
-
-    path = Path(1, [Edge(nodeA, True, nodeB, False),
-                    Edge(nodeB, True, nodeC, True),
-                    Edge(nodeC, True, nodeD, False),
-                    Edge(nodeD, True, nodeE, True),
-                    Edge(nodeE, True, nodeF, False)])
-    print(path)
-    print(repr(path))
-    path.loop(start = 1, end = 4)
-    print(path)
-    print(repr(path))
-    """
 
 '''
-    count = itertools.count(1)
-    graphA = Graph(count)
-    graphA.build_from_sequence("ABC",[1,2,3])
-    graphA.details
-    print()
-    graphB = Graph(count)
-    graphB.build_from_sequence("DEF",[4])
-    graphB.details
-    print()
-    graphA+=graphB
-    graphA.details
-
 class Graph:
     def add_deletion(self, start_idx: int, end_idx: int) -> None:
         deletion = DEL(A=self.nodes[start_idx], D=self.nodes[end_idx])
@@ -545,10 +599,6 @@ class Graph:
         inserted_nodes = insertion.compute_alt_seq(self._node_id_generator)
         self.nodes = self.nodes + inserted_nodes 
     
-    def add_inversion(self, start_idx: int, end_idx: int) -> None:
-        inversion = INV(A=self.nodes[start_idx], B=self.nodes[start_idx+1], C=self.nodes[end_idx-1], D=self.nodes[end_idx])
-        inversion.compute_alt_seq()
-   
 class GraphEnsemble:
     """Manages multiple graphs and allows linking them together."""
     
