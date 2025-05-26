@@ -1,9 +1,20 @@
 import itertools
 import argparse
+import random
 from bitarray import bitarray
 from io_handler import MSpangepopDataHandler, MSerror, MSsuccess, MScompute
 from graph_utils import merge_nodes, save_to_gfa
-from variants_lib import *
+
+# You can choose a matrix here for the SNP
+from matrix import random_matrix as transition_matrix
+
+def mutate_base(original_base: str) -> str:
+    """Uses the provided transition matrix to determine the mutated base."""
+    return random.choices(
+        population=list(transition_matrix[original_base].keys()),
+        weights=list(transition_matrix[original_base].values()),
+        k=1
+    )[0]
 
 class Node:
     """Represents a node in the graph."""
@@ -353,8 +364,22 @@ class Path:
         final_edges = [new_first_edge] + inverted_inversion + [new_last_edge]
         self.path_edges[start - 1:end + 1] = final_edges
         
-        # Update node count (should remain the same for inversions)
-        self.node_count = len(self.path_edges)
+        # Dont update node count (should remain the same for inversions)
+        # self.node_count = len(self.path_edges)
+
+    def swap(self, pos: int, new_node: Node) -> None: 
+        """
+        Swap a node in the path with another node, retaning the orientation
+        """
+
+        # This mean we need to consider only two edges
+        before_edge = self.path_edges[pos-1] # -1 to get the edge before the node
+        after_edge = self.path_edges[pos] # The edge going out of the node
+
+        before_edge.node2 = new_node # The second node of the edge before become the new one
+        after_edge.node1 = new_node  # The first node to the second edge become the new one
+
+
 
 class Graph:
     """Represents a directed graph"""
@@ -433,9 +458,21 @@ class Graph:
         self.end_node = previous_node # Keep the pointer on the last node
 
         self.paths[ancestral_path.lineage] = ancestral_path
+        
+        # Create deep copies of edges for each lineage
         for i in lineages:
-            # Create a new path object with a shallow copy of the edges
-            copied_path = Path(i, ancestral_path.path_edges.copy())
+            copied_path = Path(i)
+            
+            # Create new Edge objects for each path (deep copy)
+            for edge in ancestral_path.path_edges:
+                new_edge = Edge(
+                    edge.node1,      # Same nodes
+                    edge.node1_side, # Same orientation
+                    edge.node2,      # Same nodes
+                    edge.node2_side  # Same orientation
+                )
+                copied_path.add_edge(new_edge)
+            
             self.paths[i] = copied_path
 
     def __repr__(self) -> str:
@@ -550,16 +587,47 @@ class Graph:
         if missing_paths:
             print(f"Warning: Paths not found in graph: {missing_paths}")
 
+    def add_snp(self, a: int, affected_lineages) -> None:
+        """
+        Function to add a snp to the specified paths, we need to create new nodes.
+        """
+        if a <= 0: raise MSerror("Inversion positions must be positive")
+        
+        # Handle single lineage or collection
+        lineages_to_process = [affected_lineages] if isinstance(affected_lineages, (int, str)) else affected_lineages
+        missing_paths = []
+        
+        # Apply inversion to each specified path
+        for lineage in lineages_to_process:
+            if lineage in self.paths:
+                path = self.paths[lineage]
+                # Check path length before operation
+                if a + 1 > path.node_count:
+                    raise MSerror(f"Path {lineage} too short for SNP at positions {a}")
+                
+                node_base = str(self.paths[lineage][a]) # Fetch the bases of the position to mutate in the path
+                node_to_add = self.add_new_node(mutate_base(node_base)) # Create a new node with a different base
+                path.swap(a, node_to_add)
+            else:
+                missing_paths.append(lineage)
+        
+        # Warn about missing paths
+        if missing_paths:
+            print(f"Warning: Paths not found in graph: {missing_paths}")
+
+    # There is a probleme here we nned to share the node between 
+
 if __name__ == "__main__":
     count = itertools.count(1)
     graphA = Graph(count)
-    graphA.build_from_sequence("ABCDEFGHIJK",[1,2,3])
+    graphA.build_from_sequence("ATCGGGC",[1,2,3])
     graphA.details
-    graphA.add_inv(2, 4, {3})
+    graphA.add_snp(2, {3, 2})
     graphA.details
-    graphA.add_inv(1, 6, {3})
+    graphA.add_snp(5, {3})
     graphA.details
-    
+
+
     """
     print("start")
     count = itertools.count(1)
