@@ -1,44 +1,45 @@
+# .gitlab-ci.yml
 variables:
-  # Docker image name
   IMAGE_NAME: "msprime_box"
   DOCKER_BUILD_CONTEXT: "dependencies"
-  # Use Docker-in-Docker service
-  DOCKER_HOST: tcp://docker:2375
-  DOCKER_TLS_CERTDIR: ""
 
 stages:
   - build
 
-# Build and push Docker image
 build-and-push-image:
   stage: build
+  tags:
+    - stable 
   image: docker:latest
   services:
     - docker:dind
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
   before_script:
-    # Login using CI_JOB_TOKEN (most secure method)
-    - echo "🔹 Msprime box -> Logging into GitLab Container Registry..."
-    - docker login -u gitlab-ci-token -p ${CI_JOB_TOKEN} ${CI_REGISTRY}
-    - echo "✅ Msprime box -> Login successful."
+    - echo "🔹 -> Logging into GitLab Container Registry..."
+    - echo "${CI_REGISTRY_PASSWORD}" | docker login "${CI_REGISTRY}" -u "${CI_REGISTRY_USER}" --password-stdin
+    - echo "✅ -> Login successful."
   script:
-    # Build the Docker image
-    - echo "🔹 Msprime box -> Building Docker image..."
+    - echo "🔹 -> Building Docker image from ${DOCKER_BUILD_CONTEXT}/Dockerfile..."
     - docker build -t "${CI_REGISTRY_IMAGE}/${IMAGE_NAME}:${CI_COMMIT_SHORT_SHA}" ${DOCKER_BUILD_CONTEXT}
     - docker tag "${CI_REGISTRY_IMAGE}/${IMAGE_NAME}:${CI_COMMIT_SHORT_SHA}" "${CI_REGISTRY_IMAGE}/${IMAGE_NAME}:latest"
-    - echo "✅ Msprime box-> Build successful."
     
-    # Push the image with commit SHA tag
-    - echo "🔹 Msprime box -> Pushing image '${CI_REGISTRY_IMAGE}/${IMAGE_NAME}:${CI_COMMIT_SHORT_SHA}'..."
+    - echo "🔹 -> Pushing images to registry..."
     - docker push "${CI_REGISTRY_IMAGE}/${IMAGE_NAME}:${CI_COMMIT_SHORT_SHA}"
-    
-    # Push the image with latest tag
-    - echo "🔹 Msprime box -> Pushing image '${CI_REGISTRY_IMAGE}/${IMAGE_NAME}:latest'..."
     - docker push "${CI_REGISTRY_IMAGE}/${IMAGE_NAME}:latest"
-    - echo "✅ Msprime box -> Images successfully pushed to registry."
+    
+    # If this is a tag, also push with version
+    - |
+      if [[ -n "${CI_COMMIT_TAG}" ]]; then
+        docker tag "${CI_REGISTRY_IMAGE}/${IMAGE_NAME}:${CI_COMMIT_SHORT_SHA}" "${CI_REGISTRY_IMAGE}/${IMAGE_NAME}:${CI_COMMIT_TAG}"
+        docker push "${CI_REGISTRY_IMAGE}/${IMAGE_NAME}:${CI_COMMIT_TAG}"
+      fi
+    
+    - echo "✅ -> Images successfully pushed to registry."
   rules:
-    # Only run when Dockerfile is modified
     - changes:
-        - Dockerfile
-    # Or when manually triggered
+        - dependencies/Dockerfile
+    - if: $CI_COMMIT_TAG  # Also run on tags like your colleagues
     - when: manual
       allow_failure: true
