@@ -5,7 +5,7 @@
 
 samples:
   test_sample:
-    fasta_gz: "paralel_test.fa"
+    fasta_gz: "small_test_genome.fa.gz"
     chr_n: 1
     population_size: 5000
     mutation_rate: 1e-5
