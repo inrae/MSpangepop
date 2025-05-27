@@ -1,20 +1,12 @@
 import itertools
 import argparse
 import random
-from bitarray import bitarray
+from bitarray import bitarray # type: ignore
 from io_handler import MSpangepopDataHandler, MSerror, MSsuccess, MScompute
-from graph_utils import merge_nodes, save_to_gfa
+from graph_utils import mutate_base, generate_sequence
 
-# You can choose a matrix here for the SNP
-from matrix import random_matrix as transition_matrix
-
-def mutate_base(original_base: str) -> str:
-    """Uses the provided transition matrix to determine the mutated base."""
-    return random.choices(
-        population=list(transition_matrix[original_base].keys()),
-        weights=list(transition_matrix[original_base].values()),
-        k=1
-    )[0]
+# You can choose a matrix here for the SNP and insertion sequences
+from matrix import random_matrix as snp_matrix, simple_at_bias_matrix as insertion_matrix
 
 class Node:
     """Represents a node in the graph."""
@@ -379,6 +371,9 @@ class Path:
         before_edge.node2 = new_node # The second node of the edge before become the new one
         after_edge.node1 = new_node  # The first node to the second edge become the new one
 
+    def expand(self, pos: int, list_of_nodes: list[Node]):
+        pass
+
 
 
 class Graph:
@@ -589,33 +584,58 @@ class Graph:
 
     def add_snp(self, a: int, affected_lineages) -> None:
         """
-        Function to add a snp to the specified paths, we need to create new nodes.
+        Function to add a SNP to the specified paths. Creates one new node that is shared
+        across all affected paths for the same mutation.
+        
+        Parameters:
+        - a (int): Position where the SNP should be added
+        - affected_lineages: Single lineage or collection of lineages to modify
         """
-        if a <= 0: raise MSerror("Inversion positions must be positive")
+        if a <= 0: raise MSerror("SNP position must be positive")
         
         # Handle single lineage or collection
         lineages_to_process = [affected_lineages] if isinstance(affected_lineages, (int, str)) else affected_lineages
         missing_paths = []
+        valid_paths = []
         
-        # Apply inversion to each specified path
+        # First pass: validate all paths and collect valid ones
         for lineage in lineages_to_process:
             if lineage in self.paths:
                 path = self.paths[lineage]
                 # Check path length before operation
                 if a + 1 > path.node_count:
-                    raise MSerror(f"Path {lineage} too short for SNP at positions {a}")
-                
-                node_base = str(self.paths[lineage][a]) # Fetch the bases of the position to mutate in the path
-                node_to_add = self.add_new_node(mutate_base(node_base)) # Create a new node with a different base
-                path.swap(a, node_to_add)
+                    raise MSerror(f"Path {lineage} too short for SNP at position {a}")
+                valid_paths.append((lineage, path))
             else:
                 missing_paths.append(lineage)
+        
+        # If no valid paths, warn and return
+        if not valid_paths:
+            if missing_paths:
+                print(f"Warning: Paths not found in graph: {missing_paths}")
+            return
+        
+        # Get the original base from the first valid path (should be same across all paths)
+        first_lineage, first_path = valid_paths[0]
+        node_base = str(first_path[a])
+        
+        # Verify that all paths have the same base at this position (sanity check)
+        for lineage, path in valid_paths:
+            if str(path[a]) != node_base:
+                raise MSerror(f"Paths have different bases at position {a}: expected '{node_base}', found '{str(path[a])}' in path {lineage}")
+        
+        # Create ONE new node with the mutated base that will be shared across all paths
+        mutated_base = mutate_base(node_base, snp_matrix)
+        shared_mutated_node = self.add_new_node(mutated_base)
+        
+        # Apply the same node to all valid paths
+        for lineage, path in valid_paths:
+            path.swap(a, shared_mutated_node)
         
         # Warn about missing paths
         if missing_paths:
             print(f"Warning: Paths not found in graph: {missing_paths}")
-
-    # There is a probleme here we nned to share the node between 
+        
 
 if __name__ == "__main__":
     count = itertools.count(1)
@@ -624,7 +644,7 @@ if __name__ == "__main__":
     graphA.details
     graphA.add_snp(2, {3, 2})
     graphA.details
-    graphA.add_snp(5, {3})
+    graphA.add_snp(2, {3, 2})
     graphA.details
 
 
