@@ -1,0 +1,44 @@
+variables:
+  # Docker image name
+  IMAGE_NAME: "msprime_box"
+  DOCKER_BUILD_CONTEXT: "dependencies"
+  # Use Docker-in-Docker service
+  DOCKER_HOST: tcp://docker:2375
+  DOCKER_TLS_CERTDIR: ""
+
+stages:
+  - build
+
+# Build and push Docker image
+build-and-push-image:
+  stage: build
+  image: docker:latest
+  services:
+    - docker:dind
+  before_script:
+    # Login using CI_JOB_TOKEN (most secure method)
+    - echo "🔹 Msprime box -> Logging into GitLab Container Registry..."
+    - docker login -u gitlab-ci-token -p ${CI_JOB_TOKEN} ${CI_REGISTRY}
+    - echo "✅ Msprime box -> Login successful."
+  script:
+    # Build the Docker image
+    - echo "🔹 Msprime box -> Building Docker image..."
+    - docker build -t "${CI_REGISTRY_IMAGE}/${IMAGE_NAME}:${CI_COMMIT_SHORT_SHA}" ${DOCKER_BUILD_CONTEXT}
+    - docker tag "${CI_REGISTRY_IMAGE}/${IMAGE_NAME}:${CI_COMMIT_SHORT_SHA}" "${CI_REGISTRY_IMAGE}/${IMAGE_NAME}:latest"
+    - echo "✅ Msprime box-> Build successful."
+    
+    # Push the image with commit SHA tag
+    - echo "🔹 Msprime box -> Pushing image '${CI_REGISTRY_IMAGE}/${IMAGE_NAME}:${CI_COMMIT_SHORT_SHA}'..."
+    - docker push "${CI_REGISTRY_IMAGE}/${IMAGE_NAME}:${CI_COMMIT_SHORT_SHA}"
+    
+    # Push the image with latest tag
+    - echo "🔹 Msprime box -> Pushing image '${CI_REGISTRY_IMAGE}/${IMAGE_NAME}:latest'..."
+    - docker push "${CI_REGISTRY_IMAGE}/${IMAGE_NAME}:latest"
+    - echo "✅ Msprime box -> Images successfully pushed to registry."
+  rules:
+    # Only run when Dockerfile is modified
+    - changes:
+        - Dockerfile
+    # Or when manually triggered
+    - when: manual
+      allow_failure: true
