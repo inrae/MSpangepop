@@ -166,6 +166,7 @@ class Path:
         Creates a shortcut in the path by creating a direct edge from node at start index
         to node at end index, and removing all edges between them from this path only.
         Does not remove edges from the graph structure to avoid inconsistencies.
+        Now handles boundary cases: start=0 (first node) and end=self.node_count (last node).
         
         Parameters:
         - start (int): Index of the starting node for the bypass
@@ -173,28 +174,49 @@ class Path:
         """
         if start < 0 or end < 0:
             raise MSerror("Start and end indices must be positive")
-
         if start > self.node_count or end > self.node_count:
             raise MSerror("Start and end indices out of bounds")
-            
         if start == end or start + 1 == end:
             # Nothing to bypass if start and end are the same or adjacent
             return
-            
-        # Create a new edge from the start node to the end node
+        
+        # Get the start and end nodes
         start_node = self[start]
         end_node = self[end]
         
-        # Create the new edge - a connection from start to end RETAINING the side of the start node and the end node
-        new_edge = Edge(start_node, # Start node
-                        self.path_edges[start].node1_side, # Side of the start node
-                        end_node, # End node
-                        self.path_edges[end-1].node2_side) # Side of the end node
+        # Determine the sides for the new edge
+        # Handle different boundary cases
+        
+        if start == 0 and end == self.node_count:
+            # Special case: bypass entire path (first to last node)
+            # Use default orientation: True -> False
+            start_side = True
+            end_side = False
+            
+        elif start == 0:
+            # Starting from first node - no incoming edge exists
+            # Use the outgoing side from the first edge, but for the end node use the incoming side
+            start_side = True  # Default orientation for start
+            end_side = self.path_edges[end-1].node2_side  # Side of end node from its incoming edge
+            
+        elif end == self.node_count:
+            # Ending at last node - no outgoing edge exists  
+            # Use the incoming side from the start node, but for the end use default
+            start_side = self.path_edges[start].node1_side  # Side of start node from its outgoing edge
+            end_side = False  # Default orientation for end
+            
+        else:
+            # Normal case: both nodes have incoming and outgoing edges
+            start_side = self.path_edges[start].node1_side    # Side of start node from its outgoing edge
+            end_side = self.path_edges[end-1].node2_side      # Side of end node from its incoming edge
+        
+        # Create the new bypass edge
+        new_edge = Edge(start_node, start_side, end_node, end_side)
         
         # Replace the set of edges with the new single edge
         # Do NOT remove old edges from graph structure to avoid inconsistencies
         self.path_edges[start:end] = [new_edge]
-            
+        
         # Update the node count
         self.node_count = len(self.path_edges)
 
@@ -206,6 +228,7 @@ class Path:
         Examples:
         - loop(1, 2) on A-B-C-D creates A-B-C-B-C-D (nodes B and C are traversed twice)
         - loop(1, 3) on A-B-C-D creates A-B-C-D-B-C-D (nodes B, C, and D are traversed twice)
+        - loop(0, 2) on A-B-C-D creates A-B-C-A-B-C-D (nodes A, B, and C are traversed twice)
         - loop(2, 2) on A-B-C-D creates A-B-C-C-D (node C is traversed twice)
         
         Parameters:
@@ -214,41 +237,63 @@ class Path:
         """
         if start < 0 or end < 0:
             raise MSerror("Start and end indices must be positive")
-            
         if start > self.node_count or end > self.node_count:
             raise MSerror("Start and end indices out of bounds")
-            
         if start > end:
             raise MSerror("Start index must be less than or equal to end index")
         
-        # We need to duplicate the edges that connect the nodes in the range [start, end]
-        # For nodes at indices [start, end], we need edges at indices [start-1, end-1]
-        # But we need to be careful about the boundaries
-        
+        # Handle special case: start == 0 (duplicating from first node)
         if start == 0:
-            # If we're starting from the first node, we can't duplicate an incoming edge
-            # We need to duplicate the edges from start to end
-            edges_to_duplicate = self.path_edges[start:end]
+            # When starting from first node, we need to:
+            # 1. Duplicate edges that traverse nodes [0, 1, ..., end]  
+            # 2. Create a "loop back" edge from node[end] to node[0] to re-enter the first node
+            # 3. Then duplicate the traversal edges again
+            
+            # Edges that traverse the nodes [start, end] = [0, end]
+            edges_to_duplicate = self.path_edges[start:end]  # [0:end]
+            
+            # Create the "loop back" edge from node[end] to node[0]  
+            loop_back_edge = Edge(
+                self[end],      # From end node
+                True,           # Standard exit orientation
+                self[start],    # To start node (node 0)
+                False           # Standard entry orientation
+            )
+            
+            # Create copies of the original edges for the second traversal
+            duplicated_edges = []
+            for edge in edges_to_duplicate:
+                new_edge = Edge(
+                    edge.node1,      # Same start node
+                    edge.node1_side, # Same start node side
+                    edge.node2,      # Same end node  
+                    edge.node2_side  # Same end node side
+                )
+                duplicated_edges.append(new_edge)
+            
+            # Insert: loop_back_edge + duplicated_traversal at position 'end'
+            complete_loop = [loop_back_edge] + duplicated_edges
+            self.path_edges[end:end] = complete_loop
+            
         else:
             # Normal case: duplicate edges from (start-1) to (end-1) inclusive
             # This will duplicate the traversal of nodes [start, end]
             edges_to_duplicate = self.path_edges[start-1:end]
-        
-        # Create copies of the edges to duplicate
-        duplicated_edges = []
-        for edge in edges_to_duplicate:
-            # Create a new edge with the same nodes and sides
-            new_edge = Edge(
-                edge.node1,      # Same start node
-                edge.node1_side, # Same start node side
-                edge.node2,      # Same end node  
-                edge.node2_side  # Same end node side
-            )
-            duplicated_edges.append(new_edge)
-        
-        # Insert the duplicated edges after the original section
-        # Insert at position 'end' to place the loop after the original traversal
-        self.path_edges[end:end] = duplicated_edges
+            
+            # Create copies of the edges to duplicate
+            duplicated_edges = []
+            for edge in edges_to_duplicate:
+                new_edge = Edge(
+                    edge.node1,      # Same start node
+                    edge.node1_side, # Same start node side
+                    edge.node2,      # Same end node  
+                    edge.node2_side  # Same end node side
+                )
+                duplicated_edges.append(new_edge)
+            
+            # Insert the duplicated edges after the original section
+            # Insert at position 'end' to place the loop after the original traversal
+            self.path_edges[end:end] = duplicated_edges
         
         # Update the node count
         self.node_count = len(self.path_edges)
@@ -361,14 +406,38 @@ class Path:
 
     def swap(self, pos: int, new_node: Node) -> None: 
         """
-        Swap a node in the path with another node, retaning the orientation
+        Swap a node in the path with another node, retaining the orientation.
+        Handles first, middle, and last nodes appropriately.
+        
+        Parameters:
+        - pos (int): Position of the node to swap (0-based indexing)
+        - new_node (Node): New node to replace the existing one
         """
-        # This mean we need to consider only two edges
-        before_edge = self.path_edges[pos-1] # -1 to get the edge before the node
-        after_edge = self.path_edges[pos] # The edge going out of the node
+        # Validation
+        if pos < 0 or pos > self.node_count:
+            raise MSerror("Position out of bounds")
+        if self.node_count == 0:
+            raise MSerror("Cannot swap in empty path")
+        
+        # Handle first node (pos == 0)
+        if pos == 0:
+            after_edge = self.path_edges[pos]  # Edge going out of node[0]
+            after_edge.node1 = new_node
 
-        before_edge.node2 = new_node # The second node of the edge before become the new one
-        after_edge.node1 = new_node  # The first node to the second edge become the new one
+        # Handle last node (pos == self.node_count)  
+        elif pos == self.node_count:
+            # Only modify the edge coming INTO the last node
+            before_edge = self.path_edges[pos-1]  # Edge coming into the last node
+            before_edge.node2 = new_node
+        
+        # Handle middle nodes (normal case)
+        else:
+            # Modify both the edge coming in and the edge going out
+            before_edge = self.path_edges[pos-1]  # Edge coming into the node
+            after_edge = self.path_edges[pos]     # Edge going out of the node
+            
+            before_edge.node2 = new_node  # Update target of incoming edge
+            after_edge.node1 = new_node   # Update source of outgoing edge
 
     def paste(self, start: int, end: int, list_of_nodes: list[Node]):
         """
@@ -753,14 +822,10 @@ if __name__ == "__main__":
     graphA = Graph(count)
     graphA.build_from_sequence("AAAAAAAAA",[1,2,3,4])
     graphA.details
-    graphA.add_inv(2, 5, {1, 2, 3, 4})
+    graphA.add_inv(7, 7, {1, 2})
+    graphA.add_tdup(0, 8, {1, 2})
     graphA.details
-    graphA.add_snp(2, {1, 2})
-    graphA.details
-    graphA.add_del(3,5, {3,4})
-    graphA.details
-    graphA.add_tdup(1,6, {4})
-    graphA.details
+
     """
     print("start")
     count = itertools.count(1)
