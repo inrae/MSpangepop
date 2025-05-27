@@ -1,5 +1,58 @@
+import random
 from io_handler import MSerror
 
+
+def mutate_base(original_base: str, traition_matrix) -> str:
+    """Uses the provided transition matrix to determine the mutated base."""
+    return random.choices(
+        population=list(traition_matrix[original_base].keys()),
+        weights=list(traition_matrix[original_base].values()),
+        k=1
+    )[0]
+
+def generate_sequence(length, transition_matrix, start_frequencies=None):
+    """
+    Generate a DNA sequence of given length using a transition matrix.
+    
+    Args:
+        length (int): Desired sequence length
+        transition_matrix (dict): Nested dict with transition probabilities
+                                 e.g., {'A': {'A': 0.3, 'T': 0.2, 'G': 0.3, 'C': 0.2}, ...}
+        start_frequencies (dict, optional): Initial nucleotide probabilities
+                                          e.g., {'A': 0.25, 'T': 0.25, 'G': 0.25, 'C': 0.25}
+                                          If None, uses uniform distribution
+    
+    Returns:
+        str: Generated DNA sequence
+    """
+    if length <= 0:
+        return ""
+    
+    # Default to uniform start frequencies if not provided
+    if start_frequencies is None:
+        nucleotides = list(transition_matrix.keys())
+        start_frequencies = {base: 1.0/len(nucleotides) for base in nucleotides}
+    
+    # Choose starting nucleotide
+    current_base = random.choices(
+        list(start_frequencies.keys()),
+        weights=list(start_frequencies.values())
+    )[0]
+    
+    sequence = [current_base]
+    
+    # Generate subsequent bases using transition matrix
+    for _ in range(length - 1):
+        next_base = random.choices(
+            list(transition_matrix[current_base].keys()),
+            weights=list(transition_matrix[current_base].values())
+        )[0]
+        sequence.append(next_base)
+        current_base = next_base
+    
+    return ''.join(sequence)
+
+'''
 def merge_nodes(graph):
     """
     Merges nodes in the graph based on the following rule:
@@ -73,7 +126,7 @@ def save_to_gfa(graph, filename: str, sample: str, chromosome: str) -> None:
 
             # Write nodes (segments)
             for node in graph.nodes:
-                f.write(f"S\t{node.id}\t{node.base.decode()}\n")
+                f.write(f"S\t{node.id}\t{node}\n")
 
             # Write edges (links)
             for node in graph.nodes:
@@ -87,3 +140,4 @@ def save_to_gfa(graph, filename: str, sample: str, chromosome: str) -> None:
 
     except IOError as e:
         raise MSerror(f"Error writing to {filename}: {e}")
+'''
