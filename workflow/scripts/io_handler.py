@@ -13,6 +13,7 @@ from Bio import SeqIO
 import gzip
 import sys
 import os
+import traceback
 
 class MSLogger:
     """Base logging class that prints messages with a standardized prefix."""
@@ -37,12 +38,30 @@ class MSwarning(MSLogger):
         super().__init__("⚠️  MSpangepop ->", message)
 
 class MSerror(Exception):
-    """Custom exception for MSpangepop errors."""
-
+    """Custom exception for MSpangepop errors with clean display."""
     def __init__(self, message="An unknown MSpangepop error occurred."):
-        script = os.path.basename(sys.argv[0])  # Get script name
-        formatted_message = f"❌ MSpangepop -> [{script}] {message}"
-        super().__init__(formatted_message)
+        self.clean_message = message
+        super().__init__(message)  # Store original message
+
+def custom_traceback():
+    """Install a custom exception handler for cleaner MSerror display."""
+    def handle_mserror(exc_type, exc_value, exc_traceback):
+        if exc_type == MSerror:
+            # For MSerror, show clean format without full traceback
+            print(f"❌ MSpangepop -> Error: {exc_value.clean_message}")
+            
+            # Optionally show just the relevant line
+            tb = traceback.extract_tb(exc_traceback)
+            if tb:
+                last_frame = tb[-1]
+                print(f"\t- {os.path.basename(last_frame.filename)}:{last_frame.lineno} in {last_frame.name}()")
+        else:
+            # Default handler for other exceptions
+            sys.__excepthook__(exc_type, exc_value, exc_traceback)
+    
+    sys.excepthook = handle_mserror
+
+custom_traceback() # This is used to simplify the traceback message
 
 def get_indent(readable_json):
     if readable_json == True or readable_json == "True":
