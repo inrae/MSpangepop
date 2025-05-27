@@ -363,7 +363,6 @@ class Path:
         """
         Swap a node in the path with another node, retaning the orientation
         """
-
         # This mean we need to consider only two edges
         before_edge = self.path_edges[pos-1] # -1 to get the edge before the node
         after_edge = self.path_edges[pos] # The edge going out of the node
@@ -371,10 +370,122 @@ class Path:
         before_edge.node2 = new_node # The second node of the edge before become the new one
         after_edge.node1 = new_node  # The first node to the second edge become the new one
 
-    def expand(self, pos: int, list_of_nodes: list[Node]):
-        pass
+    def paste(self, start: int, end: int, list_of_nodes: list[Node]):
+        """
+        Insert nodes between two adjacent positions without removing anything.
+        Only works when start + 1 == end (adjacent nodes).
+        
+        Example: paste(1, 2, [E, F]) on A→B→C→D gives A→B→E→F→C→D
+        
+        Parameters:
+        - start (int): Starting node index  
+        - end (int): Ending node index (must be start + 1)
+        - list_of_nodes (list[Node]): List of nodes to insert
+        """
+        # Validation
+        if start + 1 != end:
+            raise MSerror("paste() only works between adjacent nodes (start + 1 must equal end)")
+        if start > self.node_count or end > self.node_count:
+            raise MSerror("Start and end indices out of bounds")
+        if not list_of_nodes:
+            raise MSerror("Cannot paste empty list of nodes")
+        
+        # Get the original edge between the adjacent nodes
+        original_edge = self.path_edges[start]  # Edge connecting node[start] → node[end]
+        
+        # Handle single node insertion
+        if len(list_of_nodes) == 1:
+            single_node = list_of_nodes[0]
+            
+            # Create two edges: node[start] → single_node → node[end]
+            first_edge = Edge(original_edge.node1, original_edge.node1_side, single_node, False)
+            second_edge = Edge(single_node, True, original_edge.node2, original_edge.node2_side)
+            
+            # Replace the original edge with the two new edges
+            self.path_edges[start:start+1] = [first_edge, second_edge]
+        
+        # Handle multiple node insertion
+        else:
+            # Create internal edges connecting the nodes in the list
+            internal_edges = []
+            for i in range(len(list_of_nodes) - 1):
+                current_node = list_of_nodes[i]
+                next_node = list_of_nodes[i + 1]
+                internal_edges.append(Edge(current_node, True, next_node, False))
+            
+            # Create connecting edges
+            connect_in = Edge(original_edge.node1, original_edge.node1_side, list_of_nodes[0], False)
+            connect_out = Edge(list_of_nodes[-1], True, original_edge.node2, original_edge.node2_side)
+            
+            # Build complete insertion: connect_in + internal_chain + connect_out
+            complete_insertion = [connect_in] + internal_edges + [connect_out]
+            
+            # Replace the original edge with the complete insertion
+            self.path_edges[start:start+1] = complete_insertion
+        
+        # Update node count
+        self.node_count = len(self.path_edges)
 
-
+    def cut_paste(self, start: int, end: int, list_of_nodes: list[Node]):
+        """
+        Replace nodes between start and end with new nodes.
+        Removes everything between start and end, then inserts the new nodes.
+        
+        Example: cut_paste(1, 3, [E, F]) on A→B→C→D gives A→B→E→F→D
+        
+        Parameters:
+        - start (int): Starting node index
+        - end (int): Ending node index (must be > start + 1)  
+        - list_of_nodes (list[Node]): List of nodes to replace with
+        """
+        # Validation
+        if start <= 0 or end <= 0:
+            raise MSerror("Start and end indices must be positive")
+        if start + 1 >= end:
+            raise MSerror("cut_paste() requires end > start + 1 (use paste() for adjacent nodes)")
+        if start > self.node_count or end > self.node_count:
+            raise MSerror("Start and end indices out of bounds")
+        if not list_of_nodes:
+            raise MSerror("Cannot cut_paste with empty list of nodes")
+        if start == 0 or end >= self.node_count:
+            raise MSerror("Cannot cut_paste at path boundaries")
+        
+        # Get the edges that connect to the section we're replacing
+        before_edge = self.path_edges[start-1]  # Edge leading TO node[start]  
+        after_edge = self.path_edges[end]       # Edge leading FROM node[end]
+        
+        # Handle single node replacement
+        if len(list_of_nodes) == 1:
+            single_node = list_of_nodes[0]
+            
+            # Create edges connecting through the replacement node
+            first_edge = Edge(before_edge.node1, before_edge.node1_side, single_node, False)
+            second_edge = Edge(single_node, True, after_edge.node2, after_edge.node2_side)
+            
+            # Replace the entire section with the two new edges
+            self.path_edges[start-1:end+1] = [first_edge, second_edge]
+        
+        # Handle multiple node replacement
+        else:
+            # Create internal edges connecting the replacement nodes
+            internal_edges = []
+            for i in range(len(list_of_nodes) - 1):
+                current_node = list_of_nodes[i]
+                next_node = list_of_nodes[i + 1]
+                internal_edges.append(Edge(current_node, True, next_node, False))
+            
+            # Create connecting edges
+            connect_in = Edge(before_edge.node1, before_edge.node1_side, list_of_nodes[0], False)
+            connect_out = Edge(list_of_nodes[-1], True, after_edge.node2, after_edge.node2_side)
+            
+            # Build complete replacement: connect_in + internal_chain + connect_out
+            complete_replacement = [connect_in] + internal_edges + [connect_out]
+            
+            # Replace the entire section with the complete replacement
+            self.path_edges[start-1:end+1] = complete_replacement
+        
+        # Update node count
+        self.node_count = len(self.path_edges)
 
 class Graph:
     """Represents a directed graph"""
@@ -640,14 +751,16 @@ class Graph:
 if __name__ == "__main__":
     count = itertools.count(1)
     graphA = Graph(count)
-    graphA.build_from_sequence("ATCGGGC",[1,2,3])
+    graphA.build_from_sequence("AAAAAAAAA",[1,2,3,4])
     graphA.details
-    graphA.add_snp(2, {3, 2})
+    graphA.add_inv(2, 5, {1, 2, 3, 4})
     graphA.details
-    graphA.add_snp(2, {3, 2})
+    graphA.add_snp(2, {1, 2})
     graphA.details
-
-
+    graphA.add_del(3,5, {3,4})
+    graphA.details
+    graphA.add_tdup(1,6, {4})
+    graphA.details
     """
     print("start")
     count = itertools.count(1)
