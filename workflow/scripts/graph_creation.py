@@ -402,7 +402,6 @@ class Path:
         self.path_edges[start - 1:end + 1] = final_edges
         
         # Dont update node count (should remain the same for inversions)
-        # self.node_count = len(self.path_edges)
 
     def swap(self, pos: int, new_node: Node) -> None: 
         """
@@ -438,6 +437,8 @@ class Path:
             
             before_edge.node2 = new_node  # Update target of incoming edge
             after_edge.node1 = new_node   # Update source of outgoing edge
+
+        # Dont update node count (should remain the same)
 
     def paste(self, start: int, end: int, list_of_nodes: list[Node]):
         """
@@ -815,15 +816,47 @@ class Graph:
         # Warn about missing paths
         if missing_paths:
             print(f"Warning: Paths not found in graph: {missing_paths}")
+    
+    def add_ins(self, a: int, length: int, affected_lineages):
+        """
+
+        """
+        # Validate input parameters
+        if a < 0: raise MSerror("Inversion positions must be positive")
         
+        # Handle single lineage or collection
+        lineages_to_process = [affected_lineages] if isinstance(affected_lineages, (int, str)) else affected_lineages
+        missing_paths = []
+        
+        # Create the sequence to insert using a HHM 
+        insertion_sequence = generate_sequence(length, transition_matrix = insertion_matrix) 
+        
+        nodes = []
+        for base in insertion_sequence :
+            nodes.append(self.add_new_node(base))
+
+        # Apply insertion to each specified path
+        for lineage in lineages_to_process:
+            if lineage in self.paths:
+                path = self.paths[lineage]
+                # Apply paste operation
+                path.paste(a, a+1, nodes)
+            else:
+                missing_paths.append(lineage)
+        
+        # Warn about missing paths
+        if missing_paths:
+            print(f"Warning: Paths not found in graph: {missing_paths}")
 
 if __name__ == "__main__":
     count = itertools.count(1)
     graphA = Graph(count)
-    graphA.build_from_sequence("AAAAAAAAA",[1,2,3,4])
+    graphA.build_from_sequence("TTTTTTT",[1,2,3,4])
     graphA.details
-    graphA.add_inv(7, 7, {1, 2})
-    graphA.add_tdup(0, 8, {1, 2})
+    graphA.add_inv(3,4, {1, 2})
+    graphA.details
+    graphA.add_ins(3, 3, {1, 2})
+
     graphA.details
 
     """
