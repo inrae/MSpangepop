@@ -1,7 +1,7 @@
 # .gitlab-ci.yml
 variables:
   IMAGE_NAME: "msprime_box"
-  DOCKER_BUILD_CONTEXT: "dependencies"
+  DEF_FILE: "dependencies/msprime_box.def"
 
 stages:
   - build
@@ -9,33 +9,23 @@ stages:
 build-and-push-image:
   stage: build
   tags:
-    - stable  # Use the same runners as your colleagues
+    - stable  # Use stable runners like your colleagues
   image:
     name: kaczmarj/apptainer:latest
     entrypoint: [""]
   script:
-    - echo "🔹 -> Building container from Dockerfile with Apptainer..."
-    - cd ${DOCKER_BUILD_CONTEXT}
+    - echo "🔹 -> Building msprime_box container from ${DEF_FILE}..."
+    - apptainer build --force msprime_box.sif ${DEF_FILE}
     
-    # Build from Dockerfile
-    - apptainer build --force ../msprime_box.sif docker-daemon://./Dockerfile
-    
-    # Alternative: Build directly from Dockerfile without docker-daemon
-    # - apptainer build --force ../msprime_box.sif Dockerfile
-    
-    - cd ..
-    
-    # Push to registry with commit SHA tag
     - echo "🔹 -> Pushing image ${IMAGE_NAME}:${CI_COMMIT_SHORT_SHA}..."
     - apptainer push --docker-username "${CI_REGISTRY_USER}" --docker-password "${CI_REGISTRY_PASSWORD}" msprime_box.sif oras://"${CI_REGISTRY_IMAGE}"/${IMAGE_NAME}:"${CI_COMMIT_SHORT_SHA}"
     
-    # Push to registry with latest tag
     - echo "🔹 -> Pushing image ${IMAGE_NAME}:latest..."
     - apptainer push --docker-username "${CI_REGISTRY_USER}" --docker-password "${CI_REGISTRY_PASSWORD}" msprime_box.sif oras://"${CI_REGISTRY_IMAGE}"/${IMAGE_NAME}:latest
     
     - echo "✅ -> Images successfully pushed to registry."
   rules:
     - changes:
-        - dependencies/Dockerfile
+        - dependencies/msprime_box.def
     - when: manual
       allow_failure: true

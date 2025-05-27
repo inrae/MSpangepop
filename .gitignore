@@ -18,7 +18,7 @@
 !**setting.json
 !slurm_logs/
 !.config/**
-!dependencies/Dockerfile
+!dependencies/*.def
 results
 **__pycache__
 .snakemake
