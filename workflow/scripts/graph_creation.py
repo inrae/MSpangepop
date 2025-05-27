@@ -2,7 +2,7 @@ import itertools
 import argparse
 import random
 from bitarray import bitarray # type: ignore
-from io_handler import MSpangepopDataHandler, MSerror, MSsuccess, MScompute
+from io_handler import MSpangepopDataHandler, MSerror, MSsuccess, MScompute, MSwarning
 from graph_utils import mutate_base, generate_sequence
 
 # You can choose a matrix here for the SNP and insertion sequences
@@ -656,207 +656,165 @@ class Graph:
 
     @property
     def details(self):
+        """Show graph details"""
         print(self)
         print("Paths :")
         for path in self.paths.items() :
             print(path)
 
+    def _apply_to_paths(self, affected_lineages, operation_func):
+        """
+        Helper function to apply an operation to multiple paths.
+        Handles single/multiple lineages and missing path warnings.
+        
+        Parameters:
+        - affected_lineages: Single lineage or collection of lineages
+        - operation_func: Function to apply to each valid path
+        
+        Returns:
+        - List of valid (lineage, path) tuples that were processed
+        """
+        # Handle single lineage or collection
+        lineages_to_process = [affected_lineages] if isinstance(affected_lineages, (int, str)) else affected_lineages
+        missing_paths = []
+        valid_paths = []
+        
+        # Collect valid paths and track missing ones
+        for lineage in lineages_to_process:
+            if lineage in self.paths:
+                valid_paths.append((lineage, self.paths[lineage]))
+            else:
+                missing_paths.append(lineage)
+        
+        # Apply operation to each valid path
+        for lineage, path in valid_paths:
+            operation_func(path)
+        
+        # Warn about missing paths
+        if missing_paths:
+            MSwarning(f"Warning: Paths not found in graph: {missing_paths}")
+        
+        return valid_paths
+
     def add_del(self, a: int, b: int, affected_lineages) -> None:
         """
-        Adds a deletion in the specified paths, between positions a and b.
-        Creates a bypass in each path to represent the deletion.
+        Adds a deletion between positions a and b by creating a bypass in each path.
         
         Parameters:
         - a (int): Starting position of the deletion
         - b (int): Ending position of the deletion  
         - affected_lineages: Single lineage or collection of lineages to modify
         """
-        # Validate input parameters
-        if a < 0 or b < 0: raise MSerror("Deletion positions must be positive")
-        if a >= b: raise MSerror("End position must be greater than start position")
-        
-        # Handle single lineage or collection
-        lineages_to_process = [affected_lineages] if isinstance(affected_lineages, (int, str)) else affected_lineages
-        missing_paths = []
-        
-        # Apply deletion to each specified path
-        for lineage in lineages_to_process:
-            if lineage in self.paths:
-                path = self.paths[lineage]
-                # Check path length before operation
-                if b > path.node_count:
-                    raise MSerror(f"Path {lineage} too short for deletion at positions {a}-{b}")
-                # Apply bypass operation (creates deletion)
-                path.bypass(a, b)
-            else:
-                missing_paths.append(lineage)
-        
-        # Warn about missing paths
-        if missing_paths:
-            print(f"Warning: Paths not found in graph: {missing_paths}")
+        self._apply_to_paths(affected_lineages, lambda path: path.bypass(a, b))
 
     def add_tdup(self, a: int, b: int, affected_lineages) -> None:
         """
-        Adds a tandem duplication in the specified paths, between positions a and b.
-        Creates a loop in each path to represent the duplication.
+        Adds a tandem duplication between positions a and b by creating a loop in each path.
         
         Parameters:
         - a (int): Starting position of the duplication
         - b (int): Ending position of the duplication
         - affected_lineages: Single lineage or collection of lineages to modify
         """
-        # Validate input parameters
-        if a < 0 or b < 0: raise MSerror("Duplication positions must be positive")
-        if a > b: raise MSerror("End must be > start")
-        
-        # Handle single lineage or collection
-        lineages_to_process = [affected_lineages] if isinstance(affected_lineages, (int, str)) else affected_lineages
-        missing_paths = []
-        
-        # Apply tandem duplication to each specified path
-        for lineage in lineages_to_process:
-            if lineage in self.paths:
-                path = self.paths[lineage]
-                # Check path length before operation
-                if b > path.node_count:
-                    raise MSerror(f"Path {lineage} too short for duplication at positions {a}-{b}")
-                # Apply loop operation (creates tandem duplication)
-                path.loop(a, b)
-            else:
-                missing_paths.append(lineage)
-        
-        # Warn about missing paths
-        if missing_paths:
-            print(f"Warning: Paths not found in graph: {missing_paths}")
+        self._apply_to_paths(affected_lineages, lambda path: path.loop(a, b))
 
     def add_inv(self, a: int, b: int, affected_lineages) -> None:
         """
-        Adds an inversion in the specified paths, between positions a and b.
-        Creates an inverted section in each path to represent the inversion.
+        Adds an inversion between positions a and b by inverting the section in each path.
         
         Parameters:
         - a (int): Starting position of the inversion
         - b (int): Ending position of the inversion
         - affected_lineages: Single lineage or collection of lineages to modify
         """
-        # Validate input parameters
-        if a <= 0 or b <= 0: raise MSerror("Inversion positions must be positive")
-        if a > b: raise MSerror("End must be >= start")
-        
-        # Handle single lineage or collection
-        lineages_to_process = [affected_lineages] if isinstance(affected_lineages, (int, str)) else affected_lineages
-        missing_paths = []
-        
-        # Apply inversion to each specified path
-        for lineage in lineages_to_process:
-            if lineage in self.paths:
-                path = self.paths[lineage]
-                # Check path length before operation
-                if b + 1 > path.node_count:
-                    raise MSerror(f"Path {lineage} too short for inversion at positions {a}-{b}")
-                # Apply invert operation (creates inversion)
-                path.invert(a, b)
-            else:
-                missing_paths.append(lineage)
-        
-        # Warn about missing paths
-        if missing_paths:
-            print(f"Warning: Paths not found in graph: {missing_paths}")
+        self._apply_to_paths(affected_lineages, lambda path: path.invert(a, b))
 
     def add_snp(self, a: int, affected_lineages) -> None:
         """
-        Function to add a SNP to the specified paths. Creates one new node that is shared
-        across all affected paths for the same mutation.
+        Adds a SNP at position a. Creates one shared mutated node across all affected paths.
         
         Parameters:
         - a (int): Position where the SNP should be added
         - affected_lineages: Single lineage or collection of lineages to modify
         """
-        if a <= 0: raise MSerror("SNP position must be positive")
+        # Get valid paths
+        valid_paths = self._apply_to_paths(affected_lineages, lambda path: None)  # No operation yet
         
-        # Handle single lineage or collection
-        lineages_to_process = [affected_lineages] if isinstance(affected_lineages, (int, str)) else affected_lineages
-        missing_paths = []
-        valid_paths = []
-        
-        # First pass: validate all paths and collect valid ones
-        for lineage in lineages_to_process:
-            if lineage in self.paths:
-                path = self.paths[lineage]
-                # Check path length before operation
-                if a + 1 > path.node_count:
-                    raise MSerror(f"Path {lineage} too short for SNP at position {a}")
-                valid_paths.append((lineage, path))
-            else:
-                missing_paths.append(lineage)
-        
-        # If no valid paths, warn and return
         if not valid_paths:
-            if missing_paths:
-                print(f"Warning: Paths not found in graph: {missing_paths}")
-            return
+            return  # No valid paths to process
         
-        # Get the original base from the first valid path (should be same across all paths)
+        # Get the original base from the first valid path
         first_lineage, first_path = valid_paths[0]
         node_base = str(first_path[a])
         
-        # Verify that all paths have the same base at this position (sanity check)
+        # Verify consistency across all paths (sanity check)
         for lineage, path in valid_paths:
             if str(path[a]) != node_base:
                 raise MSerror(f"Paths have different bases at position {a}: expected '{node_base}', found '{str(path[a])}' in path {lineage}")
         
-        # Create ONE new node with the mutated base that will be shared across all paths
+        # Create one shared mutated node
         mutated_base = mutate_base(node_base, snp_matrix)
         shared_mutated_node = self.add_new_node(mutated_base)
         
-        # Apply the same node to all valid paths
+        # Apply the shared node to all valid paths
         for lineage, path in valid_paths:
             path.swap(a, shared_mutated_node)
-        
-        # Warn about missing paths
-        if missing_paths:
-            print(f"Warning: Paths not found in graph: {missing_paths}")
-    
-    def add_ins(self, a: int, length: int, affected_lineages):
-        """
 
+    def add_ins(self, a: int, length: int, affected_lineages) -> None:
         """
-        # Validate input parameters
-        if a < 0: raise MSerror("Inversion positions must be positive")
+        Adds an insertion of specified length at position a using HMM-generated sequence.
         
-        # Handle single lineage or collection
-        lineages_to_process = [affected_lineages] if isinstance(affected_lineages, (int, str)) else affected_lineages
-        missing_paths = []
+        Parameters:
+        - a (int): Position where the insertion should be added
+        - length (int): Length of sequence to insert
+        - affected_lineages: Single lineage or collection of lineages to modify
+        """
+        if length <= 0:
+            raise MSerror("Insertion length must be positive")
         
-        # Create the sequence to insert using a HHM 
-        insertion_sequence = generate_sequence(length, transition_matrix = insertion_matrix) 
+        # Generate insertion sequence using HMM
+        insertion_sequence = generate_sequence(length, insertion_matrix)
         
-        nodes = []
-        for base in insertion_sequence :
-            nodes.append(self.add_new_node(base))
+        # Create nodes for the insertion sequence
+        insertion_nodes = []
+        for base in insertion_sequence:
+            insertion_nodes.append(self.add_new_node(base))
+        
+        # Apply insertion to each valid path
+        self._apply_to_paths(affected_lineages, lambda path: path.paste(a, a+1, insertion_nodes))
 
-        # Apply insertion to each specified path
-        for lineage in lineages_to_process:
-            if lineage in self.paths:
-                path = self.paths[lineage]
-                # Apply paste operation
-                path.paste(a, a+1, nodes)
-            else:
-                missing_paths.append(lineage)
+    def add_replacement(self, a: int, b: int, length: int, affected_lineages) -> None:
+        """
+        Replaces sequence between positions a and b with HMM-generated sequence of specified length.
         
-        # Warn about missing paths
-        if missing_paths:
-            print(f"Warning: Paths not found in graph: {missing_paths}")
+        Parameters:
+        - a (int): Starting position of the replacement
+        - b (int): Ending position of the replacement
+        - length (int): Length of replacement sequence
+        - affected_lineages: Single lineage or collection of lineages to modify
+        """
+        if length <= 0:
+            raise MSerror("Replacement length must be positive")
+        
+        # Generate replacement sequence using HMM
+        replacement_sequence = generate_sequence(length, insertion_matrix)
+        
+        # Create nodes for the replacement sequence
+        replacement_nodes = []
+        for base in replacement_sequence:
+            replacement_nodes.append(self.add_new_node(base))
+        
+        # Apply replacement to each valid path
+        self._apply_to_paths(affected_lineages, lambda path: path.cut_paste(a, b, replacement_nodes))
 
 if __name__ == "__main__":
     count = itertools.count(1)
     graphA = Graph(count)
-    graphA.build_from_sequence("TTTTTTT",[1,2,3,4])
+    graphA.build_from_sequence("",[1,2,3,4])
     graphA.details
     graphA.add_inv(3,4, {1, 2})
     graphA.details
     graphA.add_ins(3, 3, {1, 2})
-
     graphA.details
 
     """
