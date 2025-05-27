@@ -2,7 +2,7 @@ import random
 from io_handler import MSerror
 
 
-def mutate_base(original_base: str, traition_matrix) -> str:
+def mutate_base(original_base: str, traition_matrix: dict) -> str:
     """Uses the provided transition matrix to determine the mutated base."""
     return random.choices(
         population=list(traition_matrix[original_base].keys()),
@@ -10,28 +10,14 @@ def mutate_base(original_base: str, traition_matrix) -> str:
         k=1
     )[0]
 
-def generate_sequence(length, transition_matrix, start_frequencies=None):
+def generate_sequence(length: int, transition_matrix: dict) -> list:
     """
     Generate a DNA sequence of given length using a transition matrix.
-    
-    Args:
-        length (int): Desired sequence length
-        transition_matrix (dict): Nested dict with transition probabilities
-                                 e.g., {'A': {'A': 0.3, 'T': 0.2, 'G': 0.3, 'C': 0.2}, ...}
-        start_frequencies (dict, optional): Initial nucleotide probabilities
-                                          e.g., {'A': 0.25, 'T': 0.25, 'G': 0.25, 'C': 0.25}
-                                          If None, uses uniform distribution
-    
-    Returns:
-        str: Generated DNA sequence
     """
     if length <= 0:
-        return ""
+        return []
     
-    # Default to uniform start frequencies if not provided
-    if start_frequencies is None:
-        nucleotides = list(transition_matrix.keys())
-        start_frequencies = {base: 1.0/len(nucleotides) for base in nucleotides}
+    start_frequencies = transition_matrix["_"] # The start frequencie is provided as "_"
     
     # Choose starting nucleotide
     current_base = random.choices(
@@ -50,7 +36,7 @@ def generate_sequence(length, transition_matrix, start_frequencies=None):
         sequence.append(next_base)
         current_base = next_base
     
-    return ''.join(sequence)
+    return sequence
 
 '''
 def merge_nodes(graph):
