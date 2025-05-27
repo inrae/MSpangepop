@@ -196,16 +196,16 @@ def simulate_chromosome_evolution(
         MSsuccess(f"Total runtime: {total_time/60:.2f} min.")
 
     except FileNotFoundError as e:
-        raise MSerror(f"❌ MSpangepop -> Missing file: {e}")
+        raise MSerror(f"MSpangepop -> Missing file: {e}")
 
     except ValueError as e:
-        raise MSerror(f"❌ MSpangepop -> Invalid value encountered: {e}")
+        raise MSerror(f"MSpangepop -> Invalid value encountered: {e}")
 
     except msprime.LibraryError as e:
-        raise MSerror(f"❌ MSpangepop -> msprime simulation error: {e}")
+        raise MSerror(f"MSpangepop -> msprime simulation error: {e}")
 
     except Exception as e:
-        raise MSerror(f"❌ MSpangepop -> Unexpected error: {e}")
+        raise MSerror(f"MSpangepop -> Unexpected error: {e}")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
@@ -236,16 +236,11 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # Input validation
-    if args.population_size <= 0:
-        raise MSerror("❌ Population size must be a positive integer.")
-    if args.mutation_rate < 0:
-        raise MSerror("❌ Mutation rate must be non-negative.")
-    if args.recombination_rate < 0:
-        raise MSerror("❌ Recombination rate must be non-negative.")
-    if args.sample_size <= 0:
-        raise MSerror("❌ Sample size must be a positive integer.")
-    if not args.chromosome.isdigit() or int(args.chromosome) <= 0:
-        raise MSerror(f"❌ Invalid chromosome number: {args.chromosome}")
+    if args.population_size <= 0: raise MSerror("Population size must be a positive integer.")
+    if args.mutation_rate < 0: raise MSerror("Mutation rate must be non-negative.")
+    if args.recombination_rate < 0: raise MSerror("Recombination rate must be non-negative.")
+    if args.sample_size <= 0: raise MSerror("Sample size must be a positive integer.")
+    if not args.chromosome.isdigit() or int(args.chromosome) <= 0: raise MSerror(f"Invalid chromosome number: {args.chromosome}")
     
     simulate_chromosome_evolution(
         fai_file=args.fai,
