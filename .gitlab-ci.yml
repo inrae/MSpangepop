@@ -52,20 +52,29 @@ test-workflow:
     # Verify Apptainer is working
     - apptainer --version
     
+    # Login to registry for Apptainer (you were missing this!)
+    - echo "${CI_REGISTRY_PASSWORD}" | apptainer registry login -u "${CI_REGISTRY_USER}" --password-stdin "${CI_REGISTRY}"
+    
     # Create conda environment with required packages
     - echo "🔹 MSprime -> Creating conda environment..."
     - mamba create -n wf_env -c conda-forge -c bioconda snakemake=8.4.7 -y
-    - mkdir slurm_logs
+    
+    # Create necessary directories
+    - mkdir -p slurm_logs
+    
   script:
     # Activate the environment and run the workflow
-    conda activate wf_env
+    # Don't use conda init, use source activate instead
+    - source activate wf_env
     - echo "🔹 MSprime -> Running MSpangepop workflow..."
-    - ./mspangepop local-run 
+    - ./mspangepop local-run
+    - echo "✅ MSprime -> Workflow completed successfully!"
+    
   rules:
     - changes:
         - dependencies/msprime_box.def
         - workflow/**/*
-        - mspangepop  # If the script itself changes
+        - mspangepop
     - when: manual
       allow_failure: true
   artifacts:
