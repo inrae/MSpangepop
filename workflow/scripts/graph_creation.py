@@ -134,6 +134,17 @@ class Path:
             path_repr += f"{edge.node2 if not edge.node2_side else edge.node2.reversed}"
 
         return path_repr
+    
+    @property
+    def bandage_path(self):
+        if not self.path_edges:
+            print("")
+            return 
+        path_repr = f"{self.path_edges[0].node1.id},"
+
+        for edge in self.path_edges:
+            path_repr += f"{edge.node2.id},"
+        print(path_repr)
 
     def __getitem__(self, i: int) -> Node: # Here we have to reimplement the list functions
         """Returns the node at position i in the path, supporting negative indices."""
@@ -244,15 +255,10 @@ class Path:
         
         # Handle special case: start == 0 (duplicating from first node)
         if start == 0:
-            # When starting from first node, we need to:
-            # 1. Duplicate edges that traverse nodes [0, 1, ..., end]  
-            # 2. Create a "loop back" edge from node[end] to node[0] to re-enter the first node
-            # 3. Then duplicate the traversal edges again
+            # Edges that traverse the nodes [0, end]
+            edges_to_duplicate = self.path_edges[start:end]
             
-            # Edges that traverse the nodes [start, end] = [0, end]
-            edges_to_duplicate = self.path_edges[start:end]  # [0:end]
-            
-            # Create the "loop back" edge from node[end] to node[0]  
+            # Create the "loop back" edge from node[end] to node[0]
             loop_back_edge = Edge(
                 self[end],      # From end node
                 True,           # Standard exit orientation
@@ -276,11 +282,22 @@ class Path:
             self.path_edges[end:end] = complete_loop
             
         else:
-            # Normal case: duplicate edges from (start-1) to (end-1) inclusive
-            # This will duplicate the traversal of nodes [start, end]
-            edges_to_duplicate = self.path_edges[start-1:end]
+            # FIXED: Normal case now creates proper connectivity
+            # We need to duplicate the INTERNAL edges of the section [start, end]
+            # and add a loop-back edge from end to start
             
-            # Create copies of the edges to duplicate
+            # Internal edges within the duplicated section
+            edges_to_duplicate = self.path_edges[start:end]  # FIXED: was start-1:end
+            
+            # Create the "loop back" edge from node[end] to node[start]
+            loop_back_edge = Edge(
+                self[end],      # From end node
+                True,           # Standard exit orientation  
+                self[start],    # To start node
+                False           # Standard entry orientation
+            )
+            
+            # Create copies of the internal edges
             duplicated_edges = []
             for edge in edges_to_duplicate:
                 new_edge = Edge(
@@ -291,9 +308,9 @@ class Path:
                 )
                 duplicated_edges.append(new_edge)
             
-            # Insert the duplicated edges after the original section
-            # Insert at position 'end' to place the loop after the original traversal
-            self.path_edges[end:end] = duplicated_edges
+            # Insert: loop_back_edge + duplicated_internal_edges at position 'end'
+            complete_loop = [loop_back_edge] + duplicated_edges
+            self.path_edges[end:end] = complete_loop
         
         # Update the node count
         self.node_count = len(self.path_edges)
@@ -562,14 +579,13 @@ class Graph:
 
     graph_id_generator = itertools.count(1)  # Unique ID generator for graphs
 
-    def __init__(self, node_id_generator: itertools.count, name: str = None):
+    def __init__(self, node_id_generator: itertools.count):
         self.id: int = next(self.graph_id_generator)
         self.node_id_generator: itertools.count = node_id_generator
         self.nodes: set[Node] = set()
         self.paths: dict[int, Path] = {}
         self.start_node: Node = None
         self.end_node: Node = None
-        self.name: str = name
 
     def lint(self, ignore_ancestral=False) -> None:
         """
@@ -837,12 +853,13 @@ class Graph:
         self._apply_to_paths(affected_lineages, lambda path: path.cut_paste(a, b, replacement_nodes))
 
 class GraphEnsemble:
-    def __init__(self, graph_list: list[Graph] = None):
+    def __init__(self, name: str = None, graph_list: list[Graph] = None):
         """
         Manages multiple graphs and allows linking them together.
         """
         self.graphs: list[Graph] = graph_list if graph_list else []
         self._node_id_generator: itertools.count = itertools.count(1)
+        self.name = name
       
     def __repr__(self) -> str:
         if not self.graphs:
@@ -888,14 +905,88 @@ class GraphEnsemble:
         for graph in self: 
             graph.lint(ignore_ancestral)
 
+
+    # Care, method below is NOT AT ALL optimised, we should use node.outgoing_edges instead
+    # But since we dont update them yet, we cant. 
+    def save_to_gfav1_1(self, file_path, ignore_ancestral=False):
+        """
+        Saves the given graph to a GFA V1.1 (Graphical Fragment Assembly) file.
+        The GFA format consists of:
+        - "H" lines defining headers.
+        - "S" lines defining sequence segments (nodes).
+        - "L" lines defining links (edges) between segments.
+        
+        Parameters:
+        - file_path (str): The output GFA file path.
+        - ignore_ancestral (bool): If True, don't include edges from ancestral path
+        
+        Returns:
+        None (writes to a file).
+        """
+        with open(file_path, 'w') as f:
+            # Step 1: Write header with graph name
+            f.write(f"H\t{self.name}\n")
+            
+            # Step 2: Write all nodes as sequence segments
+            # Format: S\t{node_id}\t{sequence}\n
+            for graph in self:
+                for node in graph.nodes:
+                    f.write(f"S\t{node.id}\t{node}\n")
+            
+                # Step 3: Collect all unique edges from paths
+                unique_edges = set()
+                
+                for lineage, path in graph.paths.items():
+                    # Skip ancestral path if ignore_ancestral is True
+                    if ignore_ancestral and lineage == "Ancestral":
+                        continue
+                    
+                    # Add all edges from this path to the set
+                    for edge in path.path_edges:
+                        # Create a tuple that uniquely identifies this edge
+                        # (node1_id, node1_side, node2_id, node2_side)
+                        edge_signature = (
+                            edge.node1.id,
+                            edge.node1_side,
+                            edge.node2.id,
+                            edge.node2_side
+                        )
+                        unique_edges.add(edge_signature)
+                
+                # Step 4: Write all unique edges as links
+                # Format: L\t{node1_id}\t{orientation1}\t{node2_id}\t{orientation2}\t0M\n
+                for node1_id, node1_side, node2_id, node2_side in unique_edges:
+                    # Convert sides to GFA orientation symbols
+                    # True = +, False = - for node1_side
+                    orientation1 = "+" if node1_side else "-"
+                    
+                    # False = +, True = - for node2_side (as specified)
+                    orientation2 = "+" if not node2_side else "-"
+                    
+                    f.write(f"L\t{node1_id}\t{orientation1}\t{node2_id}\t{orientation2}\t0M\n")
+                
+                # Step 5, Write the paths as W-lines
+                for lineage, path in graph.paths.items():
+                    # Skip ancestral path if ignore_ancestral is True
+                    if ignore_ancestral and lineage == "Ancestral":
+                        continue
+                    f.write(f"W\tlineage_{path.lineage}\t0\tlineage_{path.lineage}\t0\t0\t>{repr(path)}\n")
+                    
+
 if __name__ == "__main__":
     count = itertools.count(1)
     graphA = Graph(count)
-    graphA.build_from_sequence("TTTTTTTTTTTTTTTTTTTT",[1,2,3,4])
-    graphB = Graph(count)
-    graphB.build_from_sequence("TTTTTTTTTTTTTTTTTTTT",[1,2,3,5])
-    
-    chromosome = GraphEnsemble(graph_list= [graphA, graphB])
+    graphA.build_from_sequence("TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",[1,2,3,4])
+    graphA.add_del(6,12, affected_lineages={1})
+    graphA.add_ins(15 ,12, affected_lineages={1})
+    graphA.add_snp(3, affected_lineages={1})
+    graphA.add_inv(30 ,35, affected_lineages={1})
+    graphA.add_tdup(50 ,60, affected_lineages={1})
+
+    chromosome = GraphEnsemble(name = "Test Graph", graph_list = [graphA])
+    chromosome.lint(ignore_ancestral=True)
+    chromosome.save_to_gfav1_1("./test.gfa", ignore_ancestral=True)
+
 
 '''
 def main(splited_fasta: str, output_file: str, sample: str, chromosome: str) -> None:
