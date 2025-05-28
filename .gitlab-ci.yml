@@ -5,27 +5,78 @@ variables:
 
 stages:
   - build
+  - test
 
 build-and-push-image:
   stage: build
   tags:
-    - stable  # Use stable runners like your colleagues
+    - stable
   image:
     name: kaczmarj/apptainer:latest
     entrypoint: [""]
   script:
-    - echo "🔹 -> Building msprime_box container from ${DEF_FILE}..."
+    - echo "🔹 MSprime -> Building msprime_box container from ${DEF_FILE}..."
     - apptainer build --force msprime_box.sif ${DEF_FILE}
     
-    - echo "🔹 -> Pushing image ${IMAGE_NAME}:${CI_COMMIT_SHORT_SHA}..."
+    - echo "🔹 MSprime -> Pushing image ${IMAGE_NAME}:${CI_COMMIT_SHORT_SHA}..."
     - apptainer push --docker-username "${CI_REGISTRY_USER}" --docker-password "${CI_REGISTRY_PASSWORD}" msprime_box.sif oras://"${CI_REGISTRY_IMAGE}"/${IMAGE_NAME}:"${CI_COMMIT_SHORT_SHA}"
     
-    - echo "🔹 -> Pushing image ${IMAGE_NAME}:latest..."
+    - echo "🔹 MSprime -> Pushing image ${IMAGE_NAME}:latest..."
     - apptainer push --docker-username "${CI_REGISTRY_USER}" --docker-password "${CI_REGISTRY_PASSWORD}" msprime_box.sif oras://"${CI_REGISTRY_IMAGE}"/${IMAGE_NAME}:latest
     
-    - echo "✅ -> Images successfully pushed to registry."
+    - echo "✅ MSprime -> Images successfully pushed to registry."
   rules:
     - changes:
         - dependencies/msprime_box.def
     - when: manual
       allow_failure: true
+
+test-workflow:
+  stage: test
+  tags:
+    - stable
+  image: condaforge/mambaforge:latest
+  needs:
+    - build-and-push-image
+  variables:
+    APPTAINER_CACHEDIR: "${CI_PROJECT_DIR}/.apptainer"
+    SINGULARITY_CACHEDIR: "${CI_PROJECT_DIR}/.singularity"
+  before_script:
+    # Install Apptainer
+    - echo "🔹 MSprime -> Installing Apptainer..."
+    - apt-get update && apt-get install -y wget squashfs-tools
+    - wget -q https://github.com/apptainer/apptainer/releases/download/v1.3.0/apptainer_1.3.0_amd64.deb
+    - dpkg -i apptainer_1.3.0_amd64.deb || apt-get install -f -y
+    - rm apptainer_1.3.0_amd64.deb
+    
+    # Verify Apptainer is working
+    - apptainer --version
+    
+    # Login to registry for Apptainer
+    - echo "${CI_REGISTRY_PASSWORD}" | apptainer registry login -u "${CI_REGISTRY_USER}" --password-stdin "${CI_REGISTRY}"
+    
+    # Create conda environment with required packages
+    - echo "🔹 MSprime -> Creating conda environment..."
+    - mamba create -n wf_env -c conda-forge -c bioconda snakemake=8.4.7 snakemake-executor-plugin-slurm -y
+    - source activate wf_env
+    - mkdir slurm_logs
+  script:
+    # Activate the environment and run the workflow
+    - echo "🔹 MSprime -> Running MSpangepop workflow..."
+    - source activate wf_env
+    - ./mspangepop local-run
+    - echo "✅ Workflow completed successfully!"
+    
+  rules:
+    - changes:
+        - dependencies/msprime_box.def
+        - workflow/**/*
+        - mspangepop  # If the script itself changes
+    - when: manual
+      allow_failure: true
+  artifacts:
+    when: on_failure
+    paths:
+      - .snakemake/log/
+      - "*.log"
+    expire_in: 1 week
