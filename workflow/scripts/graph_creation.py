@@ -807,16 +807,65 @@ class Graph:
         # Apply replacement to each valid path
         self._apply_to_paths(affected_lineages, lambda path: path.cut_paste(a, b, replacement_nodes))
 
+class GraphEnsemble:
+    def __init__(self, graph_list: list[Graph] = None):
+        """
+        Manages multiple graphs and allows linking them together.
+        """
+        self.graphs: list[Graph] = graph_list if graph_list else []
+        self._node_id_generator: itertools.count = itertools.count(1)
+      
+    def __repr__(self) -> str:
+        if not self.graphs:
+            return "GraphEnsemble(empty)"
+        total_nodes = sum(len(graph.nodes) for graph in self.graphs)
+        lines = [f"GraphEnsemble({len(self.graphs)} graphs, {total_nodes} total nodes"]
+        for i, graph in enumerate(self.graphs):
+            lines.append(f"\t[{i}] {graph}")
+        return "\n".join(lines)
+    
+    def __getitem__(self, i: int) -> Graph: 
+        """Returns the Graph at position i in the Ensemble"""
+        if i > len(self.graphs): raise MSerror(f"Graph index {i} out of range, {len(self.graphs)}")
+        return self.graphs[i]
+
+    def add_graph(self, graph: Graph) -> None:
+        self.graphs.append(graph)
+    
+    @property
+    def concatenate(self) -> None:
+            """
+            Concatenates all graphs in the ensemble in place.
+            Replaces the graph list with a single merged graph.
+            """
+            if not self.graphs:
+                raise MSerror("No graphs to concatenate.")
+            
+            if len(self.graphs) == 1:
+                return  # Already concatenated
+            
+            # Start with the first graph
+            concatenated_graph = self.graphs[0]
+            
+            # Concatenate each subsequent graph
+            for graph in self.graphs[1:]:
+                concatenated_graph += graph
+            self.graphs = [concatenated_graph]
+
 if __name__ == "__main__":
     count = itertools.count(1)
     graphA = Graph(count)
-    graphA.build_from_sequence("",[1,2,3,4])
-    graphA.details
-    graphA.add_inv(3,4, {1, 2})
-    graphA.details
-    graphA.add_ins(3, 3, {1, 2})
-    graphA.details
+    graphA.build_from_sequence("TTTTTT",[1,2,3,4])
+    graphB = Graph(count)
+    graphB.build_from_sequence("AEAZEAZEAZ",[1,2,3,4])
+    
+    chromosome = GraphEnsemble(graph_list= [graphA, graphB])
+    print(chromosome)
 
+    chromosome.concatenate
+    print(chromosome)
+
+    chromosome[3].details
     """
     print("start")
     count = itertools.count(1)
@@ -846,16 +895,6 @@ if __name__ == "__main__":
     """
 
 '''
-class Graph:
-    def add_deletion(self, start_idx: int, end_idx: int) -> None:
-        deletion = DEL(A=self.nodes[start_idx], D=self.nodes[end_idx])
-        deletion.compute_alt_seq()
-
-    def add_insertion(self, idx: int, length) -> None:
-        insertion = INS(A=self.nodes[idx], D=self.nodes[idx + 1], length=length)
-        inserted_nodes = insertion.compute_alt_seq(self._node_id_generator)
-        self.nodes = self.nodes + inserted_nodes 
-    
 class GraphEnsemble:
     """Manages multiple graphs and allows linking them together."""
     
