@@ -52,9 +52,6 @@ test-workflow:
     # Verify Apptainer is working
     - apptainer --version
     
-    # Login to registry for Apptainer (you were missing this!)
-    - echo "${CI_REGISTRY_PASSWORD}" | apptainer registry login -u "${CI_REGISTRY_USER}" --password-stdin "${CI_REGISTRY}"
-    
     # Create conda environment with required packages
     - echo "🔹 MSprime -> Creating conda environment..."
     - mamba create -n wf_env -c conda-forge -c bioconda snakemake=8.4.7 -y
