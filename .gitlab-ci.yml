@@ -54,11 +54,11 @@ test-workflow:
     
     # Create conda environment with required packages
     - echo "🔹 MSprime -> Creating conda environment..."
-    - mamba create -n wf_env -c conda-forge -c bioconda snakemake=8.4.7 snakemake-executor-plugin-slurm -y
+    - mamba create -n wf_env -c conda-forge -c bioconda snakemake=8.4.7 -y
     - mkdir slurm_logs
   script:
     # Activate the environment and run the workflow
-    mamba activate wf_env
+    conda activate wf_env
     - echo "🔹 MSprime -> Running MSpangepop workflow..."
     - ./mspangepop local-run 
   rules:
