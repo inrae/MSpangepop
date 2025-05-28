@@ -7,10 +7,11 @@ stages:
   - build
   - test
 
+# Used to build and upload the image in dependencies/msprime_box.def to the forge
 build-and-push-image:
   stage: build
   tags:
-    - stable
+    - stable # For some reason we need to use stable -.-
   image:
     name: kaczmarj/apptainer:latest
     entrypoint: [""]
@@ -31,6 +32,7 @@ build-and-push-image:
     - when: manual
       allow_failure: true
 
+# Used to test the workflow
 test-workflow:
   stage: test
   tags:
@@ -56,6 +58,7 @@ test-workflow:
     - mkdir slurm_logs
   script:
     # Activate the environment and run the workflow
+    mamba activate wf_env
     - echo "🔹 MSprime -> Running MSpangepop workflow..."
     - ./mspangepop local-run 
   rules:
