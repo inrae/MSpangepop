@@ -88,7 +88,7 @@ class Edge:
         else:
             side2 = "-"
         return f"({self.node1.id}{side1} -> {self.node2.id}{side2})"
-
+    
 class Path:
     """Represents a path in the graph, consisting of a sequence of edges."""
 
@@ -562,14 +562,43 @@ class Graph:
 
     graph_id_generator = itertools.count(1)  # Unique ID generator for graphs
 
-    def __init__(self, node_id_generator: itertools.count):
+    def __init__(self, node_id_generator: itertools.count, name: str = None):
         self.id: int = next(self.graph_id_generator)
         self.node_id_generator: itertools.count = node_id_generator
         self.nodes: set[Node] = set()
         self.paths: dict[int, Path] = {}
         self.start_node: Node = None
         self.end_node: Node = None
+        self.name: str = name
 
+    def lint(self, ignore_ancestral=False) -> None:
+        """
+        Removes orphan nodes from the graph.
+        
+        Orphan nodes are nodes that exist in self.nodes but are not referenced
+        by any edge in any path. This can happen after graph modifications like
+        deletions, bypasses, or other operations that leave unused nodes behind.
+        
+        Parameters:
+        - ignore_ancestral (bool): If True, nodes used only in the ancestral path
+                                will be considered orphans and removed
+        """
+        # Collect all nodes that are actually used in path edges
+        used_nodes = set()
+        
+        for lineage, path in self.paths.items():
+            # Skip ancestral path if ignore_ancestral is True
+            if ignore_ancestral and lineage == "Ancestral":
+                continue
+                
+            for edge in path.path_edges:
+                # Direct access
+                used_nodes.add(edge.node1)
+                used_nodes.add(edge.node2)
+        
+        # Keep only used nodes (more efficient than removing orphans)
+        self.nodes &= used_nodes
+        
     def add_new_node(self, dna_sequence: str) -> Node:
         """
         Creates and adds a new node to the graph, return it"""
@@ -852,84 +881,23 @@ class GraphEnsemble:
                 concatenated_graph += graph
             self.graphs = [concatenated_graph]
 
+    def lint(self, ignore_ancestral = False): 
+        """
+        Warper method to lint all graphs in self, remove all node not in the paths
+        """
+        for graph in self: 
+            graph.lint(ignore_ancestral)
+
 if __name__ == "__main__":
     count = itertools.count(1)
     graphA = Graph(count)
-    graphA.build_from_sequence("TTTTTT",[1,2,3,4])
+    graphA.build_from_sequence("TTTTTTTTTTTTTTTTTTTT",[1,2,3,4])
     graphB = Graph(count)
-    graphB.build_from_sequence("AEAZEAZEAZ",[1,2,3,4])
+    graphB.build_from_sequence("TTTTTTTTTTTTTTTTTTTT",[1,2,3,5])
     
     chromosome = GraphEnsemble(graph_list= [graphA, graphB])
-    print(chromosome)
-
-    chromosome.concatenate
-    print(chromosome)
-
-    chromosome[3].details
-    """
-    print("start")
-    count = itertools.count(1)
-    graphA = Graph(count)
-    graphA.build_from_sequence("ABCDEFG",[1,2,3])
-    #graphA.details
-    graphA.add_tdup(4, 4, {1, 2})
-    #graphA.details
-
-    nodeA = Node("|Je|", 0)
-    nodeB = Node("|vais|", 1)
-    nodeC = Node("|au|", 2)
-    nodeD = Node("|concert|", 3)
-    nodeE = Node("|ce|", 4)
-    nodeF = Node("|soir|", 5)
-
-    path = Path(1, [Edge(nodeA, True, nodeB, False),
-                    Edge(nodeB, True, nodeC, True),
-                    Edge(nodeC, False, nodeD, False),
-                    Edge(nodeD, True, nodeE, False),
-                    Edge(nodeE, True, nodeF, False)])
-    print(path)
-    print(repr(path))
-    path.invert(start = 1, end = 3)
-    print(path)
-    print(repr(path))
-    """
 
 '''
-class GraphEnsemble:
-    """Manages multiple graphs and allows linking them together."""
-    
-    def __init__(self):
-        self.graphs: list[Graph] = []
-        self._node_id_generator: itertools.count = itertools.count(1)
-    
-    def __len__(self) -> int:
-        return len(self.graphs)
-    
-    def __repr__(self) -> str:
-        return f"GraphEnsemble({len(self.graphs)} graphs)"
-    
-    def add_graph(self, graph: Graph) -> None:
-        """Adds a graph to the ensemble."""
-        self.graphs.append(graph)
-    
-    def create_empty_graph(self) -> Graph:
-        """Creates a new empty graph and adds it to the ensemble."""
-        graph = Graph(self._node_id_generator)
-        self.add_graph(graph)
-        return graph
-
-    @staticmethod
-    def concatenate_graphs(ensemble: "GraphEnsemble") -> Graph:
-        """Concatenates all graphs in the ensemble and returns the merged graph."""
-        if not ensemble.graphs:
-            raise MSerror("No graphs to concatenate.")
-
-        concatenated_graph = ensemble.graphs[0]
-        for graph in ensemble.graphs[1:]:
-            concatenated_graph += graph
-
-        return concatenated_graph
-
 def main(splited_fasta: str, output_file: str, sample: str, chromosome: str) -> None:
     """Reads a FASTA file and constructs graphs from the sequences."""
     sequences = MSpangepopDataHandler.read_fasta(splited_fasta)
@@ -977,5 +945,4 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     main(args.splited_fasta, args.output_file, args.sample, args.chromosome)'
-''' 
-
+'''
