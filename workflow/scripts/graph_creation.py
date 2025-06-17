@@ -971,9 +971,71 @@ class GraphEnsemble:
                     if ignore_ancestral and lineage == "Ancestral":
                         continue
                     f.write(f"W\tlineage_{path.lineage}\t0\tlineage_{path.lineage}\t0\t0\t>{repr(path)}\n")
-                    
+
+def gather_lineages(traversal):
+    """Extract lineages for each tree and return as a list to maintain order."""
+    tree_lineages = []
+    for tree in traversal:
+        tree_index = tree.get("tree_index", "unknown")
+        lineages = set(tree.get("lineages", []))  # Convert to set for build_from_sequence
+        tree_lineages.append((tree_index, lineages))
+    return tree_lineages
+
+def main(splited_fasta: str, augmented_traversal: str, output_file: str, sample: str, chromosome: str) -> None:
+    """Main function for graph creation."""
+    
+    # 1. Read the ancestral sequences
+    sequences = MSpangepopDataHandler.read_fasta(splited_fasta)
+    
+    # 2. Read the traversal data
+    traversal = MSpangepopDataHandler.read_json(augmented_traversal)
+    
+    # 3. Get lineages for each tree (maintaining order)
+    tree_lineages = gather_lineages(traversal)
+    
+    # 4. Verify we have matching counts
+    if len(sequences) != len(tree_lineages):
+        raise MSerror(f"Mismatch: {len(sequences)} sequences but {len(tree_lineages)} trees")
+    
+    # 5. Create shared node ID generator
+    node_id_generator = itertools.count(1)
+    
+    # 6. Initialise graphs
+    graphs = []
+    for i, (record, (tree_index, lineages)) in enumerate(zip(sequences, tree_lineages)):
+        sequence = str(record.seq)
+        
+        new_graph = Graph(node_id_generator)
+        new_graph.build_from_sequence(sequence, lineages)
+        graphs.append(new_graph)
+    
+    MSsuccess(f"Initialised {len(graphs)} graphs for chromosome {chromosome}")
+    
+
+    # TODO: 7. Apply mutations from traversal
+
+    # 8. Create ensemble an ensemble with all graphs
+    ensemble = GraphEnsemble(name=f"{sample}_chr_{chromosome}", graph_list=graphs)
+    
+    ensemble.concatenate
+    ensemble.lint(ignore_ancestral=True)
+    ensemble.save_to_gfav1_1(output_file, ignore_ancestral=True)
+    
+    MSsuccess(f"Graph saved to {output_file}")
+
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="")
+    parser.add_argument("--splited_fasta", required=True, help="")
+    parser.add_argument("--augmented_traversal", required=True, help="")
+    parser.add_argument("--output_file", required=True, help="")
+    parser.add_argument("--sample", required=True, help="")
+    parser.add_argument("--chromosome", required=True, help="")
+
+    args = parser.parse_args()
+    main(args.splited_fasta, args.augmented_traversal, args.output_file, args.sample, args.chromosome)
+'''
+
     count = itertools.count(1)
     graphA = Graph(count)
     graphA.build_from_sequence("TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",[1,2,3,4])
@@ -983,39 +1045,25 @@ if __name__ == "__main__":
     graphA.add_inv(30 ,35, affected_lineages={1})
     graphA.add_tdup(50 ,60, affected_lineages={1})
 
-    chromosome = GraphEnsemble(name = "Test Graph", graph_list = [graphA])
-    chromosome.lint(ignore_ancestral=True)
-    chromosome.save_to_gfav1_1("./test.gfa", ignore_ancestral=True)
+    graphB = Graph(count)
+    graphB.build_from_sequence("TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",[1,2,3,4])
+    graphB.add_del(6,12, affected_lineages={1})
+    graphB.add_ins(15 ,12, affected_lineages={1})
+    graphB.add_snp(3, affected_lineages={1})
+    graphB.add_inv(30 ,35, affected_lineages={1})
+    graphB.add_tdup(50 ,60, affected_lineages={1})
 
+    chromosome = GraphEnsemble(name = "Test Graph", graph_list = [graphA, graphB])
+    chromosome.concatenate
+    chromosome.lint(ignore_ancestral=False)
+    chromosome.save_to_gfav1_1("./test.gfa", ignore_ancestral=False)
 
-'''
 def main(splited_fasta: str, output_file: str, sample: str, chromosome: str) -> None:
     """Reads a FASTA file and constructs graphs from the sequences."""
     sequences = MSpangepopDataHandler.read_fasta(splited_fasta)
     ensemble = GraphEnsemble()
-    
-    print(f"\n🔹 MSpangepop -> Constructing sub graphs for {sample}, chr {chromosome}")
-    for record in sequences:
-        header = record.id  
-        seq = str(record.seq)  
-        print(f"\t🔹 Handling {header}")
-        graph = ensemble.create_empty_graph()
-        graph.build_from_sequence(seq)
 
-        path = Path(lineage=1, ancesters={1, 2, 3})
-        graph.initialize_paths({path})
-        
-        #graph.add_snp(4)  
-        #graph.add_deletion(10, 15)
-        #graph.add_insertion(20, length= 50)  
-        #graph.add_snp(25)
-        #graph.add_snp(130)
-        #graph.add_inversion(10, 20)
-        #graph.add_duplication(30,35)
-        #merge_nodes(graph)
             
-    MSsuccess(f"Constructed {len(sequences)} graphs for {sample}, chr {chromosome}")
-    
     MScompute(f"Starting to concatenate graphs for {sample}, chr {chromosome}")
     concatenated_graph = GraphEnsemble.concatenate_graphs(ensemble)
 
@@ -1025,15 +1073,4 @@ def main(splited_fasta: str, output_file: str, sample: str, chromosome: str) -> 
     MScompute(f"Saving graph for {sample}, chr {chromosome}")
     save_to_gfa(concatenated_graph, output_file, sample, chromosome)
     MSsuccess(f"Graph saved for {sample}, chr {chromosome}\n")
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Construct a nucleotide graph from an interval FASTA file.")
-    parser.add_argument("--splited_fasta", required=True, help="Path to the gzipped FASTA file.")
-    parser.add_argument("--output_file", required=True, help="Path to the output file.")
-    parser.add_argument("--sample", required=True, help="Current sample")
-    parser.add_argument("--chromosome", required=True, help="Current chromosome")
-    
-    args = parser.parse_args()
-    main(args.splited_fasta, args.output_file, args.sample, args.chromosome)'
 '''
