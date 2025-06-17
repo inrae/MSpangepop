@@ -33,7 +33,7 @@ def main():
     args = parse_args()
 
     # Define output recap file path
-    recap_file = os.path.join(args.output_dir, f"{args.current_run}_params_recap.txt")
+    recap_file = os.path.join(args.output_dir, f"{args.current_run}_MSpangepop_recap.txt")
 
     # Ensure the output directory exists
     os.makedirs(args.output_dir, exist_ok=True)
