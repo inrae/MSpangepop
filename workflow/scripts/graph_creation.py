@@ -981,6 +981,80 @@ def gather_lineages(traversal):
         tree_lineages.append((tree_index, lineages))
     return tree_lineages
 
+def apply_mutations_to_graphs(graphs, traversal):
+    """
+    Apply mutations from the augmented traversal to the corresponding graphs.
+    Converts global positions to tree-relative positions.
+    """
+    
+    for tree_idx, (tree_data, graph) in enumerate(zip(traversal, graphs)):
+        tree_index = tree_data.get("tree_index", "unknown")
+        tree_interval = tree_data.get("initial_tree_interval", [0, 0])
+        tree_start = tree_interval[0]
+        mutations_applied = 0
+        
+        MScompute(f"Applying mutations to tree {tree_index} (interval: {tree_interval})")
+        
+        # Get the actual sequence length for this tree segment
+        tree_length = tree_interval[1] - tree_interval[0]
+        MScompute(f"Tree {tree_index} length: {tree_length}")
+        
+        for node_data in tree_data.get("nodes", []):
+            node_id = node_data.get("node")
+            mutations = node_data.get("mutations", [])
+            affected_nodes = set(node_data.get("affected_nodes", []))
+            
+            if not mutations:
+                continue
+            
+            lineages = set(tree_data.get("lineages", []))
+            affected_lineages = affected_nodes.intersection(lineages)
+            
+            if not affected_lineages:
+                continue
+            
+            for mutation in mutations:
+                mut_type = mutation.get("type")
+                start = mutation.get("start")
+                length = mutation.get("length")
+                
+                # Convert global position to tree-relative position
+                relative_start = start - tree_start
+                
+                # Validate that the mutation fits within this tree
+                if relative_start < 0:
+                    MSwarning(f"Mutation at position {start} is before tree start {tree_start}")
+                    continue
+                
+                if mut_type == "SNP":
+                    if relative_start >= tree_length:
+                        MSwarning(f"SNP at position {start} is beyond tree end")
+                        continue
+                elif mut_type in ["DEL", "INV", "DUP"]:
+                    if relative_start + length > tree_length:
+                        MSwarning(f"{mut_type} at position {start} with length {length} extends beyond tree")
+                        continue
+                
+                try:
+                    if mut_type == "SNP":
+                        graph.add_snp(relative_start, affected_lineages)
+                    elif mut_type == "INS":
+                        graph.add_ins(relative_start, length, affected_lineages)
+                    elif mut_type == "DEL":
+                        graph.add_del(relative_start, relative_start + length, affected_lineages)
+                    elif mut_type == "INV":
+                        graph.add_inv(relative_start, relative_start + length - 1, affected_lineages)
+                    elif mut_type == "DUP":
+                        graph.add_tdup(relative_start, relative_start + length - 1, affected_lineages)
+                    
+                    mutations_applied += 1
+                    MScompute(f"Applied {mut_type} at tree-relative position {relative_start} (global: {start})")
+                    
+                except Exception as e:
+                    MSwarning(f"Failed to apply {mut_type} at position {relative_start}: {e}")
+        
+        MSsuccess(f"Applied {mutations_applied} mutations to tree {tree_index}")
+    
 def main(splited_fasta: str, augmented_traversal: str, output_file: str, sample: str, chromosome: str) -> None:
     """Main function for graph creation."""
     
@@ -1000,29 +1074,28 @@ def main(splited_fasta: str, augmented_traversal: str, output_file: str, sample:
     # 5. Create shared node ID generator
     node_id_generator = itertools.count(1)
     
-    # 6. Initialise graphs
+    # 6. Initialize graphs
     graphs = []
     for i, (record, (tree_index, lineages)) in enumerate(zip(sequences, tree_lineages)):
         sequence = str(record.seq)
-        
         new_graph = Graph(node_id_generator)
         new_graph.build_from_sequence(sequence, lineages)
         graphs.append(new_graph)
     
-    MSsuccess(f"Initialised {len(graphs)} graphs for chromosome {chromosome}")
+    MSsuccess(f"Initialized {len(graphs)} graphs for chromosome {chromosome}")
     
-
-    # TODO: 7. Apply mutations from traversal
-
-    # 8. Create ensemble an ensemble with all graphs
+    # 7. Apply mutations from traversal
+    apply_mutations_to_graphs(graphs, traversal)
+    
+    # 8. Create ensemble with all graphs
     ensemble = GraphEnsemble(name=f"{sample}_chr_{chromosome}", graph_list=graphs)
-    
     ensemble.concatenate
     ensemble.lint(ignore_ancestral=True)
     ensemble.save_to_gfav1_1(output_file, ignore_ancestral=True)
     
     MSsuccess(f"Graph saved to {output_file}")
 
+# TODO, save a recap, enable multithreading for msprime, do the diapo, merge nodes. 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="")
@@ -1034,43 +1107,3 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     main(args.splited_fasta, args.augmented_traversal, args.output_file, args.sample, args.chromosome)
-'''
-
-    count = itertools.count(1)
-    graphA = Graph(count)
-    graphA.build_from_sequence("TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",[1,2,3,4])
-    graphA.add_del(6,12, affected_lineages={1})
-    graphA.add_ins(15 ,12, affected_lineages={1})
-    graphA.add_snp(3, affected_lineages={1})
-    graphA.add_inv(30 ,35, affected_lineages={1})
-    graphA.add_tdup(50 ,60, affected_lineages={1})
-
-    graphB = Graph(count)
-    graphB.build_from_sequence("TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",[1,2,3,4])
-    graphB.add_del(6,12, affected_lineages={1})
-    graphB.add_ins(15 ,12, affected_lineages={1})
-    graphB.add_snp(3, affected_lineages={1})
-    graphB.add_inv(30 ,35, affected_lineages={1})
-    graphB.add_tdup(50 ,60, affected_lineages={1})
-
-    chromosome = GraphEnsemble(name = "Test Graph", graph_list = [graphA, graphB])
-    chromosome.concatenate
-    chromosome.lint(ignore_ancestral=False)
-    chromosome.save_to_gfav1_1("./test.gfa", ignore_ancestral=False)
-
-def main(splited_fasta: str, output_file: str, sample: str, chromosome: str) -> None:
-    """Reads a FASTA file and constructs graphs from the sequences."""
-    sequences = MSpangepopDataHandler.read_fasta(splited_fasta)
-    ensemble = GraphEnsemble()
-
-            
-    MScompute(f"Starting to concatenate graphs for {sample}, chr {chromosome}")
-    concatenated_graph = GraphEnsemble.concatenate_graphs(ensemble)
-
-    MScompute(f"Merging nodes for {sample}, chr {chromosome}")
-    merge_nodes(concatenated_graph)
-
-    MScompute(f"Saving graph for {sample}, chr {chromosome}")
-    save_to_gfa(concatenated_graph, output_file, sample, chromosome)
-    MSsuccess(f"Graph saved for {sample}, chr {chromosome}\n")
-'''
