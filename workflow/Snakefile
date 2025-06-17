@@ -36,7 +36,7 @@ rule create_recap:
         mem_mb=lambda wildcards: int(1000),
         time="00:10:00"
     container:
-        "oras://registry.forgemia.inra.fr/pangepop/mspangepop/msprime_box:latest"
+        "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
     priority: 1
     shell:
         """
@@ -53,7 +53,7 @@ rule input_validation:
         chr_n =lambda wildcards: config["samples"][wildcards.sample]["chr_n"]
     priority: 10
     container:
-        "oras://registry.forgemia.inra.fr/pangepop/mspangepop/msprime_box:latest"
+        "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
     shell:
         """
         python3 workflow/scripts/input_validation.py --fasta_file {input.fasta} \
@@ -74,7 +74,7 @@ rule samtools_index:
     params: 
         out=os.path.join(output_dir, "{sample}", "01_chromosome_index")  
     container:
-        "docker://registry.forgemia.inra.fr/pangepop/mspangepop/samtool:1.21"
+        "docker://registry.forge.inrae.fr/pangepop/mspangepop/samtool:1.21"
     benchmark:
         os.path.join(output_dir, "{sample}", "benchmark", "samtools_index_benchmark.txt")
     priority: 10
@@ -110,7 +110,7 @@ rule msprime_simulation:
     benchmark:
         os.path.join(output_dir, "{sample}", "benchmark", "msprime_chr_{chromosome}_benchmark.txt")
     container:
-        "oras://registry.forgemia.inra.fr/pangepop/mspangepop/msprime_box:latest"
+        "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
     priority: 10
     shell:
         """
@@ -143,7 +143,7 @@ rule coalescent_traversal:
     benchmark:
         os.path.join(output_dir, "{sample}", "benchmark", "coalescent_traversal_chr_{chromosome}_benchmark.txt")
     container:
-        "oras://registry.forgemia.inra.fr/pangepop/mspangepop/msprime_box:latest"
+        "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
     shell: 
         """
         python3 workflow/scripts/coalescent_traversal.py --json {input.json} \
@@ -167,7 +167,7 @@ rule split_recombination:
         os.path.join(output_dir, "{sample}", "benchmark", "split_recombination_chr_{chromosome}_benchmark.txt")
     priority: 8
     container:
-        "oras://registry.forgemia.inra.fr/pangepop/mspangepop/msprime_box:latest"
+        "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
     shell:
         """
         python3 workflow/scripts/split_recombination.py --json {input.json} \
@@ -192,7 +192,7 @@ rule draw_variants:
         mem_mb=lambda wildcards: int(10000 * memory_multiplier),
         time="10:00:00"
     container:
-        "oras://registry.forgemia.inra.fr/pangepop/mspangepop/msprime_box:latest"
+        "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
     benchmark:
         os.path.join(output_dir, "{sample}", "benchmark", "generate_variant_{chromosome}_benchmark.txt")
     shell:
@@ -218,7 +218,7 @@ rule create_graph:
     benchmark:
         os.path.join(output_dir, "{sample}", "benchmark", "create_graph_chr_{chromosome}_benchmark.txt")
     container:
-        "oras://registry.forgemia.inra.fr/pangepop/mspangepop/msprime_box:latest"
+        "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
     threads:4
     priority: 7
     shell:
