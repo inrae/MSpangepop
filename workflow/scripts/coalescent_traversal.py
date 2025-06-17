@@ -24,8 +24,9 @@ class BinaryTree:
         self.root = None
         self.tree_index = tree_data.get("tree_index", "unknown")  # Ensure default value if missing
         self.interval = tree_data.get("interval", None)  # Retrieve interval if present
+        self.lineages = set()  # This to store lineages
         self.build_tree(tree_data)  # Construct tree from input data
-
+    
     def build_tree(self, tree_data):
         """Builds the binary tree from input JSON data with error handling."""
         try:
@@ -79,23 +80,27 @@ class BinaryTree:
             raise MSerror(f"Unexpected error while processing tree {self.tree_index}: {e}")
 
     def compute_affected_nodes(self):
-        """Computes and stores the affected nodes for each node in the tree."""
-        
-        def dfs(node):
-            if not node:
-                return set()
-            # Add the node itself to its affected nodes
-            affected_nodes = {node.id}
-            if node.left:
-                affected_nodes |= dfs(node.left)  # Include all descendants of the left child
-            if node.right:
-                affected_nodes |= dfs(node.right)  # Include all descendants of the right child
-            node.affected_nodes = affected_nodes
-            return affected_nodes
+            """Computes and stores the affected nodes for each node in the tree."""
+            
+            def dfs(node):
+                if not node:
+                    return set()
+                
+                # Check if this is a leaf node (lineage)
+                if node.left is None and node.right is None:
+                    self.lineages.add(node.id)  # Add to lineages set
+                
+                affected_nodes = {node.id}
+                if node.left:
+                    affected_nodes |= dfs(node.left)
+                if node.right:
+                    affected_nodes |= dfs(node.right)
+                node.affected_nodes = affected_nodes
+                return affected_nodes
 
-        if not self.root:
-            raise MSerror(f"Cannot compute affected nodes: No root node found for tree {self.tree_index}.")
-        dfs(self.root)
+            if not self.root:
+                raise MSerror(f"Cannot compute affected nodes: No root node found for tree {self.tree_index}.")
+            dfs(self.root)
 
     def get_all_nodes(self):
         """Returns all nodes, including mutated and non-mutated nodes."""
@@ -105,9 +110,9 @@ class BinaryTree:
             if node:
                 all_nodes.append({
                     "node": node.id,
-                    "mutations": node.mutations,  # Store mutation details for all nodes
-                    "interval": node.interval,  # Store the interval for each node
-                    "affected_nodes": list(node.affected_nodes)  # Store all affected nodes
+                    "mutations": node.mutations,
+                    "interval": node.interval,
+                    "affected_nodes": list(node.affected_nodes)
                 })
                 traverse(node.left)
                 traverse(node.right)
@@ -116,6 +121,7 @@ class BinaryTree:
         return {
             "tree_index": self.tree_index,
             "initial_tree_interval": self.interval,
+            "lineages": sorted(list(self.lineages)),  # Add sorted lineages here
             "nodes": all_nodes
         }
 
