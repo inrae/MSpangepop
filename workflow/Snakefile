@@ -211,6 +211,9 @@ rule graph_creation:
         augmented_traversal = rules.draw_variants.output,
     output:
         gfa = os.path.join(output_dir, "{sample}", "pangenomes", "chr_{chromosome}_graph.gfa"),
+        recap = os.path.join(output_dir, "{sample}", "info", "chr_{chromosome}_recap.txt")
+    params: 
+        out_dir =  os.path.join(output_dir, "{sample}", "info")
     resources:
         mem_mb=lambda wildcards: int(50000 * memory_multiplier),
         time="10:00:00"
@@ -227,7 +230,9 @@ rule graph_creation:
             --augmented_traversal {input.augmented_traversal} \
             --output_file {output.gfa} \
             --sample {wildcards.sample} \
-            --chromosome {wildcards.chromosome} 
+            --chromosome {wildcards.chromosome} \
+            --recap_file {output.recap} \
+            --variant_plot_dir {params.out_dir}
         """
 
 onsuccess:
