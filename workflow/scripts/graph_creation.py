@@ -1012,7 +1012,6 @@ def apply_mutations_to_graphs(graphs, traversal, recap: MutationRecap, visualize
         # Calculate the initial tree length (before any mutations)
         # This is just for reference - actual validation uses dynamic path lengths
         tree_length = tree_interval[1] - tree_interval[0]
-        MScompute(f"Tree {tree_index} initial length: {tree_length}")
         
         # Process each node in the tree (nodes are already in traversal order)
         for node_data in tree_data.get("nodes", []):
@@ -1161,8 +1160,6 @@ def apply_mutations_to_graphs(graphs, traversal, recap: MutationRecap, visualize
                     
                     # Mutation applied successfully
                     success = True
-                    MScompute(f"Applied {mut_type} at tree-relative position {relative_start} "
-                             f"(global: {start}) for lineages {sorted(affected_lineages)}")
                     
                     # Record success
                     recap.add_mutation(tree_index, node_id, mut_type, start, length, 
@@ -1251,17 +1248,17 @@ def main(splited_fasta: str, augmented_traversal: str, output_file: str,
             
             # Save size distribution plot (stacked histogram)
             dist_plot_path = os.path.join(variant_plot_dir, 
-                                         f"{sample}_chr{chromosome}_variant_sizes.png")
+                                         f"{sample}_chr{chromosome}_graph_variant_sizes.png")
             visualizer.save_size_distribution_plot(dist_plot_path)
             
             # Save position plot (scatter with log scale)
             pos_plot_path = os.path.join(variant_plot_dir,
-                                        f"{sample}_chr{chromosome}_variant_positions.png")
+                                        f"{sample}_chr{chromosome}_graph_variant_positions.png")
             visualizer.save_size_by_position_plot(pos_plot_path)
             
             # Save lineage lengths plot (horizontal bar)
             lengths_plot_path = os.path.join(variant_plot_dir,
-                                           f"{sample}_chr{chromosome}_lineage_lengths.png")
+                                           f"{sample}_chr{chromosome}_graph_lineage_lengths.png")
             visualizer.save_lineage_lengths_plot(lengths_plot_path)
 
 if __name__ == "__main__":
