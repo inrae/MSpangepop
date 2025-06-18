@@ -1,9 +1,18 @@
+"""
+Author: Lucien Piat
+Institution: INRAe
+Project: PangenOak
+
+This scripts create a variation graph from a json file full of mutations and lineages.
+"""
+
 import itertools
 import argparse
 import random
 from bitarray import bitarray # type: ignore
+
 from io_handler import MSpangepopDataHandler, MSerror, MSsuccess, MScompute, MSwarning
-from graph_utils import mutate_base, generate_sequence
+from graph_utils import mutate_base, generate_sequence, gather_lineages, MutationRecap, VariantSizeVisualizer
 
 # You can choose a matrix here for the SNP and insertion sequences
 from matrix import random_matrix as snp_matrix, simple_at_bias_matrix as insertion_matrix
@@ -329,9 +338,9 @@ class Path:
         - end (int): Index of last node to invert (inclusive)
         """
         # Input validation
-        if start <= 0 or end <= 0: 
-            raise MSerror("Start and end indices must be positive")
-        if start > self.node_count or end + 1 > self.node_count: 
+        if start < 0 or end < 0: 
+            raise MSerror("Start and end indices must be non-negative")
+        if start >= self.node_count or end >= self.node_count: 
             raise MSerror("Start and end indices out of bounds")
         if start > end: 
             raise MSerror("Start index must be less than or equal to end index")
@@ -614,7 +623,11 @@ class Graph:
         
         # Keep only used nodes (more efficient than removing orphans)
         self.nodes &= used_nodes
-        
+    
+    def __iter__(self):
+        """Make GraphEnsemble iterable."""
+        return iter(self.graphs)
+
     def add_new_node(self, dna_sequence: str) -> Node:
         """
         Creates and adds a new node to the graph, return it"""
@@ -972,138 +985,295 @@ class GraphEnsemble:
                         continue
                     f.write(f"W\tlineage_{path.lineage}\t0\tlineage_{path.lineage}\t0\t0\t>{repr(path)}\n")
 
-def gather_lineages(traversal):
-    """Extract lineages for each tree and return as a list to maintain order."""
-    tree_lineages = []
-    for tree in traversal:
-        tree_index = tree.get("tree_index", "unknown")
-        lineages = set(tree.get("lineages", []))  # Convert to set for build_from_sequence
-        tree_lineages.append((tree_index, lineages))
-    return tree_lineages
-
-def apply_mutations_to_graphs(graphs, traversal):
+def apply_mutations_to_graphs(graphs, traversal, recap: MutationRecap, visualizer: VariantSizeVisualizer):
     """
     Apply mutations from the augmented traversal to the corresponding graphs.
-    Converts global positions to tree-relative positions.
+    
+    This function processes mutations in the order they appear in the traversal,
+    validates them against actual path lengths (not static tree lengths), and
+    tracks all attempts for reporting and visualization.
+    
+    Parameters:
+    - graphs: List of Graph objects, one per tree
+    - traversal: List of tree data dictionaries from augmented traversal JSON
+    - recap: MutationRecap object to track mutation applications
+    - visualizer: VariantSizeVisualizer object to track variant sizes
     """
     
+    # Process each tree and its corresponding graph
     for tree_idx, (tree_data, graph) in enumerate(zip(traversal, graphs)):
+        # Extract tree metadata
         tree_index = tree_data.get("tree_index", "unknown")
         tree_interval = tree_data.get("initial_tree_interval", [0, 0])
-        tree_start = tree_interval[0]
-        mutations_applied = 0
+        tree_start = tree_interval[0]  # Global position where this tree starts
         
         MScompute(f"Applying mutations to tree {tree_index} (interval: {tree_interval})")
         
-        # Get the actual sequence length for this tree segment
+        # Calculate the initial tree length (before any mutations)
+        # This is just for reference - actual validation uses dynamic path lengths
         tree_length = tree_interval[1] - tree_interval[0]
-        MScompute(f"Tree {tree_index} length: {tree_length}")
+        MScompute(f"Tree {tree_index} initial length: {tree_length}")
         
+        # Process each node in the tree (nodes are already in traversal order)
         for node_data in tree_data.get("nodes", []):
             node_id = node_data.get("node")
             mutations = node_data.get("mutations", [])
             affected_nodes = set(node_data.get("affected_nodes", []))
             
+            # Skip nodes without mutations
             if not mutations:
                 continue
             
+            # Determine which lineages are affected by this node's mutations
+            # Only actual lineages (leaf nodes) can have mutations applied
             lineages = set(tree_data.get("lineages", []))
             affected_lineages = affected_nodes.intersection(lineages)
             
+            # Skip if no actual lineages are affected
             if not affected_lineages:
+                MSwarning(f"Node {node_id} has mutations but no affected lineages")
                 continue
             
+            # Apply each mutation for this node
             for mutation in mutations:
+                # Extract mutation details
                 mut_type = mutation.get("type")
-                start = mutation.get("start")
+                start = mutation.get("start")  # Global position
                 length = mutation.get("length")
                 
                 # Convert global position to tree-relative position
+                # This is crucial because each tree segment starts at position 0
                 relative_start = start - tree_start
                 
-                # Validate that the mutation fits within this tree
+                # First validation: Check if position is before tree start
                 if relative_start < 0:
-                    MSwarning(f"Mutation at position {start} is before tree start {tree_start}")
+                    error_msg = f"Position {start} is before tree start {tree_start}"
+                    MSwarning(error_msg)
+                    recap.add_mutation(tree_index, node_id, mut_type, start, length, 
+                                     affected_lineages, False, error_msg)
+                    visualizer.add_variant(mut_type, start, length, False)
                     continue
                 
-                if mut_type == "SNP":
-                    if relative_start >= tree_length:
-                        MSwarning(f"SNP at position {start} is beyond tree end")
-                        continue
-                elif mut_type in ["DEL", "INV", "DUP"]:
-                    if relative_start + length > tree_length:
-                        MSwarning(f"{mut_type} at position {start} with length {length} extends beyond tree")
-                        continue
+                # Second validation: Check position against each affected lineage's path length
+                # Path lengths can vary between lineages due to previous mutations
+                failed_lineages = []
+                error_messages = []
                 
-                try:
+                for lineage in affected_lineages:
+                    # Get the path for this lineage
+                    path = graph.paths.get(lineage)
+                    if not path:
+                        failed_lineages.append(lineage)
+                        error_messages.append(f"Lineage {lineage} not found in graph")
+                        continue
+                    
+                    # Get current path length (number of nodes)
+                    # node_count is the number of edges, so total nodes = edges + 1
+                    current_path_length = path.node_count + 1
+                    
+                    # Validate based on mutation type
+                    # Each mutation type has different position requirements
+                    
                     if mut_type == "SNP":
-                        graph.add_snp(relative_start, affected_lineages)
+                        # SNPs modify a single existing position
+                        # Position must be within [0, path_length-1]
+                        if relative_start >= current_path_length:
+                            failed_lineages.append(lineage)
+                            error_messages.append(
+                                f"SNP position {relative_start} >= path length {current_path_length}"
+                            )
+                    
                     elif mut_type == "INS":
+                        # Insertions add sequence between two positions
+                        # Can insert after the last position, so [0, path_length] is valid
+                        if relative_start > current_path_length:
+                            failed_lineages.append(lineage)
+                            error_messages.append(
+                                f"INS position {relative_start} > path length {current_path_length}"
+                            )
+                    
+                    elif mut_type in ["DEL", "INV", "DUP"]:
+                        # These mutations affect a range of positions
+                        # The entire range must fit within the current path
+                        end_position = relative_start + length
+                        if end_position > current_path_length:
+                            failed_lineages.append(lineage)
+                            error_messages.append(
+                                f"{mut_type} end position {end_position} > path length {current_path_length}"
+                            )
+                
+                # Handle validation failures
+                if failed_lineages:
+                    # Some lineages failed validation
+                    valid_lineages = affected_lineages - set(failed_lineages)
+                    error_msg = f"Invalid for lineages {failed_lineages}: {'; '.join(error_messages)}"
+                    MSwarning(f"Mutation partially failed: {error_msg}")
+                    
+                    # Record the failure for failed lineages
+                    recap.add_mutation(tree_index, node_id, mut_type, start, length, 
+                                     set(failed_lineages), False, error_msg)
+                    
+                    # If no valid lineages remain, skip this mutation entirely
+                    if not valid_lineages:
+                        visualizer.add_variant(mut_type, start, length, False)
+                        continue
+                    
+                    # Otherwise, continue with valid lineages only
+                    affected_lineages = valid_lineages
+                
+                # Try to apply the mutation to valid lineages
+                success = False
+                try:
+                    # Apply the appropriate mutation type
+                    # Note: Graph methods use 0-based indexing
+                    
+                    if mut_type == "SNP":
+                        # Single nucleotide polymorphism at one position
+                        graph.add_snp(relative_start, affected_lineages)
+                    
+                    elif mut_type == "INS":
+                        # Insertion of new sequence at a position
+                        if length is None:
+                            raise MSerror(f"Insertion at position {start} has no length specified")
                         graph.add_ins(relative_start, length, affected_lineages)
+                    
                     elif mut_type == "DEL":
+                        # Deletion from start to start+length (exclusive)
+                        if length is None:
+                            raise MSerror(f"Deletion at position {start} has no length specified")
                         graph.add_del(relative_start, relative_start + length, affected_lineages)
+                    
                     elif mut_type == "INV":
+                        # Inversion from start to start+length-1 (inclusive)
+                        if length is None:
+                            raise MSerror(f"Inversion at position {start} has no length specified")
                         graph.add_inv(relative_start, relative_start + length - 1, affected_lineages)
+                    
                     elif mut_type == "DUP":
+                        # Tandem duplication from start to start+length-1 (inclusive)
+                        if length is None:
+                            raise MSerror(f"Duplication at position {start} has no length specified")
                         graph.add_tdup(relative_start, relative_start + length - 1, affected_lineages)
                     
-                    mutations_applied += 1
-                    MScompute(f"Applied {mut_type} at tree-relative position {relative_start} (global: {start})")
+                    else:
+                        # Unknown mutation type
+                        raise MSerror(f"Unknown mutation type: {mut_type}")
+                    
+                    # Mutation applied successfully
+                    success = True
+                    MScompute(f"Applied {mut_type} at tree-relative position {relative_start} "
+                             f"(global: {start}) for lineages {sorted(affected_lineages)}")
+                    
+                    # Record success
+                    recap.add_mutation(tree_index, node_id, mut_type, start, length, 
+                                     affected_lineages, True)
                     
                 except Exception as e:
-                    MSwarning(f"Failed to apply {mut_type} at position {relative_start}: {e}")
+                    # Mutation application failed
+                    error_msg = str(e)
+                    MSwarning(f"Failed to apply {mut_type} at position {relative_start}: {error_msg}")
+                    
+                    # Record failure
+                    recap.add_mutation(tree_index, node_id, mut_type, start, length, 
+                                     affected_lineages, False, error_msg)
+                
+                # Track variant size for visualization (both success and failure)
+                # SNPs are excluded from visualization as requested
+                visualizer.add_variant(mut_type, start, length, success)
         
-        MSsuccess(f"Applied {mutations_applied} mutations to tree {tree_index}")
+        # Log summary for this tree
+        MScompute(f"Completed mutations for tree {tree_index}")
     
-def main(splited_fasta: str, augmented_traversal: str, output_file: str, sample: str, chromosome: str) -> None:
-    """Main function for graph creation."""
+def main(splited_fasta: str, augmented_traversal: str, output_file: str, 
+         sample: str, chromosome: str, recap_file: str = None, 
+         variant_plot_dir: str = None) -> None:
+    """Main function for graph creation with recap and visualization."""
     
-    # 1. Read the ancestral sequences
-    sequences = MSpangepopDataHandler.read_fasta(splited_fasta)
+    # Initialize tracking objects
+    recap = MutationRecap(sample, chromosome)
+    visualizer = VariantSizeVisualizer(sample, chromosome)
     
-    # 2. Read the traversal data
-    traversal = MSpangepopDataHandler.read_json(augmented_traversal)
+    try:
+        # ... [previous steps remain the same] ...
+        sequences = MSpangepopDataHandler.read_fasta(splited_fasta)
+        traversal = MSpangepopDataHandler.read_json(augmented_traversal)
+        tree_lineages = gather_lineages(traversal)
+        
+        if len(sequences) != len(tree_lineages):
+            raise MSerror(f"Mismatch: {len(sequences)} sequences but {len(tree_lineages)} trees")
+        
+        node_id_generator = itertools.count(1)
+        
+        graphs = []
+        for i, (record, (tree_index, lineages)) in enumerate(zip(sequences, tree_lineages)):
+            sequence = str(record.seq)
+            new_graph = Graph(node_id_generator)
+            new_graph.build_from_sequence(sequence, lineages)
+            graphs.append(new_graph)
+        
+        MSsuccess(f"Initialized {len(graphs)} graphs for chromosome {chromosome}")
+        
+        # Apply mutations with tracking
+        apply_mutations_to_graphs(graphs, traversal, recap, visualizer)
+        
+        # Create ensemble and save
+        ensemble = GraphEnsemble(name=f"{sample}_chr_{chromosome}", graph_list=graphs)
+        ensemble.concatenate
+        
+        # Collect final lineage lengths after concatenation
+        if ensemble.graphs:  # Should have exactly one graph after concatenation
+            final_graph = ensemble.graphs[0]
+            lineage_lengths = {}
+            for lineage, path in final_graph.paths.items():
+                # Calculate the actual sequence length of the path
+                lineage_lengths[lineage] = path.node_count + 1  # edges + 1 = nodes
+            visualizer.set_lineage_lengths(lineage_lengths)
+        
+        ensemble.lint(ignore_ancestral=True)
+        ensemble.save_to_gfav1_1(output_file, ignore_ancestral=True)
+        
+        MSsuccess(f"Graph saved to {output_file}")
+        
+    except Exception as e:
+        recap.summary["fatal_error"] = str(e)
+        raise
     
-    # 3. Get lineages for each tree (maintaining order)
-    tree_lineages = gather_lineages(traversal)
-    
-    # 4. Verify we have matching counts
-    if len(sequences) != len(tree_lineages):
-        raise MSerror(f"Mismatch: {len(sequences)} sequences but {len(tree_lineages)} trees")
-    
-    # 5. Create shared node ID generator
-    node_id_generator = itertools.count(1)
-    
-    # 6. Initialize graphs
-    graphs = []
-    for i, (record, (tree_index, lineages)) in enumerate(zip(sequences, tree_lineages)):
-        sequence = str(record.seq)
-        new_graph = Graph(node_id_generator)
-        new_graph.build_from_sequence(sequence, lineages)
-        graphs.append(new_graph)
-    
-    MSsuccess(f"Initialized {len(graphs)} graphs for chromosome {chromosome}")
-    
-    # 7. Apply mutations from traversal
-    apply_mutations_to_graphs(graphs, traversal)
-    
-    # 8. Create ensemble with all graphs
-    ensemble = GraphEnsemble(name=f"{sample}_chr_{chromosome}", graph_list=graphs)
-    ensemble.concatenate
-    ensemble.lint(ignore_ancestral=True)
-    ensemble.save_to_gfav1_1(output_file, ignore_ancestral=True)
-    
-    MSsuccess(f"Graph saved to {output_file}")
-
-# TODO, save a recap, enable multithreading for msprime, do the diapo, merge nodes. 
+    finally:
+        # Save recap
+        if recap_file:
+            recap.save_recap(recap_file)
+            MSsuccess(f"Recap saved to {recap_file}")
+        
+        # Save visualizations
+        if variant_plot_dir:
+            import os
+            os.makedirs(variant_plot_dir, exist_ok=True)
+            
+            # Save size distribution plot (stacked histogram)
+            dist_plot_path = os.path.join(variant_plot_dir, 
+                                         f"{sample}_chr{chromosome}_variant_sizes.png")
+            visualizer.save_size_distribution_plot(dist_plot_path)
+            
+            # Save position plot (scatter with log scale)
+            pos_plot_path = os.path.join(variant_plot_dir,
+                                        f"{sample}_chr{chromosome}_variant_positions.png")
+            visualizer.save_size_by_position_plot(pos_plot_path)
+            
+            # Save lineage lengths plot (horizontal bar)
+            lengths_plot_path = os.path.join(variant_plot_dir,
+                                           f"{sample}_chr{chromosome}_lineage_lengths.png")
+            visualizer.save_lineage_lengths_plot(lengths_plot_path)
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="")
-    parser.add_argument("--splited_fasta", required=True, help="")
-    parser.add_argument("--augmented_traversal", required=True, help="")
-    parser.add_argument("--output_file", required=True, help="")
-    parser.add_argument("--sample", required=True, help="")
-    parser.add_argument("--chromosome", required=True, help="")
+    parser = argparse.ArgumentParser(description="Create variation graph from mutations")
+    parser.add_argument("--splited_fasta", required=True, help="Path to split FASTA file")
+    parser.add_argument("--augmented_traversal", required=True, help="Path to augmented traversal JSON")
+    parser.add_argument("--output_file", required=True, help="Path to output GFA file")
+    parser.add_argument("--sample", required=True, help="Sample name")
+    parser.add_argument("--chromosome", required=True, help="Chromosome identifier")
+    parser.add_argument("--recap_file", help="Path to save recap file")
+    parser.add_argument("--variant_plot_dir", help="Directory to save variant size plots")
 
     args = parser.parse_args()
-    main(args.splited_fasta, args.augmented_traversal, args.output_file, args.sample, args.chromosome)
+    main(args.splited_fasta, args.augmented_traversal, args.output_file, 
+         args.sample, args.chromosome, args.recap_file, args.variant_plot_dir)
