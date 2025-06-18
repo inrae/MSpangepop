@@ -104,7 +104,7 @@ def get_chromosome_length(fai_file, chromosome_name):
 
 def simulate_chromosome_evolution(
     fai_file: str, population_size: int, mutation_rate: float, recombination_rate: float, 
-    sample_size: int, output_dir: str, chromosome_name: str, model: str, readable_json, seed
+    sample_size: int, output_dir: str, chromosome_name: str, model: str, readable_json, seed, info_out
 ):
     """
     Simulates chromosome evolution and generates a recap file with details.
@@ -149,11 +149,11 @@ def simulate_chromosome_evolution(
             print(mutated_ts.draw_text())
                     
             # Save ancestry tree visualization
-            ancestry_svg_path = os.path.join(output_dir, f"chr_{chromosome_name}_ancestry.svg")
+            ancestry_svg_path = os.path.join(info_out, f"chr_{chromosome_name}_msprime_ancestry.svg")
             with open(ancestry_svg_path, "w") as f:
                 f.write(ancestry_ts.draw_svg())
 
-            mutation_svg_path = os.path.join(output_dir, f"chr_{chromosome_name}_mutations.svg")
+            mutation_svg_path = os.path.join(info_out, f"chr_{chromosome_name}_msprime_mutations.svg")
             with open(mutation_svg_path, "w") as f:
                 f.write(mutated_ts.draw_svg())
         else :
@@ -168,7 +168,7 @@ def simulate_chromosome_evolution(
         save_time = time.time() - save_start_time  # Time taken to save output
 
         # Write recap file
-        recap_file_path = os.path.join(output_dir, f"chr_{chromosome_name}_simulation_recap.txt")
+        recap_file_path = os.path.join(info_out, f"chr_{chromosome_name}_msprime_recap.txt")
         with open(recap_file_path, "w") as recap_file:
             recap_file.write("🔹 MSpangepop MSprime Simulation Recap \n")
             recap_file.write("-" * 40 + "\n")
@@ -233,6 +233,7 @@ if __name__ == '__main__':
                         choices=[True, False],
                         help="Save JSON in a human-readable format (True/False, default: False).")
     parser.add_argument('-s', '--seed')
+    parser.add_argument('--info_out')
     args = parser.parse_args()
 
     # Input validation
@@ -252,5 +253,6 @@ if __name__ == '__main__':
         chromosome_name=args.chromosome,
         model=args.model,
         readable_json=args.readable_json,
-        seed=args.seed
+        seed=args.seed,
+        info_out= args.info_out
     )
