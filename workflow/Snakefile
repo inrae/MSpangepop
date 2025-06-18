@@ -20,14 +20,14 @@ def get_input_files():
 rule all:
     input:
         get_input_files(),
-        expand(os.path.join(output_dir, "{sample}", "info", "{sample}_MSpangepop_recap.txt"), sample=config["samples"].keys())
+        expand(os.path.join(output_dir, "{sample}", "info", "{sample}_global_recap.txt"), sample=config["samples"].keys())
 
 # This rule is uesd to create a recap file for the workflwo
 rule create_recap:
     input:
         configfile= ".config/masterconfig.yaml"
     output:
-        recap_file=os.path.join(output_dir, "{sample}", "info", "{sample}_MSpangepop_recap.txt")
+        recap_file=os.path.join(output_dir, "{sample}", "info", "{sample}_global_recap.txt")
     params:
         output_dir=os.path.join(output_dir, "{sample}","info",),
         current_run="{sample}"
@@ -99,10 +99,11 @@ rule msprime_simulation:
         mut_rate=lambda wildcards: config["samples"][wildcards.sample]["mutation_rate"],
         reco_rate=lambda wildcards: config["samples"][wildcards.sample]["recombination_rate"],
         n=lambda wildcards: config["samples"][wildcards.sample]["sample_size"],
-        out=lambda wildcards: os.path.join(output_dir, f"{wildcards.sample}", temp_dir),
+        temp_out=lambda wildcards: os.path.join(output_dir, f"{wildcards.sample}", temp_dir),
         model=lambda wildcards: config["samples"][wildcards.sample]["model"],
         readable_json=lambda wildcards: config["samples"][wildcards.sample].get("readable_json", False), 
-        seed=lambda wildcards: config["samples"][wildcards.sample].get("seed", None) 
+        seed=lambda wildcards: config["samples"][wildcards.sample].get("seed", None),
+        info_out = lambda wildcards: os.path.join(output_dir, f"{wildcards.sample}", "info")
     resources:
         mem_mb=lambda wildcards: int(200000 * memory_multiplier),
         time="60:00:00"
@@ -119,11 +120,12 @@ rule msprime_simulation:
             -mu {params.mut_rate} \
             -r {params.reco_rate} \
             -n {params.n} \
-            -o {params.out} \
+            -o {params.temp_out} \
             -c {wildcards.chromosome} \
             -mo {params.model} \
             --readable_json {params.readable_json} \
-            --seed {params.seed}
+            --seed {params.seed} \
+            --info_out {params.info_out}
         """
 
 # Use the preorder traversal to get the order in which the mutations should be handeled, save a json
