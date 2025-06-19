@@ -13,7 +13,6 @@ import matplotlib.pyplot as plt # type: ignore
 import matplotlib.patches as mpatches # type: ignore
 import numpy as np
 from collections import defaultdict
-from datetime import datetime
 
 def mutate_base(original_base: str, traition_matrix: dict) -> str:
     """Uses the provided transition matrix to determine the mutated base."""
@@ -59,9 +58,6 @@ def gather_lineages(traversal):
         lineages = set(tree.get("lineages", []))  # Convert to set for build_from_sequence
         tree_lineages.append((tree_index, lineages))
     return tree_lineages
-
-import json
-from datetime import datetime
 
 class MutationRecap:
     """Tracks all mutation applications for recap file generation."""
@@ -370,51 +366,3 @@ class VariantSizeVisualizer:
         plt.savefig(output_path, dpi=1000, bbox_inches='tight')
         plt.close()
         MSsuccess(f"Lineage lengths plot saved for sample {self.sample} chr {self.chromosome}")
-
-'''
-def merge_nodes(graph):
-    """
-    Merges nodes in the graph based on the following rule:
-    - If a node has exactly one parent and that parent has exactly one child, merge them.
-    - Updates paths accordingly to reflect merged nodes.
-
-    Parameters:
-        graph (Graph): The graph in which nodes will be merged.
-
-    Returns:
-        None (modifies the graph in place).
-    """
-    
-    if not graph.nodes:
-        raise MSerror("Cannot merge nodes in an empty graph.")
-
-    merged_nodes = set()  # Track nodes to remove
-
-    for node in reversed(graph.nodes):
-        if node in merged_nodes:
-            continue  # Skip already merged nodes
-
-        if len(node.in_edges) == 1:
-            parent = node.in_edges[0]
-            if len(parent.out_edges) == 1:
-                # Merge node into its parent
-                parent.base += node.base
-                parent.out_edges = node.out_edges
-                
-                for child in node.out_edges:
-                    child.in_edges.remove(node)
-                    child.in_edges.append(parent)
-
-                # Update paths: replace merged node with its parent
-                for path in graph.paths.values():
-                    if node in path.nodes:
-                        node_index = path.nodes.index(node)
-                        path.nodes[node_index] = parent  # Replace with merged parent
-                        path.nodes = list(dict.fromkeys(path.nodes))  # Remove duplicates
-
-                # Mark node for removal
-                merged_nodes.add(node)
-
-    # Remove merged nodes in one go (avoids O(n²) slow removals)
-    graph.nodes = [node for node in graph.nodes if node not in merged_nodes]
-'''
