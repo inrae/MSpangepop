@@ -13,6 +13,7 @@ from bitarray import bitarray # type: ignore
 
 from io_handler import MSpangepopDataHandler, MSerror, MSsuccess, MScompute, MSwarning
 from graph_utils import mutate_base, generate_sequence, gather_lineages, MutationRecap, VariantSizeVisualizer
+from graph_merge import merge_nodes
 
 # You can choose a matrix here for the SNP and insertion sequences
 from matrix import random_matrix as snp_matrix, simple_at_bias_matrix as insertion_matrix
@@ -27,7 +28,8 @@ class Node:
         else:
             self.dna_bases: bitarray = dna_sequence  # Store bitarray directly
 
-        self.outgoing_edges: set["Edge"] = set()  # Store outgoing edges as Edge objects
+        self.false_side: set["Edge"] = set()  # We use this for merging
+        self.true_side: set["Edge"] = set()
 
     @property
     def __decode(self) -> str:
@@ -73,20 +75,18 @@ class Edge:
 
         self.node1 = node1
         self.node2 = node2
-        # Add this edge to the outgoing edges of node1
-        node1.outgoing_edges.add(self)
-    
-    def remove(self) -> None:
-        """
-        Removes this edge from the graph by removing it from node1's outgoing_edges.
-        This effectively "detaches" the edge from the graph structure.
-        """
-        if self in self.node1.outgoing_edges:
-            self.node1.outgoing_edges.remove(self)
-        else:
-            # This should not happen in a well-formed graph, but it's good to handle it
-            raise MSerror(f"Edge between node {self.node1.id} and node {self.node2.id} not found in outgoing edges")
-        
+
+    def __eq__(self, other):
+        "Check if two edges are the same"
+        if not isinstance(other, Edge):
+            return NotImplemented
+        return (
+            self.node1 == other.node1 and
+            self.node1_side == other.node1_side and
+            self.node2 == other.node2 and
+            self.node2_side == other.node2_side
+        )
+
     def __repr__(self):
         if self.node1_side: 
             side1 = "+"
@@ -1191,7 +1191,6 @@ def main(splited_fasta: str, augmented_traversal: str, output_file: str,
     visualizer = VariantSizeVisualizer(sample, chromosome)
     
     try:
-        # ... [previous steps remain the same] ...
         sequences = MSpangepopDataHandler.read_fasta(splited_fasta)
         traversal = MSpangepopDataHandler.read_json(augmented_traversal)
         tree_lineages = gather_lineages(traversal)
@@ -1212,9 +1211,18 @@ def main(splited_fasta: str, augmented_traversal: str, output_file: str,
         
         # Apply mutations with tracking
         apply_mutations_to_graphs(graphs, traversal, recap, visualizer)
-        
+
+
+        for graph in graphs:
+            MScompute("Graph linting")
+            graph.lint(ignore_ancestral=True)
+            MScompute("Graph merging")
+            merge_nodes(graph)
+            MSsuccess("Done !")
         # Create ensemble and save
+
         ensemble = GraphEnsemble(name=f"{sample}_chr_{chromosome}", graph_list=graphs)
+
         ensemble.concatenate
         
         # Collect final lineage lengths after concatenation
