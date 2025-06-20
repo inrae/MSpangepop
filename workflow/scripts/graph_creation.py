@@ -12,8 +12,7 @@ import random
 from bitarray import bitarray # type: ignore
 
 from io_handler import MSpangepopDataHandler, MSerror, MSsuccess, MScompute, MSwarning
-from graph_utils import mutate_base, generate_sequence, gather_lineages, MutationRecap, VariantSizeVisualizer
-from graph_merge import merge_nodes
+from graph_utils import mutate_base, generate_sequence,gather_lineages, MutationRecap, VariantSizeVisualizer
 
 # You can choose a matrix here for the SNP and insertion sequences
 from matrix import random_matrix as snp_matrix, simple_at_bias_matrix as insertion_matrix
@@ -1005,46 +1004,74 @@ def apply_mutations_to_graphs(graphs, traversal, recap: MutationRecap, visualize
         # Extract tree metadata
         tree_index = tree_data.get("tree_index", "unknown")
         tree_interval = tree_data.get("initial_tree_interval", [0, 0])
-        tree_start = tree_interval[0]  # Global position where this tree starts
+        tree_start = tree_interval[0]
+        tree_length = tree_interval[1] - tree_interval[0]
         
         MScompute(f"Applying mutations to tree {tree_index} (interval: {tree_interval})")
         
-        # Calculate the initial tree length (before any mutations)
-        # This is just for reference - actual validation uses dynamic path lengths
-        tree_length = tree_interval[1] - tree_interval[0]
-        
-        # Process each node in the tree (nodes are already in traversal order)
+        # Process each node in the tree
         for node_data in tree_data.get("nodes", []):
             node_id = node_data.get("node")
             mutations = node_data.get("mutations", [])
             affected_nodes = set(node_data.get("affected_nodes", []))
             
-            # Skip nodes without mutations
             if not mutations:
                 continue
             
-            # Determine which lineages are affected by this node's mutations
-            # Only actual lineages (leaf nodes) can have mutations applied
             lineages = set(tree_data.get("lineages", []))
             affected_lineages = affected_nodes.intersection(lineages)
             
-            # Skip if no actual lineages are affected
             if not affected_lineages:
                 MSwarning(f"Node {node_id} has mutations but no affected lineages")
                 continue
             
             # Apply each mutation for this node
             for mutation in mutations:
-                # Extract mutation details
                 mut_type = mutation.get("type")
-                start = mutation.get("start")  # Global position
+                start = mutation.get("start")
                 length = mutation.get("length")
-                
-                # Convert global position to tree-relative position
-                # This is crucial because each tree segment starts at position 0
                 relative_start = start - tree_start
                 
-                # First validation: Check if position is before tree start
+                # PROTECTION: Check if mutation affects first or last position
+                mutation_affects_boundaries = False
+                boundary_error_msg = ""
+                
+                if mut_type == "SNP":
+                    # SNP at position 0 or last position
+                    if relative_start == 0:
+                        mutation_affects_boundaries = True
+                        boundary_error_msg = "SNP at first position would break concatenation"
+                    elif relative_start == tree_length - 1:
+                        mutation_affects_boundaries = True
+                        boundary_error_msg = "SNP at last position would break concatenation"
+                
+                elif mut_type == "INS":
+                    # Insertion at position 0 would shift the first node
+                    if relative_start == 0:
+                        mutation_affects_boundaries = True
+                        boundary_error_msg = "Insertion at position 0 would break concatenation"
+                    # Note: Insertion at end is OK - it adds after the last node
+                
+                elif mut_type in ["DEL", "INV", "DUP"]:
+                    # These affect a range - check if range includes first or last position
+                    end_position = relative_start + length
+                    
+                    if relative_start == 0:
+                        mutation_affects_boundaries = True
+                        boundary_error_msg = f"{mut_type} starting at first position would break concatenation"
+                    elif end_position > tree_length - 1:
+                        mutation_affects_boundaries = True
+                        boundary_error_msg = f"{mut_type} affecting last position would break concatenation"
+                
+                # If mutation affects boundaries, reject it entirely
+                if mutation_affects_boundaries:
+                    MSwarning(f"Rejecting boundary mutation: {boundary_error_msg}")
+                    recap.add_mutation(tree_index, node_id, mut_type, start, length, 
+                                     affected_lineages, False, boundary_error_msg)
+                    visualizer.add_variant(mut_type, start, length, False)
+                    continue
+                
+                # Continue with normal validation...
                 if relative_start < 0:
                     error_msg = f"Position {start} is before tree start {tree_start}"
                     MSwarning(error_msg)
@@ -1211,21 +1238,9 @@ def main(splited_fasta: str, augmented_traversal: str, output_file: str,
         
         # Apply mutations with tracking
         apply_mutations_to_graphs(graphs, traversal, recap, visualizer)
-
-
-        for graph in graphs:
-            MScompute("Graph linting")
-            graph.lint(ignore_ancestral=True)
-            MScompute("Graph merging")
-            merge_nodes(graph)
-            MSsuccess("Done !")
-        # Create ensemble and save
-
         ensemble = GraphEnsemble(name=f"{sample}_chr_{chromosome}", graph_list=graphs)
-
-        ensemble.concatenate
         
-        # Collect final lineage lengths after concatenation
+        ensemble.concatenate
         if ensemble.graphs:  # Should have exactly one graph after concatenation
             final_graph = ensemble.graphs[0]
             lineage_lengths = {}
@@ -1233,8 +1248,9 @@ def main(splited_fasta: str, augmented_traversal: str, output_file: str,
                 # Calculate the actual sequence length of the path
                 lineage_lengths[lineage] = path.node_count + 1  # edges + 1 = nodes
             visualizer.set_lineage_lengths(lineage_lengths)
-        
+
         ensemble.lint(ignore_ancestral=True)
+
         ensemble.save_to_gfav1_1(output_file, ignore_ancestral=True)
         
         MSsuccess(f"Graph saved to {output_file}")
@@ -1249,6 +1265,7 @@ def main(splited_fasta: str, augmented_traversal: str, output_file: str,
             recap.save_recap(recap_file)
             MSsuccess(f"Recap saved to {recap_file}")
         
+        variant_plot_dir = False
         # Save visualizations
         if variant_plot_dir:
             import os
