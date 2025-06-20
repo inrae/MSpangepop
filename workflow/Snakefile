@@ -9,18 +9,20 @@ temp_dir= config.get("tempfile_location", "temp/")
 # Retrieve memory multiplier from config
 memory_multiplier = config.get("memory_multiplier", 1)
 
-def get_input_files():
-    inputs = []
+# Create explicit targets
+def get_all_targets():
+    targets = []
     for sample in config["samples"].keys():
         chr_n = config["samples"][sample]["chr_n"]
-        chromosomes = [f"{i}" for i in range(1, chr_n + 1)]
-        inputs.extend([os.path.join(output_dir, f"{sample}", "pangenomes", f"chr_{chromosome}_graph.gfa") for chromosome in chromosomes])
-    return inputs
+        # Add polished GFA files
+        for chr_num in range(1, chr_n + 1):
+            targets.append(os.path.join(output_dir, sample, "pangenomes", f"chr_{chr_num}_graph_polished.gfa"))
+        # Add global recap
+        targets.append(os.path.join(output_dir, sample, "info", f"{sample}_global_recap.txt"))
+    return targets
 
 rule all:
-    input:
-        get_input_files(),
-        expand(os.path.join(output_dir, "{sample}", "info", "{sample}_global_recap.txt"), sample=config["samples"].keys())
+    input: get_all_targets()
 
 # This rule is uesd to create a recap file for the workflwo
 rule create_recap:
@@ -214,8 +216,8 @@ rule graph_creation:
     output:
         gfa = os.path.join(output_dir, "{sample}", "pangenomes", "chr_{chromosome}_graph.gfa"),
         recap = os.path.join(output_dir, "{sample}", "info", "chr_{chromosome}_recap.txt")
-    params: 
-        out_dir =  os.path.join(output_dir, "{sample}", "info")
+    params:
+        out_dir = os.path.join(output_dir, "{sample}", "info")
     resources:
         mem_mb=lambda wildcards: int(50000 * memory_multiplier),
         time="10:00:00"
@@ -223,7 +225,7 @@ rule graph_creation:
         os.path.join(output_dir, "{sample}", "benchmark", "create_graph_chr_{chromosome}_benchmark.txt")
     container:
         "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
-    threads:4
+    threads: 1
     priority: 7
     shell:
         """
@@ -235,6 +237,27 @@ rule graph_creation:
             --chromosome {wildcards.chromosome} \
             --recap_file {output.recap} \
             --variant_plot_dir {params.out_dir}
+        """
+
+rule gfa_merge:
+    input:
+        initial_gfa = os.path.join(output_dir, "{sample}", "pangenomes", "chr_{chromosome}_graph.gfa")
+    output:
+        polished_gfa = os.path.join(output_dir, "{sample}", "pangenomes", "chr_{chromosome}_graph_polished.gfa")
+    resources:
+        mem_mb=lambda wildcards: int(50000 * memory_multiplier),
+        time="10:00:00"
+    benchmark:
+        os.path.join(output_dir, "{sample}", "benchmark", "gfa_polish_chr_{chromosome}_benchmark.txt")
+    container:
+        "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
+    threads: 1
+    priority: 7
+    shell:
+        """
+        python3 workflow/scripts/gfa_merge.py  \
+            {input.initial_gfa} \
+            {output.polished_gfa}
         """
 
 onsuccess:
