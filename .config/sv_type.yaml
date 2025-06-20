@@ -1,8 +1,8 @@
 # Percentage of each variant type in the simulation
 # Sum of values MUST be 100
 
-SNP: 25
-DEL: 25
-INS: 25
-INV: 15
-DUP: 10
+SNP: 20
+DEL: 20
+INS: 20
+INV: 40
+DUP: 0
