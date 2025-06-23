@@ -992,7 +992,7 @@ class GraphEnsemble:
                         continue
                     f.write(f"W\tlineage_{path.lineage}\t0\tlineage_{path.lineage}\t0\t0\t>{repr(path)}\n")
 
-def apply_mutations_to_graphs(graphs, traversal, recap: MutationRecap, visualizer: VariantSizeVisualizer):
+def apply_mutations_to_graphs(graphs, traversal, recap: MutationRecap, visualizer: VariantSizeVisualizer, chromosome):
     """
     Apply mutations from the augmented traversal to the corresponding graphs.
     
@@ -1006,7 +1006,7 @@ def apply_mutations_to_graphs(graphs, traversal, recap: MutationRecap, visualize
     - recap: MutationRecap object to track mutation applications
     - visualizer: VariantSizeVisualizer object to track variant sizes
     """
-    
+    i = 0 
     # Process each tree and its corresponding graph
     for tree_idx, (tree_data, graph) in enumerate(zip(traversal, graphs)):
         # Extract tree metadata
@@ -1015,7 +1015,8 @@ def apply_mutations_to_graphs(graphs, traversal, recap: MutationRecap, visualize
         tree_start = tree_interval[0]
         tree_length = tree_interval[1] - tree_interval[0]
         
-        MScompute(f"Applying mutations to tree {tree_index} (interval: {tree_interval})")
+        if i == 0 or i % 10 == 0 : 
+            MScompute(f"Applying mutations to chromosome {chromosome} subgraphs -> {(tree_index*100)/len(graphs):.0f} %")
         
         # Process each node in the tree
         for node_data in tree_data.get("nodes", []):
@@ -1073,7 +1074,6 @@ def apply_mutations_to_graphs(graphs, traversal, recap: MutationRecap, visualize
                 
                 # If mutation affects boundaries, reject it entirely
                 if mutation_affects_boundaries:
-                    MSwarning(f"Rejecting boundary mutation: {boundary_error_msg}")
                     recap.add_mutation(tree_index, node_id, mut_type, start, length, 
                                      affected_lineages, False, boundary_error_msg)
                     visualizer.add_variant(mut_type, start, length, False)
@@ -1082,7 +1082,6 @@ def apply_mutations_to_graphs(graphs, traversal, recap: MutationRecap, visualize
                 # Continue with normal validation...
                 if relative_start < 0:
                     error_msg = f"Position {start} is before tree start {tree_start}"
-                    MSwarning(error_msg)
                     recap.add_mutation(tree_index, node_id, mut_type, start, length, 
                                      affected_lineages, False, error_msg)
                     visualizer.add_variant(mut_type, start, length, False)
@@ -1141,7 +1140,6 @@ def apply_mutations_to_graphs(graphs, traversal, recap: MutationRecap, visualize
                     # Some lineages failed validation
                     valid_lineages = affected_lineages - set(failed_lineages)
                     error_msg = f"Invalid for lineages {failed_lineages}: {'; '.join(error_messages)}"
-                    MSwarning(f"Mutation partially failed: {error_msg}")
                     
                     # Record the failure for failed lineages
                     recap.add_mutation(tree_index, node_id, mut_type, start, length, 
@@ -1203,7 +1201,6 @@ def apply_mutations_to_graphs(graphs, traversal, recap: MutationRecap, visualize
                 except Exception as e:
                     # Mutation application failed
                     error_msg = str(e)
-                    MSwarning(f"Failed to apply {mut_type} at position {relative_start}: {error_msg}")
                     
                     # Record failure
                     recap.add_mutation(tree_index, node_id, mut_type, start, length, 
@@ -1213,9 +1210,6 @@ def apply_mutations_to_graphs(graphs, traversal, recap: MutationRecap, visualize
                 # SNPs are excluded from visualization as requested
                 visualizer.add_variant(mut_type, start, length, success)
         
-        # Log summary for this tree
-        MScompute(f"Completed mutations for tree {tree_index}")
-    
 def main(splited_fasta: str, augmented_traversal: str, output_file: str, 
          sample: str, chromosome: str, recap_file: str = None, 
          variant_plot_dir: str = None) -> None:
@@ -1224,7 +1218,7 @@ def main(splited_fasta: str, augmented_traversal: str, output_file: str,
     # Initialize tracking objects
     recap = MutationRecap(sample, chromosome)
     visualizer = VariantSizeVisualizer(sample, chromosome)
-    
+    MScompute("Starting to generate the variation graph")
     try:
         sequences = MSpangepopDataHandler.read_fasta(splited_fasta)
         traversal = MSpangepopDataHandler.read_json(augmented_traversal)
@@ -1236,7 +1230,12 @@ def main(splited_fasta: str, augmented_traversal: str, output_file: str,
         node_id_generator = itertools.count(1)
         
         graphs = []
+        y = 0
         for i, (record, (tree_index, lineages)) in enumerate(zip(sequences, tree_lineages)):
+
+            if y == 0 or y % 10 == 0 :
+                MScompute(f"Initialization of chromosome {chromosome} subgraphs -> {(tree_index*100)/len(sequences):.0f} %")
+            
             sequence = str(record.seq)
             new_graph = Graph(node_id_generator)
             new_graph.build_from_sequence(sequence, lineages)
@@ -1245,9 +1244,10 @@ def main(splited_fasta: str, augmented_traversal: str, output_file: str,
         MSsuccess(f"Initialized {len(graphs)} graphs for chromosome {chromosome}")
         
         # Apply mutations with tracking
-        apply_mutations_to_graphs(graphs, traversal, recap, visualizer)
+        MScompute(f"Starting to integrate mutation to all graphs")
+        apply_mutations_to_graphs(graphs, traversal, recap, visualizer, chromosome)
         ensemble = GraphEnsemble(name=f"{sample}_chr_{chromosome}", graph_list=graphs)
-        
+        MScompute(f"Concatenating all graphs")
         ensemble.concatenate
         if ensemble.graphs:  # Should have exactly one graph after concatenation
             final_graph = ensemble.graphs[0]
@@ -1257,8 +1257,9 @@ def main(splited_fasta: str, augmented_traversal: str, output_file: str,
                 lineage_lengths[lineage] = path.node_count + 1  # edges + 1 = nodes
             visualizer.set_lineage_lengths(lineage_lengths)
 
+        MScompute(f"Removing nodes orphaned by the mutations on {chromosome}")
         ensemble.lint(ignore_ancestral=True)
-
+        MScompute(f"Saving the simulated chromosome {chromosome} graph")
         ensemble.save_to_gfav1_1(output_file, ignore_ancestral=True)
         
         MSsuccess(f"Graph saved to {output_file}")
@@ -1273,7 +1274,6 @@ def main(splited_fasta: str, augmented_traversal: str, output_file: str,
             recap.save_recap(recap_file)
             MSsuccess(f"Recap saved to {recap_file}")
         
-        variant_plot_dir = False
         # Save visualizations
         if variant_plot_dir:
             import os
@@ -1293,7 +1293,7 @@ def main(splited_fasta: str, augmented_traversal: str, output_file: str,
             lengths_plot_path = os.path.join(variant_plot_dir,
                                            f"{sample}_chr{chromosome}_graph_lineage_lengths.png")
             visualizer.save_lineage_lengths_plot(lengths_plot_path)
-
+        
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Create variation graph from mutations")
     parser.add_argument("--splited_fasta", required=True, help="Path to split FASTA file")
