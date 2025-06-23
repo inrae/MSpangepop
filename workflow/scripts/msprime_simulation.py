@@ -13,6 +13,7 @@ import argparse
 import os
 import json
 import time
+from collections import defaultdict
 
 from io_handler import MSpangepopDataHandler, MSerror, MSsuccess, MScompute, get_indent, process_seed
 
@@ -29,10 +30,20 @@ def create_recombination_map(chrom_length:int, recombination_rate:float)-> mspri
     except Exception as e:
             raise MSerror(f"Error creating recombination map: {e}")
 
-def save_output(mutated_ts, chromosome_name: str, output_dir: str, readable_json: bool):
+def save_output_v1(mutated_ts, chromosome_name: str, output_dir: str, readable_json: bool):
     """
-    Save simulation results into a JSON file efficiently for large files.
+    Save simulation results into a JSON file.
     Uses incremental JSON writing to avoid high memory usage.
+
+    /!\ this implementation is realy complex (but stable):
+
+    Given
+    T = number of trees in the tree sequence
+    N = average number of nodes per tree
+    M = total number of mutations across all trees
+    Theorical complexity = O(T × (N + M))
+    
+    This mess TRULY quadratic. 
     """
 
     json_filename = os.path.join(output_dir, f"chr_{chromosome_name}_msprime_simulation.json")
@@ -82,6 +93,69 @@ def save_output(mutated_ts, chromosome_name: str, output_dir: str, readable_json
     except Exception as e:
         raise MSerror(f"Error saving JSON output: {e}")
 
+def save_output_v2(mutated_ts, chromosome_name: str, json_file: str, readable_json: bool):
+    """
+    Optimized version with pre-indexed mutations
+    O(M + T × N) M is no more a factor
+    """
+    
+    json_filename = json_file
+    
+    # First, collect all tree intervals and their indices
+    tree_intervals = []
+    for tree in mutated_ts.trees():
+        tree_intervals.append((tree.interval.left, tree.interval.right, tree.index))
+    
+    # Pre-index all mutations by tree - O(M) 
+    tree_mutations = defaultdict(list)
+    for mutation in mutated_ts.mutations():
+        position = mutated_ts.site(mutation.site).position
+        
+        # Find which tree this mutation belongs to
+        for left, right, tree_idx in tree_intervals:
+            if left <= position < right:
+                tree_mutations[tree_idx].append({"node": mutation.node})
+                break  # Each mutation belongs to only one tree
+    
+    try:
+        with open(json_filename, 'w') as f:
+            f.write('[\n')
+            first_tree = True
+            
+            for tree in mutated_ts.trees():
+                interval = [int(tree.interval[0]), int(tree.interval[1])]
+                
+                # Build nodes and edges as before
+                nodes = [{"id": node, "time": mutated_ts.node(node).time} for node in tree.nodes()]
+                edges = []
+                for parent in tree.nodes():
+                    children = list(tree.children(parent))
+                    edges.extend({"parent": parent, "child": child} for child in children)
+                
+                # Get mutations for this specific tree - O(1) lookup!
+                mutations = tree_mutations.get(tree.index, [])
+                
+                tree_data = {
+                    "tree_index": tree.index,
+                    "interval": interval,
+                    "nodes": nodes,
+                    "edges": edges,
+                    "mutations": mutations,
+                }
+                
+                if not first_tree:
+                    f.write(",\n")
+                first_tree = False
+                
+                json.dump(tree_data, f, indent=get_indent(readable_json))
+            
+            f.write('\n]')
+        
+        MSsuccess(f"Successfully saved output to {json_filename}")
+    
+    except Exception as e:
+        raise MSerror(f"Error saving JSON output: {e}")
+
 def get_chromosome_length(fai_file, chromosome_name):
     """
     Retrieves the length of a specified chromosome from a FASTA index (.fai) file.
@@ -102,9 +176,15 @@ def get_chromosome_length(fai_file, chromosome_name):
 
     return chrom_length
 
+def save_tree_sequences(mutated_ts, ancestry_ts,  ancestry_ts_file,mutated_ts_file):
+    """Save both tree sequences to files"""
+    # Save as .trees files (tskit native format - recommended)
+    mutated_ts.dump(mutated_ts_file)
+    ancestry_ts.dump(ancestry_ts_file)
+
 def simulate_chromosome_evolution(
     fai_file: str, population_size: int, mutation_rate: float, recombination_rate: float, 
-    sample_size: int, output_dir: str, chromosome_name: str, model: str, readable_json, seed, info_out
+    sample_size: int, json_file: str, chromosome_name: str, model: str, readable_json, seed, ancestry_ts_file, mutated_ts_file, recap
 ):
     """
     Simulates chromosome evolution and generates a recap file with details.
@@ -112,8 +192,6 @@ def simulate_chromosome_evolution(
     pseed = process_seed(seed)
     try:
         start_time = time.time()
-        output_dir = os.path.join(output_dir, f"chr_{chromosome_name}")
-        os.makedirs(output_dir, exist_ok=True)  # Ensure output directory exists
 
         # Fetch chromosome length
         chrom_length = get_chromosome_length(fai_file, chromosome_name)
@@ -143,32 +221,18 @@ def simulate_chromosome_evolution(
         simulation_time = time.time() - start_time  # Time taken for simulation
         MSsuccess(f"Simulation completed for chromosome {chromosome_name}")
 
-        # Print tree structure (only if there are less than 10 trees)
-        total_trees = mutated_ts.num_trees
-        if total_trees < 10 and sample_size <= 20:
-            print(mutated_ts.draw_text())
-                    
-            # Save ancestry tree visualization
-            ancestry_svg_path = os.path.join(info_out, f"chr_{chromosome_name}_msprime_ancestry.svg")
-            with open(ancestry_svg_path, "w") as f:
-                f.write(ancestry_ts.draw_svg())
-
-            mutation_svg_path = os.path.join(info_out, f"chr_{chromosome_name}_msprime_mutations.svg")
-            with open(mutation_svg_path, "w") as f:
-                f.write(mutated_ts.draw_svg())
-        else :
-            MSsuccess(f"Total number of trees simulated : {total_trees} (see recap file for more data)")
-
         # Save mutation visualization
         MScompute(f"Saving output for chromosome {chromosome_name}")
 
         # Record time taken for saving output
         save_start_time = time.time()
-        save_output(mutated_ts, chromosome_name, output_dir, readable_json)
-        save_time = time.time() - save_start_time  # Time taken to save output
+        save_output_v2(mutated_ts, chromosome_name, json_file, readable_json)
+        save_time = time.time() - save_start_time 
+
+        save_tree_sequences(mutated_ts, ancestry_ts, ancestry_ts_file, mutated_ts_file)
 
         # Write recap file
-        recap_file_path = os.path.join(info_out, f"chr_{chromosome_name}_msprime_recap.txt")
+        recap_file_path = recap
         with open(recap_file_path, "w") as recap_file:
             recap_file.write("🔹 MSpangepop MSprime Simulation Recap \n")
             recap_file.write("-" * 40 + "\n")
@@ -180,7 +244,6 @@ def simulate_chromosome_evolution(
             recap_file.write(f"Recombination Rate: {recombination_rate} per bp\n")
             recap_file.write(f"Sample Size: {sample_size} individuals\n")
             recap_file.write(f"Mutation Model: {model}\n")
-            recap_file.write(f"Output Directory: {output_dir}\n\n")
             recap_file.write(f"Total Trees: {mutated_ts.num_trees}\n")
             recap_file.write(f"Total Nodes: {mutated_ts.num_nodes} (can be shared between Trees)\n")
             recap_file.write(f"Total Mutations: {mutated_ts.num_mutations}\n")
@@ -223,7 +286,7 @@ if __name__ == '__main__':
                         help='Recombination rate per base pair. Must be non-negative.')
     parser.add_argument('-n', '--sample_size', type=int, required=True,
                         help='Sample size (number of individuals to simulate). Must be positive.')
-    parser.add_argument('-o', '--output_dir', type=str, required=True,
+    parser.add_argument('--json', type=str, required=True,
                         help='Directory to save the output files.')
     parser.add_argument('-c', '--chromosome', type=str, required=True,
                         help='Chromosome number (1-based index). Must be a valid integer string.')
@@ -233,7 +296,9 @@ if __name__ == '__main__':
                         choices=[True, False],
                         help="Save JSON in a human-readable format (True/False, default: False).")
     parser.add_argument('-s', '--seed')
-    parser.add_argument('--info_out')
+    parser.add_argument('--ancestry_ts')
+    parser.add_argument('--mutated_ts')
+    parser.add_argument('--recap')
     args = parser.parse_args()
 
     # Input validation
@@ -249,10 +314,12 @@ if __name__ == '__main__':
         mutation_rate=args.mutation_rate,
         recombination_rate=args.recombination_rate,
         sample_size=args.sample_size,
-        output_dir=args.output_dir,
+        json_file=args.json,
         chromosome_name=args.chromosome,
         model=args.model,
         readable_json=args.readable_json,
         seed=args.seed,
-        info_out= args.info_out
+        ancestry_ts_file=args.ancestry_ts,
+        mutated_ts_file=args.mutated_ts,
+        recap=args.recap
     )
