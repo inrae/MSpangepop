@@ -4,6 +4,17 @@ Creation: 20 Oct 2024
 Updated: 13 Mar 2025
 Institution: INRAe
 Project: PangenOak
+
+This script provide three type of classes :
+- MSLogger that provide a way to log each operation to stdout wit MSsuccess, MScompute and MSwarning
+- MSerror which will raise and error with a custom_traceback
+- MSpangepopDataHandler is a class that will handle repeted i/o operations across all scripts like reading or writing json files.
+
+Example : 
+> MSsuccess("Hello world")
+✅ MSpangepop -> [script_name] Hello world
+
+> sequences = MSpangepopDataHandler.read_fasta(splited_fasta)
 """
 
 import json

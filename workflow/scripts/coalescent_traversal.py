@@ -1,4 +1,17 @@
-import random
+"""
+Author: Lucien Piat
+Institution: INRAe
+Project: PangenOak
+
+Usage : Construct a binary tree form a json file and then perform the perorder traversal on it.
+
+--json Path to the JSON file containing the tree
+--output_file Path to the output JSON 
+--chromosome Chromosome name
+--threads Number of threads for parallel processing
+--readable_json Save JSON in a human-readable format (True/False, default: False)
+"""
+
 from collections import defaultdict
 import argparse
 from concurrent.futures import ThreadPoolExecutor

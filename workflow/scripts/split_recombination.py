@@ -2,6 +2,8 @@
 Author: Lucien Piat
 Institution: INRAe
 Project: PangenOak
+
+Usage : This script will split the sequence between recombination events simulated by msprime
 """
 
 import argparse

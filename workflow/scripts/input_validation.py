@@ -1,3 +1,17 @@
+"""
+Author: Lucien Piat
+Institution: INRAe
+Project: PangenOak
+
+Usage : Simple script to check is the fasta file is corectely formated
+--fasta_file Path to the input FASTA file.
+--output_file Path to the output file where contig count will be stored.
+--min_contigs Minimum required number of contigs (default: 0).
+
+This script will stop the workflow if a fasta file is missing chromosomes or sequences
+This will avoid runing the simmulation for nothing
+"""
+
 import argparse
 from io_handler import MSpangepopDataHandler, MSerror, MSsuccess, MScompute, MSwarning
 

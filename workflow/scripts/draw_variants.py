@@ -2,6 +2,16 @@
 Author: Lucien Piat
 Institution: INRAe
 Project: PangenOak
+
+Usage : Augment JSON file with variant type and size..
+
+--json Path to the JSON file containing tree and mutation data
+--output Path to the output JSON file where augmented data will be saved
+--yaml Path to the YAML configuration file with variant probabilities.
+--chromosome Chromosome name
+--threads Number of threads for parallel processing
+--minimal_variant_size Minimal size for variants generated
+--readable_json Save JSON in a human-readable format (True/False, default: False)
 """
 
 import argparse

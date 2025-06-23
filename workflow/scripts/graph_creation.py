@@ -3,7 +3,15 @@ Author: Lucien Piat
 Institution: INRAe
 Project: PangenOak
 
-This scripts create a variation graph from a json file full of mutations and lineages.
+Usage : This scripts create a variation graph from a json file full of mutations and lineages.
+
+--splited_fasta ath to split FASTA file
+--augmented_traversal Path to augmented traversal JSON
+--output_file Path to output GFA file
+--sample Sample name
+--chromosome Chromosome identifier
+--recap_file Path to save recap file
+--variant_plot_dir Directory to save variant size plots
 """
 
 import itertools

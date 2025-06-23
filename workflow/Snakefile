@@ -1,3 +1,10 @@
+"""
+Author: Lucien Piat
+Institution: INRAe
+Project: PangenOak
+"""
+
+
 configfile: ".config/masterconfig.yaml"
 
 import os
@@ -209,6 +216,7 @@ rule draw_variants:
             --readable_json {params.readable_json}
         """
 
+# Create the graph form the augmented traversal (headche inducing script)
 rule graph_creation:
     input:
         splited_fasta=rules.split_recombination.output,
@@ -239,6 +247,7 @@ rule graph_creation:
             --variant_plot_dir {params.out_dir}
         """
 
+# This merge the nodes that can be merged in the GFA file
 rule gfa_merge:
     input:
         initial_gfa = os.path.join(output_dir, "{sample}", "pangenomes", "chr_{chromosome}_graph.gfa")
