@@ -4,14 +4,16 @@ Institution: INRAe
 Project: PangenOak
 """
 
-
 configfile: ".config/masterconfig.yaml"
 
 import os
 import yaml
 
 output_dir = config.get("output_dir", "results/")
-temp_dir= config.get("tempfile_location", "temp/")
+temp_dir= config.get("tempfile_location", "00_temp/")
+plot_dir = "01_plots/"
+simulation_data = "02_simulation_data/"
+graph  = "03_graph/"
 
 # Retrieve memory multiplier from config
 memory_multiplier = config.get("memory_multiplier", 1)
@@ -24,21 +26,23 @@ def get_all_targets():
         # Add polished GFA files
         for chr_num in range(1, chr_n + 1):
             targets.append(os.path.join(output_dir, sample, "pangenomes", f"chr_{chr_num}_graph_polished.gfa"))
+            targets.append(os.path.join(output_dir, sample, simulation_data, f"chr_{chr_num}", "plots", "visualization_complete.txt"))
+
         # Add global recap
-        targets.append(os.path.join(output_dir, sample, "info", f"{sample}_global_recap.txt"))
+        targets.append(os.path.join(output_dir, sample, simulation_data, f"{sample}_global_recap.txt"))
     return targets
 
 rule all:
     input: get_all_targets()
 
-# This rule is uesd to create a recap file for the workflwo
+# This rule is used to create a recap file for the workflow
 rule create_recap:
     input:
         configfile= ".config/masterconfig.yaml"
     output:
-        recap_file=os.path.join(output_dir, "{sample}", "info", "{sample}_global_recap.txt")
+        recap_file=os.path.join(output_dir, "{sample}", simulation_data, "{sample}_global_recap.txt")
     params:
-        output_dir=os.path.join(output_dir, "{sample}","info",),
+        output_dir=lambda wildcards: os.path.join(output_dir, wildcards.sample, simulation_data),
         current_run="{sample}"
     resources:
         mem_mb=lambda wildcards: int(1000),
@@ -60,6 +64,9 @@ rule input_validation:
     params:
         chr_n =lambda wildcards: config["samples"][wildcards.sample]["chr_n"]
     priority: 10
+    resources:
+        mem_mb=lambda wildcards: int(1000),
+        time="00:10:00"
     container:
         "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
     shell:
@@ -72,15 +79,13 @@ rule input_validation:
 # Index the fasta file to gather contig length (used by msprime)
 rule samtools_index:
     input:
-        rules.input_validation.output.validation_file,
+        validation_file=rules.input_validation.output.validation_file,
         fasta=lambda wildcards: config["samples"][wildcards.sample]["fasta_gz"]
     output:
         fai=temp(os.path.join(output_dir, "{sample}", temp_dir, "{sample}_full.fai"))
     resources:
         mem_mb=lambda wildcards: int(50000 * memory_multiplier),
-        time="10:00:00"
-    params: 
-        out=os.path.join(output_dir, "{sample}", "01_chromosome_index")  
+        time="1:00:00"
     container:
         "docker://registry.forge.inrae.fr/pangepop/mspangepop/samtool:1.21"
     benchmark:
@@ -100,19 +105,20 @@ rule samtools_index:
 # Simulate the coalescent and save it to a json file
 rule msprime_simulation:    
     input:
-        fai=rules.samtools_index.output
+        fai=rules.samtools_index.output.fai
     output:
-        json = temp(os.path.join(output_dir, "{sample}", temp_dir, "chr_{chromosome}", "chr_{chromosome}_msprime_simulation.json"))
+        json = temp(os.path.join(output_dir, "{sample}", temp_dir, "chr_{chromosome}", "chr_{chromosome}_msprime_simulation.json")),
+        ancestry_ts = os.path.join(output_dir, "{sample}", simulation_data, "chr_{chromosome}", "ancestry_ts.trees"), 
+        mutated_ts = os.path.join(output_dir, "{sample}", simulation_data, "chr_{chromosome}", "mutated_ts.trees"),
+        recap = os.path.join(output_dir, "{sample}", simulation_data, "chr_{chromosome}", "msprime_recap.txt"),
     params:
         pop_size=lambda wildcards: config["samples"][wildcards.sample]["population_size"],
         mut_rate=lambda wildcards: config["samples"][wildcards.sample]["mutation_rate"],
         reco_rate=lambda wildcards: config["samples"][wildcards.sample]["recombination_rate"],
         n=lambda wildcards: config["samples"][wildcards.sample]["sample_size"],
-        temp_out=lambda wildcards: os.path.join(output_dir, f"{wildcards.sample}", temp_dir),
         model=lambda wildcards: config["samples"][wildcards.sample]["model"],
         readable_json=lambda wildcards: config["samples"][wildcards.sample].get("readable_json", False), 
-        seed=lambda wildcards: config["samples"][wildcards.sample].get("seed", None),
-        info_out = lambda wildcards: os.path.join(output_dir, f"{wildcards.sample}", "info")
+        seed=lambda wildcards: config["samples"][wildcards.sample].get("seed", None)
     resources:
         mem_mb=lambda wildcards: int(200000 * memory_multiplier),
         time="60:00:00"
@@ -129,15 +135,39 @@ rule msprime_simulation:
             -mu {params.mut_rate} \
             -r {params.reco_rate} \
             -n {params.n} \
-            -o {params.temp_out} \
             -c {wildcards.chromosome} \
             -mo {params.model} \
             --readable_json {params.readable_json} \
             --seed {params.seed} \
-            --info_out {params.info_out}
+            --ancestry_ts {output.ancestry_ts} \
+            --mutated_ts {output.mutated_ts} \
+            --json {output.json} \
+            --recap {output.recap}
         """
 
-# Use the preorder traversal to get the order in which the mutations should be handeled, save a json
+rule plot_msprime_simulation:
+    input:
+        ancestry_ts = rules.msprime_simulation.output.ancestry_ts,
+        mutated_ts = rules.msprime_simulation.output.mutated_ts
+    output:
+        completion_flag = os.path.join(output_dir, "{sample}", simulation_data, "chr_{chromosome}", "plots", "visualization_complete.txt")
+    params:
+        output_dir = lambda wildcards: os.path.join(output_dir, wildcards.sample, simulation_data, f"chr_{wildcards.chromosome}", "plots")
+    resources:
+        mem_mb=lambda wildcards: int(50000 * memory_multiplier),
+        time="01:00:00"
+    benchmark:
+        os.path.join(output_dir, "{sample}", "benchmark", "plot_msprime_simulation_chr_{chromosome}_benchmark.txt")
+    container:
+        "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
+    priority: 1
+    shell:
+        """
+        python3 workflow/scripts/tree_visualizer.py {input.mutated_ts} {input.ancestry_ts} -o {params.output_dir} -c {wildcards.chromosome}
+        echo "Visualization completed at $(date)" > {output.completion_flag}
+        """
+
+# Use the preorder traversal to get the order in which the mutations should be handled, save a json
 rule coalescent_traversal:
     input:
         json = rules.msprime_simulation.output.json
@@ -169,7 +199,7 @@ rule split_recombination:
         json = rules.msprime_simulation.output.json,
         fasta=lambda wildcards: config["samples"][wildcards.sample]["fasta_gz"]
     output:
-        temp(os.path.join(output_dir, "{sample}", temp_dir, "chr_{chromosome}", "chr_{chromosome}_recombinations.fasta.gz"))
+        split_fasta = temp(os.path.join(output_dir, "{sample}", temp_dir, "chr_{chromosome}", "chr_{chromosome}_recombinations.fasta.gz"))
     resources:
         mem_mb=lambda wildcards: int(50000 * memory_multiplier),
         time="10:00:00"
@@ -183,15 +213,15 @@ rule split_recombination:
         python3 workflow/scripts/split_recombination.py --json {input.json} \
             --fasta {input.fasta} \
             --chromosome {wildcards.chromosome} \
-            --output {output} 
+            --output {output.split_fasta} 
         """       
 
-# Script to augment the traversal json file with muations position type and length
+# Script to augment the traversal json file with mutations position type and length
 rule draw_variants:
     input:
-        json = rules.coalescent_traversal.output.traversal
+        traversal_json = rules.coalescent_traversal.output.traversal
     output:
-        os.path.join(output_dir, "{sample}", "pangenomes", "traversal", "chr_{chromosome}_augmented_traversal.json")
+        augmented_traversal = os.path.join(output_dir, "{sample}", "pangenomes", "traversal", "chr_{chromosome}_augmented_traversal.json")
     params:
         sv_type_file = config.get("sv_type_file"),
         minimal_variant_size=lambda wildcards: config["samples"][wildcards.sample]["minimal_variant_size"],
@@ -207,25 +237,25 @@ rule draw_variants:
         os.path.join(output_dir, "{sample}", "benchmark", "generate_variant_{chromosome}_benchmark.txt")
     shell:
         """
-        python3 workflow/scripts/draw_variants.py --json {input.json} \
+        python3 workflow/scripts/draw_variants.py --json {input.traversal_json} \
             --yaml {params.sv_type_file} \
-            --output {output} \
+            --output {output.augmented_traversal} \
             --chromosome {wildcards.chromosome} \
             --threads {threads} \
             --minimal_variant_size {params.minimal_variant_size} \
             --readable_json {params.readable_json}
         """
 
-# Create the graph form the augmented traversal (headche inducing script)
+# Create the graph from the augmented traversal (headache inducing script)
 rule graph_creation:
     input:
-        splited_fasta=rules.split_recombination.output,
-        augmented_traversal = rules.draw_variants.output,
+        split_fasta=rules.split_recombination.output.split_fasta,
+        augmented_traversal = rules.draw_variants.output.augmented_traversal,
     output:
         gfa = os.path.join(output_dir, "{sample}", "pangenomes", "chr_{chromosome}_graph.gfa"),
         recap = os.path.join(output_dir, "{sample}", "info", "chr_{chromosome}_recap.txt")
     params:
-        out_dir = os.path.join(output_dir, "{sample}", "info")
+        out_dir = lambda wildcards: os.path.join(output_dir, wildcards.sample, "info")
     resources:
         mem_mb=lambda wildcards: int(50000 * memory_multiplier),
         time="10:00:00"
@@ -238,7 +268,7 @@ rule graph_creation:
     shell:
         """
         python3 workflow/scripts/graph_creation.py \
-            --splited_fasta {input.splited_fasta} \
+            --splited_fasta {input.split_fasta} \
             --augmented_traversal {input.augmented_traversal} \
             --output_file {output.gfa} \
             --sample {wildcards.sample} \
@@ -247,10 +277,10 @@ rule graph_creation:
             --variant_plot_dir {params.out_dir}
         """
 
-# This merge the nodes that can be merged in the GFA file
+# This merges the nodes that can be merged in the GFA file
 rule gfa_merge:
     input:
-        initial_gfa = os.path.join(output_dir, "{sample}", "pangenomes", "chr_{chromosome}_graph.gfa")
+        initial_gfa = rules.graph_creation.output.gfa
     output:
         polished_gfa = os.path.join(output_dir, "{sample}", "pangenomes", "chr_{chromosome}_graph_polished.gfa")
     resources:
