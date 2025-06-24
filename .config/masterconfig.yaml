@@ -25,7 +25,7 @@ samples:
 #     recombination_rate: float    # Recombination rate (r) the frequency of recombination events.
 #     sample_size: int             # Number of individual samples to simulate
 #     model: str                   # Mutation model for msprime ['binary', 'infinite_alleles', 'jc69']
-#     minimal_indel_size: int      # Minimal size for generated variants
+#     minimal_variant_size: int    # Minimal size for generated variants
 #     readable_json: [True, False] # If set to true output a human readble json (bigger file size)
 #     seed : [None, int, str]      # Run the msprime simulation using a seed
  
