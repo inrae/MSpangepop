@@ -6,6 +6,7 @@ variables:
 stages:
   - build
   - test
+  - deploy  # Add deploy stage
 
 # Used to build and upload the image in dependencies/msprime_box.def to the forge
 build-and-push-image:
@@ -63,3 +64,25 @@ test-workflow:
       - .snakemake/log/
       - "*.log"
     expire_in: 1 week
+
+# GitLab Pages deployment
+pages:
+  stage: deploy
+  image: alpine:latest
+  script:
+    - echo "🔹 MSprime -> Preparing documentation for GitLab Pages..."
+    - mkdir -p public
+    - cp -r doc/* public/
+    - echo "✅ MSprime -> Documentation copied to public/"
+  artifacts:
+    paths:
+      - public
+  rules:
+    # Deploy when changes are made to doc/ folder on main branch
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      changes:
+        - doc/**/*
+    # Also allow manual deployment on main branch
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      when: manual
+      allow_failure: true
