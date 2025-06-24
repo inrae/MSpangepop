@@ -168,10 +168,10 @@ def main(json_file, output_json_file, yaml_file, chromosome, num_threads, minima
         # Read length distribution files (only once)
         length_files = {}
         for var_type, file_path in {
-            'DEL': 'simulation_data/test.tsv',
-            'INS': 'simulation_data/test.tsv',
-            'INV': 'simulation_data/test.tsv',
-            'DUP': 'simulation_data/test.tsv'
+            'DEL': 'simulation_data/size_distribDEL.tsv',
+            'INS': 'simulation_data/size_distribINS.tsv',
+            'INV': 'simulation_data/size_distribINV.tsv',
+            'DUP': 'simulation_data/size_distribDUP.tsv'
         }.items():
             if not os.path.exists(file_path):
                 raise MSerror("Length distribution file missing for {var_type}.")
