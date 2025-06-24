@@ -236,7 +236,7 @@ class VariantSizeVisualizer:
         plt.tight_layout()
         plt.savefig(output_path, dpi=1000, bbox_inches='tight')
         plt.close()
-        MSsuccess(f"Variant size by position plot saved for sample {self.sample} chr {self.chromosome}")
+
     
     def save_size_distribution_plot(self, output_path: str):
         MScompute(f"Creating variant size distribution for sample {self.sample} chr {self.chromosome}")
@@ -309,7 +309,7 @@ class VariantSizeVisualizer:
         plt.tight_layout()
         plt.savefig(output_path, dpi=1000, bbox_inches='tight')
         plt.close()
-        MSsuccess(f"Variant size distribution plot saved for sample {self.sample} chr {self.chromosome}")
+
 
     def save_lineage_lengths_plot(self, output_path: str):
         MScompute(f"Creating lineage plot for sample {self.sample} chr {self.chromosome}")
@@ -365,4 +365,3 @@ class VariantSizeVisualizer:
         plt.tight_layout()
         plt.savefig(output_path, dpi=1000, bbox_inches='tight')
         plt.close()
-        MSsuccess(f"Lineage lengths plot saved for sample {self.sample} chr {self.chromosome}")
