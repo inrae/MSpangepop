@@ -239,7 +239,7 @@ class VariantSizeVisualizer:
         MSsuccess(f"Variant size by position plot saved for sample {self.sample} chr {self.chromosome}")
     
     def save_size_distribution_plot(self, output_path: str):
-        MScompute("Creating variant size distribution for sample {self.sample} chr {self.chromosome}")
+        MScompute(f"Creating variant size distribution for sample {self.sample} chr {self.chromosome}")
         if not self.variant_sizes:
             MSwarning("No variant data to plot (excluding SNPs)")
             return
@@ -312,7 +312,7 @@ class VariantSizeVisualizer:
         MSsuccess(f"Variant size distribution plot saved for sample {self.sample} chr {self.chromosome}")
 
     def save_lineage_lengths_plot(self, output_path: str):
-        MScompute("Creating lineage plot for sample {self.sample} chr {self.chromosome}")
+        MScompute(f"Creating lineage plot for sample {self.sample} chr {self.chromosome}")
         if not self.lineage_lengths:
             MSwarning("No lineage length data to plot")
             return
