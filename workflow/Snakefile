@@ -25,9 +25,8 @@ def get_all_targets():
         chr_n = config["samples"][sample]["chr_n"]
         # Add polished GFA files
         for chr_num in range(1, chr_n + 1):
-            targets.append(os.path.join(output_dir, sample, "pangenomes", f"chr_{chr_num}_graph_polished.gfa"))
-            targets.append(os.path.join(output_dir, sample, simulation_data, f"chr_{chr_num}", "plots", "visualization_complete.txt"))
-
+            targets.append(os.path.join(output_dir, sample, graph, f"chr_{chr_num}_graph_polished.gfa"))
+            targets.append(os.path.join(output_dir, sample, plot_dir, f"chr_{chr_num}_tree_plots", "visualization_complete.txt"))
         # Add global recap
         targets.append(os.path.join(output_dir, sample, simulation_data, f"{sample}_global_recap.txt"))
     return targets
@@ -36,14 +35,13 @@ rule all:
     input: get_all_targets()
 
 # This rule is used to create a recap file for the workflow
-rule create_recap:
+rule global_recap:
     input:
         configfile= ".config/masterconfig.yaml"
     output:
         recap_file=os.path.join(output_dir, "{sample}", simulation_data, "{sample}_global_recap.txt")
     params:
-        output_dir=lambda wildcards: os.path.join(output_dir, wildcards.sample, simulation_data),
-        current_run="{sample}"
+        out=lambda wildcards: os.path.join(output_dir, wildcards.sample, simulation_data),
     resources:
         mem_mb=lambda wildcards: int(1000),
         time="00:10:00"
@@ -52,7 +50,9 @@ rule create_recap:
     priority: 1
     shell:
         """
-        python3 workflow/scripts/recap.py {input.configfile} {params.output_dir} {params.current_run}
+        python3 workflow/scripts/recap.py {input.configfile} \
+            {params.out} \
+            {wildcards.sample}
         """
 
 # Check if the input file is usable if not, tell the user why
@@ -88,12 +88,10 @@ rule samtools_index:
         time="1:00:00"
     container:
         "docker://registry.forge.inrae.fr/pangepop/mspangepop/samtool:1.21"
-    benchmark:
-        os.path.join(output_dir, "{sample}", "benchmark", "samtools_index_benchmark.txt")
     priority: 10
     shell:
         """
-        echo '🔹 MSpangepop -> Starting {wildcards.sample} indexing...' && 
+        echo '🔹 MSpangepop -> Starting {wildcards.sample} indexing...' 
         samtools faidx {input.fasta} && \
         mv {input.fasta}.fai {output.fai} && \
         echo '✅ MSpangepop -> {wildcards.sample} indexing successful.'
@@ -123,7 +121,8 @@ rule msprime_simulation:
         mem_mb=lambda wildcards: int(200000 * memory_multiplier),
         time="60:00:00"
     benchmark:
-        os.path.join(output_dir, "{sample}", "benchmark", "msprime_chr_{chromosome}_benchmark.txt")
+        os.path.join(output_dir, "{sample}", "benchmark", "chr_{chromosome}", "msprime_simulation_benchmark.txt")
+
     container:
         "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
     priority: 10
@@ -150,20 +149,25 @@ rule plot_msprime_simulation:
         ancestry_ts = rules.msprime_simulation.output.ancestry_ts,
         mutated_ts = rules.msprime_simulation.output.mutated_ts
     output:
-        completion_flag = os.path.join(output_dir, "{sample}", simulation_data, "chr_{chromosome}", "plots", "visualization_complete.txt")
+        completion_flag = os.path.join(output_dir, "{sample}", plot_dir, "chr_{chromosome}_tree_plots", "visualization_complete.txt")
     params:
-        output_dir = lambda wildcards: os.path.join(output_dir, wildcards.sample, simulation_data, f"chr_{wildcards.chromosome}", "plots")
+        out = lambda wildcards: os.path.join(
+            output_dir, wildcards.sample, plot_dir, f"chr_{wildcards.chromosome}_tree_plots"
+        )
     resources:
         mem_mb=lambda wildcards: int(50000 * memory_multiplier),
         time="01:00:00"
     benchmark:
-        os.path.join(output_dir, "{sample}", "benchmark", "plot_msprime_simulation_chr_{chromosome}_benchmark.txt")
+        os.path.join(output_dir, "{sample}", "benchmark", "chr_{chromosome}", "plot_msprime_simulation_benchmark.txt")
     container:
         "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
     priority: 1
     shell:
         """
-        python3 workflow/scripts/tree_visualizer.py {input.mutated_ts} {input.ancestry_ts} -o {params.output_dir} -c {wildcards.chromosome}
+        python3 workflow/scripts/tree_visualizer.py {input.mutated_ts} \
+            {input.ancestry_ts} \
+            -o {params.out} \
+            -c {wildcards.chromosome}
         echo "Visualization completed at $(date)" > {output.completion_flag}
         """
 
@@ -181,7 +185,7 @@ rule coalescent_traversal:
     threads: 10
     priority: 9
     benchmark:
-        os.path.join(output_dir, "{sample}", "benchmark", "coalescent_traversal_chr_{chromosome}_benchmark.txt")
+        os.path.join(output_dir, "{sample}", "benchmark", "chr_{chromosome}", "coalescent_traversal_benchmark.txt")
     container:
         "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
     shell: 
@@ -204,7 +208,7 @@ rule split_recombination:
         mem_mb=lambda wildcards: int(50000 * memory_multiplier),
         time="10:00:00"
     benchmark:
-        os.path.join(output_dir, "{sample}", "benchmark", "split_recombination_chr_{chromosome}_benchmark.txt")
+        os.path.join(output_dir, "{sample}", "benchmark", "chr_{chromosome}", "split_recombination_benchmark.txt")
     priority: 8
     container:
         "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
@@ -213,7 +217,7 @@ rule split_recombination:
         python3 workflow/scripts/split_recombination.py --json {input.json} \
             --fasta {input.fasta} \
             --chromosome {wildcards.chromosome} \
-            --output {output.split_fasta} 
+            --output {output.split_fasta}
         """       
 
 # Script to augment the traversal json file with mutations position type and length
@@ -221,7 +225,7 @@ rule draw_variants:
     input:
         traversal_json = rules.coalescent_traversal.output.traversal
     output:
-        augmented_traversal = os.path.join(output_dir, "{sample}", "pangenomes", "traversal", "chr_{chromosome}_augmented_traversal.json")
+        augmented_traversal = os.path.join(output_dir, "{sample}", graph, "traversal", "chr_{chromosome}_augmented_traversal.json")
     params:
         sv_type_file = config.get("sv_type_file"),
         minimal_variant_size=lambda wildcards: config["samples"][wildcards.sample]["minimal_variant_size"],
@@ -234,7 +238,7 @@ rule draw_variants:
     container:
         "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
     benchmark:
-        os.path.join(output_dir, "{sample}", "benchmark", "generate_variant_{chromosome}_benchmark.txt")
+        os.path.join(output_dir, "{sample}", "benchmark", "chr_{chromosome}", "draw_variants_benchmark.txt")
     shell:
         """
         python3 workflow/scripts/draw_variants.py --json {input.traversal_json} \
@@ -252,15 +256,15 @@ rule graph_creation:
         split_fasta=rules.split_recombination.output.split_fasta,
         augmented_traversal = rules.draw_variants.output.augmented_traversal,
     output:
-        gfa = os.path.join(output_dir, "{sample}", "pangenomes", "chr_{chromosome}_graph.gfa"),
-        recap = os.path.join(output_dir, "{sample}", "info", "chr_{chromosome}_recap.txt")
+        gfa = os.path.join(output_dir, "{sample}", graph, "chr_{chromosome}_graph.gfa"),
+        recap = os.path.join(output_dir, "{sample}", simulation_data, "chr_{chromosome}","graph_creation_recap.txt")
     params:
-        out_dir = lambda wildcards: os.path.join(output_dir, wildcards.sample, "info")
+        out_dir = lambda wildcards: os.path.join(output_dir, wildcards.sample, plot_dir)
     resources:
         mem_mb=lambda wildcards: int(50000 * memory_multiplier),
         time="10:00:00"
     benchmark:
-        os.path.join(output_dir, "{sample}", "benchmark", "create_graph_chr_{chromosome}_benchmark.txt")
+        os.path.join(output_dir, "{sample}", "benchmark", "chr_{chromosome}", "graph_creation_benchmark.txt")
     container:
         "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
     threads: 1
@@ -282,21 +286,22 @@ rule gfa_merge:
     input:
         initial_gfa = rules.graph_creation.output.gfa
     output:
-        polished_gfa = os.path.join(output_dir, "{sample}", "pangenomes", "chr_{chromosome}_graph_polished.gfa")
+        polished_gfa = os.path.join(output_dir, "{sample}", graph, "chr_{chromosome}_graph_polished.gfa")
     resources:
         mem_mb=lambda wildcards: int(50000 * memory_multiplier),
         time="10:00:00"
     benchmark:
-        os.path.join(output_dir, "{sample}", "benchmark", "gfa_polish_chr_{chromosome}_benchmark.txt")
+        os.path.join(output_dir, "{sample}", "benchmark", "chr_{chromosome}", "gfa_merge_benchmark.txt")
     container:
         "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
-    threads: 1
+    threads: 4
     priority: 7
     shell:
         """
         python3 workflow/scripts/gfa_merge.py  \
             {input.initial_gfa} \
-            {output.polished_gfa}
+            {output.polished_gfa} \
+            --threads {threads}
         """
 
 onsuccess:
