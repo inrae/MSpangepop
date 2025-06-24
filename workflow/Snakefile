@@ -43,8 +43,9 @@ rule global_recap:
     params:
         out=lambda wildcards: os.path.join(output_dir, wildcards.sample, simulation_data),
     resources:
-        mem_mb=lambda wildcards: int(1000),
+        mem_mb=lambda wildcards: int(1000 * memory_multiplier),
         time="00:10:00"
+    threads: 1
     container:
         "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
     priority: 1
@@ -65,8 +66,9 @@ rule input_validation:
         chr_n =lambda wildcards: config["samples"][wildcards.sample]["chr_n"]
     priority: 10
     resources:
-        mem_mb=lambda wildcards: int(1000),
+        mem_mb=lambda wildcards: int(1000 * memory_multiplier),
         time="00:10:00"
+    threads: 1
     container:
         "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
     shell:
@@ -84,8 +86,9 @@ rule samtools_index:
     output:
         fai=temp(os.path.join(output_dir, "{sample}", temp_dir, "{sample}_full.fai"))
     resources:
-        mem_mb=lambda wildcards: int(50000 * memory_multiplier),
-        time="1:00:00"
+        mem_mb=lambda wildcards: int(5000 * memory_multiplier),
+        time="01:00:00"
+    threads: 1
     container:
         "docker://registry.forge.inrae.fr/pangepop/mspangepop/samtool:1.21"
     priority: 10
@@ -120,9 +123,9 @@ rule msprime_simulation:
     resources:
         mem_mb=lambda wildcards: int(200000 * memory_multiplier),
         time="60:00:00"
+    threads: 1
     benchmark:
         os.path.join(output_dir, "{sample}", "benchmark", "chr_{chromosome}", "msprime_simulation_benchmark.txt")
-
     container:
         "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
     priority: 10
@@ -155,8 +158,9 @@ rule plot_msprime_simulation:
             output_dir, wildcards.sample, plot_dir, f"chr_{wildcards.chromosome}_tree_plots"
         )
     resources:
-        mem_mb=lambda wildcards: int(50000 * memory_multiplier),
+        mem_mb=lambda wildcards: int(5000 * memory_multiplier),
         time="01:00:00"
+    threads: 1
     benchmark:
         os.path.join(output_dir, "{sample}", "benchmark", "chr_{chromosome}", "plot_msprime_simulation_benchmark.txt")
     container:
@@ -207,6 +211,7 @@ rule split_recombination:
     resources:
         mem_mb=lambda wildcards: int(50000 * memory_multiplier),
         time="10:00:00"
+    threads: 1
     benchmark:
         os.path.join(output_dir, "{sample}", "benchmark", "chr_{chromosome}", "split_recombination_benchmark.txt")
     priority: 8
@@ -261,7 +266,7 @@ rule graph_creation:
     params:
         out_dir = lambda wildcards: os.path.join(output_dir, wildcards.sample, plot_dir)
     resources:
-        mem_mb=lambda wildcards: int(50000 * memory_multiplier),
+        mem_mb=lambda wildcards: int(200000 * memory_multiplier),
         time="10:00:00"
     benchmark:
         os.path.join(output_dir, "{sample}", "benchmark", "chr_{chromosome}", "graph_creation_benchmark.txt")
@@ -288,13 +293,13 @@ rule gfa_merge:
     output:
         polished_gfa = os.path.join(output_dir, "{sample}", graph, "chr_{chromosome}_graph_polished.gfa")
     resources:
-        mem_mb=lambda wildcards: int(50000 * memory_multiplier),
-        time="10:00:00"
+        mem_mb=lambda wildcards: int(200000 * memory_multiplier),
+        time="60:00:00"
     benchmark:
         os.path.join(output_dir, "{sample}", "benchmark", "chr_{chromosome}", "gfa_merge_benchmark.txt")
     container:
         "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
-    threads: 4
+    threads: 20
     priority: 7
     shell:
         """
