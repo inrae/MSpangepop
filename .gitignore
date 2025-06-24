@@ -24,3 +24,4 @@ results
 .snakemake
 !mspangepop
 .config/matplotlib
+!doc/*
