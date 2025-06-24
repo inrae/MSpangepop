@@ -16,8 +16,11 @@ Usage : This scripts create a variation graph from a json file full of mutations
 
 import itertools
 import argparse
-import random
+import psutil # type: ignore
 from bitarray import bitarray # type: ignore
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from io import StringIO
 
 from io_handler import MSpangepopDataHandler, MSerror, MSsuccess, MScompute, MSwarning
 from graph_utils import mutate_base, generate_sequence,gather_lineages, MutationRecap, VariantSizeVisualizer
@@ -925,7 +928,6 @@ class GraphEnsemble:
         for graph in self: 
             graph.lint(ignore_ancestral)
 
-
     # Care, method below is NOT AT ALL optimised, we should use node.outgoing_edges instead
     # But since we dont update them yet, we cant. 
     def save_to_gfav1_1(self, file_path, ignore_ancestral=False):
@@ -991,6 +993,167 @@ class GraphEnsemble:
                     if ignore_ancestral and lineage == "Ancestral":
                         continue
                     f.write(f"W\tlineage_{path.lineage}\t0\tlineage_{path.lineage}\t0\t0\t>{repr(path)}\n")
+
+    def save_to_gfav1_1_hybrid(self, file_path, ignore_ancestral=False, max_workers=None):
+        """
+        Hybrid approach with progress reporting: parallel data collection + sequential writing.
+        Best balance of performance and simplicity with detailed progress updates.
+        """
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from io import StringIO
+        import time
+        
+        if not self.graphs:
+            raise MSerror("No graphs to save")
+        
+        graph = self.graphs[0]
+        start_time = time.time()
+        
+        # Set default max_workers if not provided
+        if max_workers is None:
+            max_workers = 4
+        
+        # Count total items for progress reporting
+        total_nodes = len(graph.nodes)
+        total_paths = sum(1 for lineage in graph.paths.keys() 
+                        if not (ignore_ancestral and lineage == "Ancestral"))
+        print()
+        MScompute(f"Starting GFA export: {total_nodes} nodes, {total_paths} paths to process")
+        
+        def process_nodes_parallel():
+            """Process nodes with chunking if beneficial"""
+            MScompute("Processing nodes...")
+
+            nodes_list = list(graph.nodes)
+
+            chunk_size = max(1, len(nodes_list) // max_workers)
+            
+            def process_chunk(chunk_data):
+                chunk_idx, chunk = chunk_data
+                buffer = StringIO()
+                for node in chunk:
+                    buffer.write(f"S\t{node.id}\t{node}\n")
+                return chunk_idx, buffer.getvalue()
+            
+            # Fixed: Create chunks properly with actual node objects
+            chunks = []
+            for i in range(0, len(nodes_list), chunk_size):
+                chunk_nodes = nodes_list[i:i + chunk_size]
+                chunk_idx = len(chunks)
+                chunks.append((chunk_idx, chunk_nodes))
+            
+            completed_chunks = 0
+            results = [''] * len(chunks)
+            
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                future_to_chunk = {executor.submit(process_chunk, chunk_data): chunk_data 
+                                for chunk_data in chunks}
+                
+                for future in as_completed(future_to_chunk):
+                    chunk_idx, chunk_result = future.result()
+                    results[chunk_idx] = chunk_result
+                    completed_chunks += 1
+            
+            result = ''.join(results)
+    
+            return result
+        
+        def process_paths_and_edges():
+            """Process paths and collect edges simultaneously"""
+            MScompute("Processing paths and collecting edges...")
+            
+            paths_buffer = StringIO()
+            unique_edges = set()
+            processed_paths = 0
+            
+            for lineage, path in graph.paths.items():
+                if ignore_ancestral and lineage == "Ancestral":
+                    continue
+                
+                # Progress update every 100 paths or for large datasets
+                if processed_paths % max(1, total_paths // 10) == 0 and processed_paths > 0:
+                    progress = (processed_paths / total_paths) * 100
+                
+                # Process path
+                paths_buffer.write(f"W\tlineage_{path.lineage}\t0\tlineage_{path.lineage}\t0\t0\t>{repr(path)}\n")
+                
+                # Collect edges from this path
+                path_edges_count = 0
+                for edge in path.path_edges:
+                    edge_signature = (
+                        edge.node1.id, edge.node1_side,
+                        edge.node2.id, edge.node2_side
+                    )
+                    unique_edges.add(edge_signature)
+                    path_edges_count += 1
+                
+                processed_paths += 1
+            
+            MScompute("Converting edges to GFA format...")
+            
+            # Convert edges to strings
+            edges_buffer = StringIO()
+            processed_edges = 0
+            
+            for edge_data in unique_edges:
+
+            
+                node1_id, node1_side, node2_id, node2_side = edge_data
+                orientation1 = "+" if node1_side else "-"
+                orientation2 = "+" if not node2_side else "-"
+                edges_buffer.write(f"L\t{node1_id}\t{orientation1}\t{node2_id}\t{orientation2}\t0M\n")
+                processed_edges += 1
+            
+
+            return paths_buffer.getvalue(), edges_buffer.getvalue()
+        
+        # Execute both tasks in parallel
+        MScompute("Starting parallel processing of nodes and paths...")
+        
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            nodes_future = executor.submit(process_nodes_parallel)
+            paths_edges_future = executor.submit(process_paths_and_edges)
+            
+            nodes_str = nodes_future.result()
+            paths_str, edges_str = paths_edges_future.result()
+        
+        # Calculate data sizes for reporting
+        header_size = len(f"H\t{self.name}\n")
+        nodes_size = len(nodes_str)
+        edges_size = len(edges_str)
+        paths_size = len(paths_str)
+        total_size = header_size + nodes_size + edges_size + paths_size
+        
+        MScompute(f"Data prepared: {total_size:,} characters ({nodes_size:,} nodes, {edges_size:,} edges, {paths_size:,} paths)")
+        
+        # Write to file
+        MScompute(f"Writing GFA file to {file_path}...")
+        write_start = time.time()
+        
+        with open(file_path, 'w') as f:
+            print("\t\tWriting header...")
+            f.write(f"H\t{self.name}\n")
+            
+            print("\t\tWriting nodes...")
+            f.write(nodes_str)
+            
+            print("\t\tWriting edges...")
+            f.write(edges_str)
+            
+            print("\t\tWriting paths...")
+            f.write(paths_str)
+        
+        write_time = time.time() - write_start
+        total_time = time.time() - start_time
+        
+        # Final statistics
+        file_size_mb = total_size / (1024 * 1024)
+        write_speed_mb_s = file_size_mb / write_time if write_time > 0 else 0
+        print()
+        MSsuccess(f"GFA export completed successfully!")
+        print(f"\t\tSize: {file_size_mb:.2f} MB")
+        print(f"\t\tWrite speed: {write_speed_mb_s:.2f} MB/s")
+        print()
 
 def apply_mutations_to_graphs(graphs, traversal, recap: MutationRecap, visualizer: VariantSizeVisualizer, chromosome):
     """
@@ -1216,7 +1379,7 @@ def apply_mutations_to_graphs(graphs, traversal, recap: MutationRecap, visualize
         
 def main(splited_fasta: str, augmented_traversal: str, output_file: str, 
          sample: str, chromosome: str, recap_file: str = None, 
-         variant_plot_dir: str = None) -> None:
+         variant_plot_dir: str = None, threads = 1) -> None:
     """Main function for graph creation with recap and visualization."""
     
     # Initialize tracking objects
@@ -1238,8 +1401,10 @@ def main(splited_fasta: str, augmented_traversal: str, output_file: str,
         for i, (record, (tree_index, lineages)) in enumerate(zip(sequences, tree_lineages)):
 
             if y == 0 or y % 10 == 0 :
-                MScompute(f"Initialization of chromosome {chromosome} subgraphs -> {(tree_index*100)/len(sequences):.0f} %")
-            
+                memory = psutil.virtual_memory()
+                available_gb = memory.available / (1024**3)
+                MScompute(f"Initialization of chromosome {chromosome} subgraphs -> {(tree_index*100)/len(sequences):.0f}% | {available_gb:.1f} GB available")
+                            
             sequence = str(record.seq)
             new_graph = Graph(node_id_generator)
             new_graph.build_from_sequence(sequence, lineages)
@@ -1263,10 +1428,8 @@ def main(splited_fasta: str, augmented_traversal: str, output_file: str,
 
         MScompute(f"Removing nodes orphaned by the mutations on {chromosome}")
         ensemble.lint(ignore_ancestral=True)
-        MScompute(f"Saving the simulated chromosome {chromosome} graph")
-        ensemble.save_to_gfav1_1(output_file, ignore_ancestral=True)
-        
-        MSsuccess(f"Graph saved to {output_file}")
+
+        ensemble.save_to_gfav1_1_hybrid(output_file, ignore_ancestral=True, max_workers=threads)
         
     except Exception as e:
         recap.summary["fatal_error"] = str(e)
@@ -1307,7 +1470,8 @@ if __name__ == "__main__":
     parser.add_argument("--chromosome", required=True, help="Chromosome identifier")
     parser.add_argument("--recap_file", help="Path to save recap file")
     parser.add_argument("--variant_plot_dir", help="Directory to save variant size plots")
+    parser.add_argument("--threads", type=int)
 
     args = parser.parse_args()
     main(args.splited_fasta, args.augmented_traversal, args.output_file, 
-         args.sample, args.chromosome, args.recap_file, args.variant_plot_dir)
+         args.sample, args.chromosome, args.recap_file, args.variant_plot_dir, args.threads)

@@ -261,7 +261,7 @@ rule graph_creation:
         split_fasta=rules.split_recombination.output.split_fasta,
         augmented_traversal = rules.draw_variants.output.augmented_traversal,
     output:
-        gfa = os.path.join(output_dir, "{sample}", graph, "chr_{chromosome}_graph.gfa"),
+        gfa = temp(os.path.join(output_dir, "{sample}", graph, "chr_{chromosome}_graph.gfa")),
         recap = os.path.join(output_dir, "{sample}", simulation_data, "chr_{chromosome}","graph_creation_recap.txt")
     params:
         out_dir = lambda wildcards: os.path.join(output_dir, wildcards.sample, plot_dir)
@@ -272,7 +272,7 @@ rule graph_creation:
         os.path.join(output_dir, "{sample}", "benchmark", "chr_{chromosome}", "graph_creation_benchmark.txt")
     container:
         "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
-    threads: 1
+    threads: 10
     priority: 7
     shell:
         """
@@ -283,7 +283,8 @@ rule graph_creation:
             --sample {wildcards.sample} \
             --chromosome {wildcards.chromosome} \
             --recap_file {output.recap} \
-            --variant_plot_dir {params.out_dir}
+            --variant_plot_dir {params.out_dir} \
+            --threads {threads}
         """
 
 # This merges the nodes that can be merged in the GFA file
