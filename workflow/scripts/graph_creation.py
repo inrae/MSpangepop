@@ -1063,14 +1063,18 @@ def apply_mutations_to_graphs(graphs, traversal, recap: MutationRecap, visualize
                 
                 elif mut_type in ["DEL", "INV", "DUP"]:
                     # These affect a range - check if range includes first or last position
-                    end_position = relative_start + length
-                    
-                    if relative_start == 0:
+                    if length is None:
                         mutation_affects_boundaries = True
-                        boundary_error_msg = f"{mut_type} starting at first position would break concatenation"
-                    elif end_position > tree_length - 1:
-                        mutation_affects_boundaries = True
-                        boundary_error_msg = f"{mut_type} affecting last position would break concatenation"
+                        boundary_error_msg = f"{mut_type} has no length specified"
+                    else :    
+                        end_position = relative_start + length
+                        
+                        if relative_start == 0:
+                            mutation_affects_boundaries = True
+                            boundary_error_msg = f"{mut_type} starting at first position would break concatenation"
+                        elif end_position > tree_length - 1:
+                            mutation_affects_boundaries = True
+                            boundary_error_msg = f"{mut_type} affecting last position would break concatenation"
                 
                 # If mutation affects boundaries, reject it entirely
                 if mutation_affects_boundaries:
