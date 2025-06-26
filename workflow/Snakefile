@@ -25,7 +25,7 @@ def get_all_targets():
         chr_n = config["samples"][sample]["chr_n"]
         # Add polished GFA files
         for chr_num in range(1, chr_n + 1):
-            targets.append(os.path.join(output_dir, sample, graph, f"chr_{chr_num}_graph_polished.gfa"))
+            targets.append(os.path.join(output_dir, sample, graph, f"{sample}_chr_{chr_num}_graph.gfa"))
             targets.append(os.path.join(output_dir, sample, plot_dir, f"chr_{chr_num}_tree_plots", "visualization_complete.txt"))
         # Add global recap
         targets.append(os.path.join(output_dir, sample, simulation_data, f"{sample}_global_recap.txt"))
@@ -117,7 +117,7 @@ rule msprime_simulation:
         mut_rate=lambda wildcards: config["samples"][wildcards.sample]["mutation_rate"],
         reco_rate=lambda wildcards: config["samples"][wildcards.sample]["recombination_rate"],
         n=lambda wildcards: config["samples"][wildcards.sample]["sample_size"],
-        model=lambda wildcards: config["samples"][wildcards.sample]["model"],
+        model=lambda wildcards: config["samples"][wildcards.sample].get("model", "binary"), 
         readable_json=lambda wildcards: config["samples"][wildcards.sample].get("readable_json", False), 
         seed=lambda wildcards: config["samples"][wildcards.sample].get("seed", None)
     resources:
@@ -207,7 +207,7 @@ rule split_recombination:
         json = rules.msprime_simulation.output.json,
         fasta=lambda wildcards: config["samples"][wildcards.sample]["fasta_gz"]
     output:
-        split_fasta = temp(os.path.join(output_dir, "{sample}", temp_dir, "chr_{chromosome}", "chr_{chromosome}_recombinations.fasta.gz"))
+        split_fasta = os.path.join(output_dir, "{sample}", simulation_data, "chr_{chromosome}", "chr_{chromosome}_recombinations.fasta.gz")
     resources:
         mem_mb=lambda wildcards: int(50000 * memory_multiplier),
         time="10:00:00"
@@ -233,7 +233,7 @@ rule draw_variants:
         augmented_traversal = os.path.join(output_dir, "{sample}", graph, "traversal", "chr_{chromosome}_augmented_traversal.json")
     params:
         sv_type_file = config.get("sv_type_file"),
-        minimal_variant_size=lambda wildcards: config["samples"][wildcards.sample]["minimal_variant_size"],
+        minimal_variant_size=lambda wildcards: config["samples"][wildcards.sample].get("minimal_variant_size", 1),
         readable_json=lambda wildcards: config["samples"][wildcards.sample].get("readable_json", False) 
     threads: 10
     priority: 8
@@ -261,7 +261,7 @@ rule graph_creation:
         split_fasta=rules.split_recombination.output.split_fasta,
         augmented_traversal = rules.draw_variants.output.augmented_traversal,
     output:
-        gfa = temp(os.path.join(output_dir, "{sample}", graph, "chr_{chromosome}_graph.gfa")),
+        gfa = temp(os.path.join(output_dir, "{sample}", graph, "unmerged_chr_{chromosome}_graph.gfa")),
         recap = os.path.join(output_dir, "{sample}", simulation_data, "chr_{chromosome}","graph_creation_recap.txt")
     params:
         out_dir = lambda wildcards: os.path.join(output_dir, wildcards.sample, plot_dir)
@@ -292,7 +292,7 @@ rule gfa_merge:
     input:
         initial_gfa = rules.graph_creation.output.gfa
     output:
-        polished_gfa = os.path.join(output_dir, "{sample}", graph, "chr_{chromosome}_graph_polished.gfa")
+        polished_gfa = os.path.join(output_dir, "{sample}", graph, "{sample}_chr_{chromosome}_graph.gfa")
     resources:
         mem_mb=lambda wildcards: int(200000 * memory_multiplier),
         time="60:00:00"
