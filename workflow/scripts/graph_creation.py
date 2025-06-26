@@ -1202,6 +1202,23 @@ def apply_mutations_to_graphs(graphs, traversal, recap: MutationRecap, visualize
                 mut_type = mutation.get("type")
                 start = mutation.get("start")
                 length = mutation.get("length")
+                
+                # HANDLE NONE MUTATIONS - Skip mutations that couldn't be placed
+                if mut_type is None:
+                    # This mutation was skipped in draw_variants.py due to interval constraints
+                    error_msg = "Mutation skipped beacause the locus is less that 3 bases long"
+                    recap.add_mutation(tree_index, node_id, "SKIPPED", start, length, 
+                                     affected_lineages, False, error_msg)
+                    continue
+                
+                # Check if start position is None (shouldn't happen if mut_type is not None, but be safe)
+                if start is None:
+                    error_msg = "Mutation has no start position"
+                    recap.add_mutation(tree_index, node_id, mut_type, start, length, 
+                                     affected_lineages, False, error_msg)
+                    visualizer.add_variant(mut_type, start, length, False, affected_lineages)
+                    continue
+                
                 relative_start = start - tree_start
                 
                 # PROTECTION: Check if mutation affects first or last position
@@ -1212,16 +1229,16 @@ def apply_mutations_to_graphs(graphs, traversal, recap: MutationRecap, visualize
                     # SNP at position 0 or last position
                     if relative_start == 0:
                         mutation_affects_boundaries = True
-                        boundary_error_msg = "SNP at first position would break concatenation"
+                        boundary_error_msg = "SNP at first position would break the conectivity"
                     elif relative_start == tree_length - 1:
                         mutation_affects_boundaries = True
-                        boundary_error_msg = "SNP at last position would break concatenation"
+                        boundary_error_msg = "SNP at last position would break the conectivity"
                 
                 elif mut_type == "INS":
                     # Insertion at position 0 would shift the first node
                     if relative_start == 0:
                         mutation_affects_boundaries = True
-                        boundary_error_msg = "Insertion at position 0 would break concatenation"
+                        boundary_error_msg = "Insertion at position 0 would break the conectivity"
                     # Note: Insertion at end is OK - it adds after the last node
                 
                 elif mut_type in ["DEL", "INV", "DUP"]:
@@ -1234,16 +1251,16 @@ def apply_mutations_to_graphs(graphs, traversal, recap: MutationRecap, visualize
                         
                         if relative_start == 0:
                             mutation_affects_boundaries = True
-                            boundary_error_msg = f"{mut_type} starting at first position would break concatenation"
+                            boundary_error_msg = f"{mut_type} starting at first position would break the conectivity"
                         elif end_position > tree_length - 1:
                             mutation_affects_boundaries = True
-                            boundary_error_msg = f"{mut_type} affecting last position would break concatenation"
+                            boundary_error_msg = f"{mut_type} affecting last position would break the conectivity"
                 
                 # If mutation affects boundaries, reject it entirely
                 if mutation_affects_boundaries:
                     recap.add_mutation(tree_index, node_id, mut_type, start, length, 
                                      affected_lineages, False, boundary_error_msg)
-                    visualizer.add_variant(mut_type, start, length, False)
+                    visualizer.add_variant(mut_type, start, length, False, affected_lineages)
                     continue
                 
                 # Continue with normal validation...
@@ -1251,7 +1268,7 @@ def apply_mutations_to_graphs(graphs, traversal, recap: MutationRecap, visualize
                     error_msg = f"Position {start} is before tree start {tree_start}"
                     recap.add_mutation(tree_index, node_id, mut_type, start, length, 
                                      affected_lineages, False, error_msg)
-                    visualizer.add_variant(mut_type, start, length, False)
+                    visualizer.add_variant(mut_type, start, length, False, affected_lineages)
                     continue
                 
                 # Second validation: Check position against each affected lineage's path length
@@ -1295,12 +1312,16 @@ def apply_mutations_to_graphs(graphs, traversal, recap: MutationRecap, visualize
                     elif mut_type in ["DEL", "INV", "DUP"]:
                         # These mutations affect a range of positions
                         # The entire range must fit within the current path
-                        end_position = relative_start + length
-                        if end_position > current_path_length:
+                        if length is None:
                             failed_lineages.append(lineage)
-                            error_messages.append(
-                                f"{mut_type} end position {end_position} > path length {current_path_length}"
-                            )
+                            error_messages.append(f"{mut_type} has no length specified")
+                        else:
+                            end_position = relative_start + length
+                            if end_position > current_path_length:
+                                failed_lineages.append(lineage)
+                                error_messages.append(
+                                    f"{mut_type} end position {end_position} > path length {current_path_length}"
+                                )
                 
                 # Handle validation failures
                 if failed_lineages:
@@ -1314,7 +1335,7 @@ def apply_mutations_to_graphs(graphs, traversal, recap: MutationRecap, visualize
                     
                     # If no valid lineages remain, skip this mutation entirely
                     if not valid_lineages:
-                        visualizer.add_variant(mut_type, start, length, False)
+                        visualizer.add_variant(mut_type, start, length, False, affected_lineages)
                         continue
                     
                     # Otherwise, continue with valid lineages only
@@ -1375,7 +1396,9 @@ def apply_mutations_to_graphs(graphs, traversal, recap: MutationRecap, visualize
                 
                 # Track variant size for visualization (both success and failure)
                 # SNPs are excluded from visualization as requested
-                visualizer.add_variant(mut_type, start, length, success)
+                visualizer.add_variant(mut_type, start, length, success, affected_lineages)
+        
+        i += 1 
         
 def main(splited_fasta: str, augmented_traversal: str, output_file: str, 
          sample: str, chromosome: str, recap_file: str = None, 
@@ -1441,24 +1464,35 @@ def main(splited_fasta: str, augmented_traversal: str, output_file: str,
             recap.save_recap(recap_file)
             MSsuccess(f"Recap saved to {recap_file}")
         
-        # Save visualizations
         if variant_plot_dir:
             import os
             os.makedirs(variant_plot_dir, exist_ok=True)
             
-            # Save size distribution plot (stacked histogram)
+            # Original plots
             dist_plot_path = os.path.join(variant_plot_dir, 
-                                         f"{sample}_chr{chromosome}_graph_variant_sizes.png")
+                                        f"{sample}_chr{chromosome}_graph_variant_sizes.png")
             visualizer.save_size_distribution_plot(dist_plot_path)
             
-            # Save position plot (scatter with log scale)
-            pos_plot_path = os.path.join(variant_plot_dir,
-                                        f"{sample}_chr{chromosome}_graph_variant_positions.png")
-            visualizer.save_size_by_position_plot(pos_plot_path)
+            # New density plot instead of scatter
+            density_plot_path = os.path.join(variant_plot_dir,
+                                            f"{sample}_chr{chromosome}_graph_variant_density.png")
+            visualizer.save_variant_density_plot(density_plot_path)
             
-            # Save lineage lengths plot (horizontal bar)
+            # Additional new plots
+            shared_plot_path = os.path.join(variant_plot_dir,
+                                        f"{sample}_chr{chromosome}_graph_shared_variants.png")
+            visualizer.save_shared_variants_heatmap(shared_plot_path)
+            
+            proportions_plot_path = os.path.join(variant_plot_dir,
+                                            f"{sample}_chr{chromosome}_graph_variant_proportions.png")
+            visualizer.save_variant_type_proportions_plot(proportions_plot_path)
+            
+            cumulative_plot_path = os.path.join(variant_plot_dir,
+                                            f"{sample}_chr{chromosome}_graph_cumulative_variants.png")
+            visualizer.save_cumulative_variants_plot(cumulative_plot_path)
+            
             lengths_plot_path = os.path.join(variant_plot_dir,
-                                           f"{sample}_chr{chromosome}_graph_lineage_lengths.png")
+                                        f"{sample}_chr{chromosome}_graph_lineage_lengths.png")
             visualizer.save_lineage_lengths_plot(lengths_plot_path)
         
 if __name__ == "__main__":
