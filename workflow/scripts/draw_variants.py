@@ -70,9 +70,25 @@ def augment_length_and_position(tree, length_files, minimal_variant_size):
     try:
         for node in tree.get("nodes", []):  
             for mutation in node.get("mutations", []):  # Iterate over mutations of the node
+                
+                # Check if interval is too small for any mutation
+                interval_size = node["interval"][1] - node["interval"][0]
+                if interval_size < 3:  # Need at least 3 bases for any meaningful mutation
+                    MSwarning(f"Node {node['node']} interval too small ({interval_size} bases), skipping mutation")
+                    mutation["type"] = None
+                    mutation["length"] = None
+                    mutation["start"] = None
+                    continue
 
                 # Select a random position within the node's interval
-                start_pos = Selector.position(node["interval"])
+                try:
+                    start_pos = Selector.position(node["interval"])
+                except ValueError as e:
+                    MSwarning(f"Cannot select position for node {node['node']} with interval {node['interval']}: {e}")
+                    mutation["type"] = None
+                    mutation["length"] = None
+                    mutation["start"] = None
+                    continue
 
                 # Select the mutation length
                 variant_type = mutation["type"]
@@ -80,7 +96,7 @@ def augment_length_and_position(tree, length_files, minimal_variant_size):
                 if variant_type == "SNP": #For SNPs do nothing
                     length = None 
 
-                if variant_type == "INS" : #For INSs select a random length (no limit)
+                elif variant_type == "INS": #For INSs select a random length (no limit)
                     length_df = length_files.get(variant_type)
                     length = Selector.length(length_df, None, minimal_variant_size)
 
@@ -88,17 +104,21 @@ def augment_length_and_position(tree, length_files, minimal_variant_size):
                     for affected_node_id in affected_nodes:
                         affected_node = next((n for n in tree.get("nodes", []) if n["node"] == affected_node_id), None)
                         if affected_node:
-                            affected_node["interval"][1] += length #Expend affected node length
+                            affected_node["interval"][1] += length #Expand affected node length
                     
-                if variant_type == "DUP" : #For INSs select a length with the remaining 3' bases 
+                elif variant_type == "DUP": #For DUPs select a length with the remaining 3' bases 
                     length_df = length_files.get(variant_type)
                     max_size = node["interval"][1] - start_pos - 1
-                    length = Selector.length(length_df, max_size, minimal_variant_size)
-                    affected_nodes = node.get("affected_nodes", [])
-                    for affected_node_id in affected_nodes:
-                        affected_node = next((n for n in tree.get("nodes", []) if n["node"] == affected_node_id), None)
-                        if affected_node:
-                            affected_node["interval"][1] += length
+                    if max_size < minimal_variant_size:
+                        MSwarning(f"Insufficient space for DUP at node {node['node']}, skipping")
+                        length = None
+                    else:
+                        length = Selector.length(length_df, max_size, minimal_variant_size)
+                        affected_nodes = node.get("affected_nodes", [])
+                        for affected_node_id in affected_nodes:
+                            affected_node = next((n for n in tree.get("nodes", []) if n["node"] == affected_node_id), None)
+                            if affected_node:
+                                affected_node["interval"][1] += length
                 
                 elif variant_type == "DEL":
                     current_size = node["interval"][1] - node["interval"][0]
@@ -119,10 +139,14 @@ def augment_length_and_position(tree, length_files, minimal_variant_size):
                     else:
                         length = None  # Skip deletion if there are only 2 bases
                         
-                if variant_type == "INV" : #For the INVs we dont change the total size
+                elif variant_type == "INV": #For the INVs we don't change the total size
                     length_df = length_files.get(variant_type)
-                    max_size = node["interval"][1] - start_pos - 1 
-                    length = Selector.length(length_df, max_size, minimal_variant_size)
+                    max_size = node["interval"][1] - start_pos - 1
+                    if max_size < minimal_variant_size:
+                        MSwarning(f"Insufficient space for INV at node {node['node']}, skipping")
+                        length = None
+                    else:
+                        length = Selector.length(length_df, max_size, minimal_variant_size)
 
                 mutation["length"] = length
                 mutation["start"] = start_pos
