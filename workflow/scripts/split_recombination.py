@@ -1,9 +1,9 @@
 """
 Author: Lucien Piat
-Creation: 4 Feb 2025
-Updated: 4 Feb 2025
 Institution: INRAe
 Project: PangenOak
+
+Usage : This script will split the sequence between recombination events simulated by msprime
 """
 
 import argparse
@@ -36,6 +36,7 @@ def extract_intervals(fasta_sequences, json_data, chromosome_number, output_file
 
     try:
         with gzip.open(bgzip_output_file, "wt") as out:  # Open file in text mode for writing
+            i = 0
             for entry in json_data:
                 try:
                     start, end = map(int, entry["interval"])  # Convert float to int for slicing
@@ -46,7 +47,9 @@ def extract_intervals(fasta_sequences, json_data, chromosome_number, output_file
                     extracted_seq = chrom_seq[start:end]  # Extract sequence for the interval
                     output_line = f">Chromosome{chromosome_number}_Interval_{start}_{end}\n{extracted_seq}\n"
                     out.write(output_line)  # Write to bgzipped file
-                    MSsuccess(f"Saved interval {start}-{end} from chromosome {chromosome_number}")
+                    i+=1
+                    if i % 5 == 0:
+                        MScompute(f"Chromosome {chromosome_number} split -> {(end*100)/len(chrom_seq):.0f} %")
                 except (KeyError, TypeError, ValueError) as e:
                     raise MSerror(f"Skipping invalid JSON entry {e}")
     except IOError as e:

@@ -4,6 +4,17 @@ Creation: 20 Oct 2024
 Updated: 13 Mar 2025
 Institution: INRAe
 Project: PangenOak
+
+This script provide three type of classes :
+- MSLogger that provide a way to log each operation to stdout wit MSsuccess, MScompute and MSwarning
+- MSerror which will raise and error with a custom_traceback
+- MSpangepopDataHandler is a class that will handle repeted i/o operations across all scripts like reading or writing json files.
+
+Example : 
+> MSsuccess("Hello world")
+✅ MSpangepop -> [script_name] Hello world
+
+> sequences = MSpangepopDataHandler.read_fasta(splited_fasta)
 """
 
 import json
@@ -13,9 +24,7 @@ from Bio import SeqIO
 import gzip
 import sys
 import os
-
-import sys
-import os
+import traceback
 
 class MSLogger:
     """Base logging class that prints messages with a standardized prefix."""
@@ -32,20 +41,55 @@ class MSsuccess(MSLogger):
 class MScompute(MSLogger):
     """Logs a compute-related message."""
     def __init__(self, message):
-        super().__init__("🔹MSpangepop ->", message)
-
+        super().__init__("🔹 MSpangepop ->", message)
 
 class MSwarning(MSLogger):
     """Logs a warning message."""
     def __init__(self, message):
-        super().__init__("⚠️ MSpangepop ->", message)
+        super().__init__("⚠️  MSpangepop ->", message)
 
 class MSerror(Exception):
-    """Custom exception for MSpangepop errors."""
-    def __init__(self, message):
-        self.script = os.path.basename(sys.argv[0])  # Get the script that triggered the error
-        self.message = f"❌ MSpangepop -> [{self.script}] {message}"
-        super().__init__(self.message)
+    """Custom exception for MSpangepop errors with clean display."""
+    def __init__(self, message="An unknown MSpangepop error occurred."):
+        self.clean_message = message
+        super().__init__(message)  # Store original message
+
+def custom_traceback():
+    """Install a custom exception handler for cleaner MSerror display."""
+    def handle_mserror(exc_type, exc_value, exc_traceback):
+        if exc_type == MSerror:
+            # For MSerror, show clean format without full traceback
+            print(f"❌ MSpangepop -> Error: {exc_value.clean_message}")
+            
+            # Optionally show just the relevant line
+            tb = traceback.extract_tb(exc_traceback)
+            if tb:
+                last_frame = tb[-1]
+                print(f"\t- {os.path.basename(last_frame.filename)}:{last_frame.lineno} in {last_frame.name}()")
+        else:
+            # Default handler for other exceptions
+            sys.__excepthook__(exc_type, exc_value, exc_traceback)
+    
+    sys.excepthook = handle_mserror
+
+custom_traceback() # This is used to simplify the traceback message
+
+def get_indent(readable_json):
+    if readable_json == True or readable_json == "True":
+        return 4
+    else :
+        return None
+    
+def process_seed(seed):
+    if isinstance(seed, str):
+        if seed.lower() == "none":
+            return None
+        else:
+            return min(int.from_bytes(seed.encode(), 'big'), 2**32 - 1)
+    elif isinstance(seed, int):
+        return max(1, min(seed, 2**32 - 1))
+    else:
+        raise ValueError("Seed must be either a string or an integer")
 
 class MSpangepopDataHandler:
     """
@@ -70,10 +114,10 @@ class MSpangepopDataHandler:
             with open(json_path, 'r') as file:
                 return json.load(file)
         except Exception as e:
-            MSerror(f"Error reading JSON file: {e}")
+            raise MSerror(f"Error reading JSON file: {e}")
     
     @staticmethod
-    def save_json(data, output_path, readble_json = False):
+    def save_json(data, output_path, readable_json):
         """
         Saves data to a JSON file at the specified output path.
         
@@ -84,15 +128,12 @@ class MSpangepopDataHandler:
         Raises:
             FileReadError: If there is an issue saving the JSON file.
         """
-        if readble_json:
-            indent = 4
-        else :
-            indent = None
+
         try:
             with open(output_path, 'w') as file:
-                json.dump(data, file, indent=indent) # Set indent to none to reduce json file size
+                json.dump(data, file, indent=get_indent(readable_json)) # Set indent to none to reduce json file size
         except Exception as e:
-            MSerror(f"Error saving JSON file: {e}")
+            raise MSerror(f"Error saving JSON file: {e}")
     
     @staticmethod
     def read_yaml(yaml_file):
@@ -113,10 +154,10 @@ class MSpangepopDataHandler:
             with open(yaml_file, 'r') as file:
                 variant_probabilities = yaml.safe_load(file)
             if sum(variant_probabilities.values()) != 100:
-                raise ValueError("Sum of variant probabilities in YAML must equal 100.")
+                raise MSerror("Sum of variant probabilities in YAML must equal 100.")
             return variant_probabilities
         except Exception as e:
-            MSerror(f"Error reading YAML file: {e}")
+            raise MSerror(f"Error reading YAML file: {e}")
     
     @staticmethod
     def read_fasta(fasta_file):
@@ -143,7 +184,7 @@ class MSpangepopDataHandler:
                     MSwarning("Consider compressing the fasta file with bgzip for better performance.")
                     return data
             except Exception as e:
-                MSerror(f"Unable to read FASTA file: {e}")
+                raise MSerror(f"Unable to read FASTA file: {e}")
     
     @staticmethod
     def read_variant_length_file(file_path):
@@ -166,4 +207,25 @@ class MSpangepopDataHandler:
                 print(f"⚠️ MSpangepop -> Warning: The cumulative probability of {file_path} is less than 1.")
             return df
         except Exception as e:
-            MSerror(f"Error reading variant length file {file_path}: {e}")
+            raise MSerror(f"Error reading variant length file {file_path}: {e}")
+
+    @staticmethod
+    def read_fai(fai_file):
+        """
+        Reads a FASTA index (.fai) file and extracts chromosome names and their lengths.
+
+        Parameters:
+            fai_file (str): Path to the .fai file.
+
+        Returns:
+            numpy.ndarray: A one dimsensional arrray of lenght
+
+        Raises:
+            MSerror: If the .fai file does not exist or cannot be read.
+        """
+        if not os.path.exists(fai_file):
+            raise MSerror(f"FAI file not found: {fai_file}")
+        try:
+            return pd.read_table(fai_file, header=None, usecols=[1], names=["length"])["length"].values
+        except Exception as e:
+            raise MSerror(f"Error reading FAI file {fai_file}: {e}")
