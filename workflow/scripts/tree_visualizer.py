@@ -15,11 +15,15 @@ except ImportError:
     MSwarning("Warning: tskit_arg_visualizer not available. Skipping D3ARG visualizations.")
 
 class TreeVisualizer:
-    def __init__(self, mutated_ts, ancestry_ts, output_dir="visualizations"):
+    def __init__(self, mutated_ts, ancestry_ts, output_dir="visualizations", edge_width=3):
         self.mutated_ts = mutated_ts
         self.ancestry_ts = ancestry_ts
         self.output_dir = output_dir
+        self.edge_width = edge_width  # Default edge width
         os.makedirs(output_dir, exist_ok=True)
+        
+        # Base CSS for thicker edges
+        self.base_style = f".edge {{stroke-width: {self.edge_width}px}}"
     
     def save_global_trees_svg(self):
         """Save global tree visualizations as SVG"""
@@ -27,11 +31,11 @@ class TreeVisualizer:
         
         # Mutated tree sequence
         with open(os.path.join(self.output_dir, "mutated_global.svg"), "w") as f:
-            f.write(self.mutated_ts.draw_svg(time_scale="rank"))
+            f.write(self.mutated_ts.draw_svg(time_scale="rank", style=self.base_style))
         
         # Ancestry tree sequence
         with open(os.path.join(self.output_dir, "ancestry_global.svg"), "w") as f:
-            f.write(self.ancestry_ts.draw_svg(time_scale="rank"))
+            f.write(self.ancestry_ts.draw_svg(time_scale="rank", style=self.base_style))
         
     
     def save_individual_trees(self, chromosome_name="chr1"):
@@ -56,7 +60,7 @@ class TreeVisualizer:
                 MScompute(f"Saving mutated tree {i+1}/{total_mutated_trees}")
             
             with open(path, "w") as f:
-                f.write(tree.draw_svg(time_scale="rank"))
+                f.write(tree.draw_svg(time_scale="rank", style=self.base_style))
         
         # Save ALL ancestry trees
         total_ancestry_trees = self.ancestry_ts.num_trees
@@ -70,7 +74,7 @@ class TreeVisualizer:
                 MScompute(f"Saving ancestry tree {i+1}/{total_ancestry_trees}")
             
             with open(path, "w") as f:
-                f.write(tree.draw_svg(time_scale="rank"))
+                f.write(tree.draw_svg(time_scale="rank", style=self.base_style))
         
     
     def save_highlighted_trees_same_branch(self, num_occasions=5):
@@ -81,6 +85,9 @@ class TreeVisualizer:
         os.makedirs(highlight_base_dir, exist_ok=True)
         
         total_trees = self.ancestry_ts.num_trees
+        
+        # Increased highlight width for better visibility
+        highlight_width = self.edge_width + 3
         
         for occasion in range(num_occasions):
             MScompute(f"Creating highlighted trees for occasion {occasion + 1}/{num_occasions}")
@@ -128,11 +135,11 @@ class TreeVisualizer:
                             parent = tree.parent(target_node)
                             
                             if parent != tskit.NULL:
-                                # Create CSS for highlighting
+                                # Create CSS for highlighting with base style
                                 if dash == "none":
-                                    css_string = f".n{target_node} > .edge {{stroke: {color}; stroke-width: 4px}}"
+                                    css_string = f"{self.base_style} .n{target_node} > .edge {{stroke: {color}; stroke-width: {highlight_width}px}}"
                                 else:
-                                    css_string = f".n{target_node} > .edge {{stroke: {color}; stroke-width: 3px; stroke-dasharray: {dash}}}"
+                                    css_string = f"{self.base_style} .n{target_node} > .edge {{stroke: {color}; stroke-width: {highlight_width}px; stroke-dasharray: {dash}}}"
                                 
                                 # Save highlighted tree
                                 filename = f"ancestry_tree_{tree_idx}_node_{target_node}_highlighted.svg"
@@ -143,12 +150,12 @@ class TreeVisualizer:
                                 
                                 trees_saved += 1
                         else:
-                            # Node doesn't exist in this tree, save without highlighting
+                            # Node doesn't exist in this tree, save without highlighting but with base style
                             filename = f"ancestry_tree_{tree_idx}_node_{target_node}_not_present.svg"
                             path = os.path.join(occasion_dir, filename)
                             
                             with open(path, "w") as f:
-                                f.write(tree.draw_svg(time_scale="rank"))
+                                f.write(tree.draw_svg(time_scale="rank", style=self.base_style))
                                 
                     except Exception as e:
                         MSerror(f"Failed to process tree {tree_idx} for occasion {occasion + 1}: {e}")
@@ -190,7 +197,7 @@ class TreeVisualizer:
                         MScompute(f"Saving {scale} scale tree {i+1}/{self.ancestry_ts.num_trees}")
                     
                     with open(path, "w") as f:
-                        f.write(tree.draw_svg(time_scale=scale, size=(800, 600)))
+                        f.write(tree.draw_svg(time_scale=scale, size=(800, 600), style=self.base_style))
                         
             except Exception as e:
                 MSerror(f"Failed to create {scale} scale visualization: {e}")
@@ -201,7 +208,7 @@ class TreeVisualizer:
             # Add node labels showing node IDs
             node_labels = {node.id: f"n{node.id}" for node in first_tree.nodes()}
             with open(os.path.join(extra_dir, "first_tree_with_node_labels.svg"), "w") as f:
-                f.write(first_tree.draw_svg(node_labels=node_labels, size=(800, 600)))
+                f.write(first_tree.draw_svg(node_labels=node_labels, size=(800, 600), style=self.base_style))
         except Exception as e:
             MSerror(f"Failed to create node labels visualization: {e}")
         
@@ -210,7 +217,7 @@ class TreeVisualizer:
             try:
                 first_tree_mut = self.mutated_ts.first()
                 with open(os.path.join(extra_dir, "first_tree_with_mutations.svg"), "w") as f:
-                    f.write(first_tree_mut.draw_svg(size=(800, 600)))
+                    f.write(first_tree_mut.draw_svg(size=(800, 600), style=self.base_style))
             except Exception as e:
                 MSerror(f"Failed to create mutations visualization: {e}")
         
@@ -218,7 +225,7 @@ class TreeVisualizer:
         try:
             fig, ax = plt.subplots(figsize=(12, 6))
             
-            # Plot tree spans
+            # Plot tree spans with thicker lines
             positions = []
             tree_indices = []
             
@@ -226,10 +233,10 @@ class TreeVisualizer:
                 positions.extend([tree.interval.left, tree.interval.right])
                 tree_indices.extend([i, i])
             
-            ax.plot(positions, tree_indices, 'b-', linewidth=2)
-            ax.set_xlabel('Genomic Position')
-            ax.set_ylabel('Tree Index')
-            ax.set_title('Tree Sequence Overview')
+            ax.plot(positions, tree_indices, 'b-', linewidth=3)  # Increased line width
+            ax.set_xlabel('Genomic Position', fontsize=12)
+            ax.set_ylabel('Tree Index', fontsize=12)
+            ax.set_title('Tree Sequence Overview', fontsize=14)
             ax.grid(True, alpha=0.3)
             
             plt.tight_layout()
@@ -269,6 +276,7 @@ Examples:
   python tree_visualizer.py mutated.trees ancestry.trees
   python tree_visualizer.py mutated.trees ancestry.trees -o my_visualizations
   python tree_visualizer.py mutated.trees ancestry.trees -c chr2 --occasions 3
+  python tree_visualizer.py mutated.trees ancestry.trees --edge-width 5
         """
     )
     
@@ -302,6 +310,13 @@ Examples:
     )
     
     parser.add_argument(
+        "--edge-width",
+        type=int,
+        default=3,
+        help="Base edge width in pixels (default: 3)"
+    )
+    
+    parser.add_argument(
         "--skip-individual",
         action="store_true",
         help="Skip saving individual tree SVGs (useful for large datasets)"
@@ -330,10 +345,11 @@ def main():
     # Load tree sequences
     mutated_ts, ancestry_ts = load_tree_sequences(args.mutated_ts, args.ancestry_ts)
     
-    # Create visualizer
-    visualizer = TreeVisualizer(mutated_ts, ancestry_ts, args.output_dir)
+    # Create visualizer with custom edge width
+    visualizer = TreeVisualizer(mutated_ts, ancestry_ts, args.output_dir, edge_width=args.edge_width)
     
     MScompute(f"\nGenerating visualizations in: {args.output_dir}")
+    MScompute(f"Using edge width: {args.edge_width}px")
     
     # Generate visualizations based on arguments
     visualizer.save_global_trees_svg()
