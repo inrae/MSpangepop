@@ -171,7 +171,9 @@ rule plot_msprime_simulation:
         python3 workflow/scripts/tree_visualizer.py {input.mutated_ts} \
             {input.ancestry_ts} \
             -o {params.out} \
-            -c {wildcards.chromosome}
+            -c {wildcards.chromosome} \
+            --occasions 5 \
+            --edge-width 4
         echo "Visualization completed at $(date)" > {output.completion_flag}
         """
 
