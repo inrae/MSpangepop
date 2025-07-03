@@ -1,8 +1,8 @@
-# Warnings / Issues
-
-> **`/!\`:** Act with care; this workflow uses significant memory if you increase the values in `masterconfig`. We recommend keeping the default settings and running a test first.
-
-> **`/!\`:** For now dont run multiple split at once
+### Original VCF implementation
+> This preliminary work for MSpangepop does not support nested variants.
+The original implementation used a VCF as a bridge between MSprime and the Graph.
+Unfortunately this does not allow the creation of a usable variation graph.
+This branch acts as an archive.
 
 # How to Use
 ## A. Running on a cluster
@@ -66,15 +66,3 @@ Example use :
 ```bash
 ./workflow/scripts/split_path.sh input.fasta results/test_sample1_results/06_graph_paths/test_sample1_paths.fasta ./out
 ```
-
-# Dependencies
-TODO
-
-Containers :
-Miniconda 3, Singularity/Apptainer
-
-Python :
-pandas, msprime, argprase, os, multiprocessing, yaml, Bio.Seq
-
-Workflow :
-snakemake, snakemake-executor-plugin-slurm, vg 1.60.0, bcftools 1.12, bgzip, tabix 1.7. 
