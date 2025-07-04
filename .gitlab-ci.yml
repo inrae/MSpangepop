@@ -1,0 +1,88 @@
+# .gitlab-ci.yml
+variables:
+  IMAGE_NAME: "msprime_box"
+  DEF_FILE: "dependencies/msprime_box.def"
+
+stages:
+  - build
+  - test
+  - deploy  # Add deploy stage
+
+# Used to build and upload the image in dependencies/msprime_box.def to the forge
+build-and-push-image:
+  stage: build
+  tags:
+    - stable # For some reason we need to use stable -.-
+  image:
+    name: kaczmarj/apptainer:latest
+    entrypoint: [""]
+  script:
+    - echo "🔹 MSprime -> Building msprime_box container from ${DEF_FILE}..."
+    - apptainer build --force msprime_box.sif ${DEF_FILE}
+    
+    - echo "🔹 MSprime -> Pushing image ${IMAGE_NAME}:${CI_COMMIT_SHORT_SHA}..."
+    - apptainer push --docker-username "${CI_REGISTRY_USER}" --docker-password "${CI_REGISTRY_PASSWORD}" msprime_box.sif oras://"${CI_REGISTRY_IMAGE}"/${IMAGE_NAME}:"${CI_COMMIT_SHORT_SHA}"
+    
+    - echo "🔹 MSprime -> Pushing image ${IMAGE_NAME}:latest..."
+    - apptainer push --docker-username "${CI_REGISTRY_USER}" --docker-password "${CI_REGISTRY_PASSWORD}" msprime_box.sif oras://"${CI_REGISTRY_IMAGE}"/${IMAGE_NAME}:latest
+    
+    - echo "✅ MSprime -> Images successfully pushed to registry."
+  rules:
+    - changes:
+        - dependencies/msprime_box.def
+    - when: manual
+      allow_failure: true
+
+# Used to test the workflow
+test-workflow:
+  stage: test
+  tags:
+    - stable
+  image: condaforge/mambaforge:latest
+  variables:
+    APPTAINER_CACHEDIR: "${CI_PROJECT_DIR}/.apptainer"
+    SINGULARITY_CACHEDIR: "${CI_PROJECT_DIR}/.singularity"
+  before_script:
+    - echo "🔹 MSprime -> Creating conda environment..."
+    - mamba create -n wf_env -c conda-forge -c bioconda snakemake=8.4.7 -y
+    - mkdir -p slurm_logs
+  script:
+    # Activate the environment and run the workflow
+    # Don't use conda init, use source activate instead
+    - source activate wf_env
+    - ./mspangepop dry
+  rules:
+    - changes:
+        - dependencies/msprime_box.def
+        - workflow/Snakefile
+        - mspangepop
+    - when: manual
+      allow_failure: true
+  artifacts:
+    when: on_failure
+    paths:
+      - .snakemake/log/
+      - "*.log"
+    expire_in: 1 week
+
+# GitLab Pages deployment
+pages:
+  stage: deploy
+  image: alpine:latest
+  script:
+    - echo "🔹 MSprime -> Preparing documentation for GitLab Pages..."
+    - mkdir -p public
+    - cp -r doc/* public/
+    - echo "✅ MSprime -> Documentation copied to public/"
+  artifacts:
+    paths:
+      - public
+  rules:
+    # Deploy when changes are made to doc/ folder on main branch
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      changes:
+        - doc/**/*
+    # Also allow manual deployment on main branch
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      when: manual
+      allow_failure: true

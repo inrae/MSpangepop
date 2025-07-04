@@ -1,0 +1,34 @@
+# MSprime configuration file : 
+
+# Each sample is defined by a unique name and associated parameters.
+# WARNING : please do a test run with small population_size mutation_rate and recombination_rate first.
+
+samples:
+  test_sample:
+    fasta_gz: "small_test_genome.fa.gz"
+    chr_n: 1
+    population_size: 1
+    mutation_rate: 1e-5
+    recombination_rate: 1e-6
+    sample_size: 5 
+    model: binary
+    minimal_variant_size: 1
+    readable_json: False
+    seed: 1234
+
+# samples:
+#   test_sample1:                  # One sample per simulation (whole genome)   
+#     fasta_gz: str                # Path to the compressed FASTA file (genome sequence) for this sample.
+#     chr_n: int                   # Number of chromosomes in the fasta file (contigs)                      
+#     population_size: int         # Effective population size (Ne) the size of the population.
+#     mutation_rate: float         # Mutation rate (µ) the rate of mutations in the genome.
+#     recombination_rate: float    # Recombination rate (r) the frequency of recombination events.
+#     sample_size: int             # Number of individual samples to simulate
+#     model: str                   # Mutation model for msprime ['binary', 'infinite_alleles', 'jc69']
+#     minimal_variant_size: int    # Minimal size for generated variants
+#     readable_json: [True, False] # If set to true output a human readble json (bigger file size)
+#     seed : [None, int, str]      # Run the msprime simulation using a seed
+ 
+memory_multiplier: 1  # Multiplier for scaling memory across all rules
+output_dir: "results/" # Output directory name
+sv_type_file: ".config/sv_type.yaml" # Variant probability generation path

@@ -1,71 +1,86 @@
-# Warnings / Issues
+# MSpangepop Documentation
 
-> **`/!\`:** Act with care; this workflow uses significant memory if you increase the values in `.masterconfig`. We recommend keeping the default settings and running a test first.
+MSpangepop is a workflow for simulating variation graphs from coalescent simulations. 
 
-> **`/!\`:** For now dont run multiple split at once
+## Documentation Structure
 
-> **`/!\`:** The Transduplication and Reciprocal Translocation sections in the `visor_sv_type.yaml` config file are placeholders; do not use them yet.
+- **[Configuration](doc/configuration.md)** - How to set up configuration files and parameters
+- **[Input Files](doc/input_file.md)** - Requirements and specifications for input data
+- **[Output Files](doc/output_files.md)** - Description of generated results and outputs
+- **[Visualizations](doc/visualisations.md)** - Understanding the generated plots and charts
+- **[Advanced Topics](doc/go_even_deeper.md)** - In-depth information for power users
 
-# How to Use
-## A. Running on the CBIB
+## 🚀 How to Use
 ### 1. Set up
-Clone the Git repository and switch to my branch:
+
+Clone the Git repository
 ```bash
-git clone https://forgemia.inra.fr/pangepop/MSpangepop.git
-cd MSpangepop
-git checkout dev_lpiat
+git https://forge.inrae.fr/pangepop/MSpangepop 
 ```
 
-### 2. Add your files
-- Add a `.fasta.gz` file; an example can be found in the repository.
-
-### 3. Configure the pipeline
-- Edit the `.masterconfig` file in the `.config/` directory with your sample information. 
-- Edit the `visor_sv_type.yaml` file with the mutations you want.
-- Edit line 17 of `job.sh` and line 13 of `./config/snakemake_profile/clusterconfig.yaml` with your email.
-
-### 4. Run the WF
-The workflow has two parts: `split` and `simulate`. Always run the split first and once its done (realy quick) run the simulate.
+- Create an environement for snakemake (from the provided envfile): 
 ```bash
-sbatch job.sh [split or simulate] dry
-```
-If no warnings are displayed, run:
+conda env create -n wf_env -f .config/wf_env.yaml
+```  
+> Use Miniforge with the conda-forge channel, see why [here](https://science-ouverte.inrae.fr/fr/offre-service/fiches-pratiques-et-recommandations/quelles-alternatives-aux-fonctionnalites-payantes-danaconda) (french)
+
+### 2. Configure the pipeline for your data
+- Edit the `masterconfig` file in the `.config/` directory with your sample information. 
 ```bash
-sbatch job.sh [split or simulate] 
+nano .config/masterconfig.yaml
 ```
-> **Nb 1:** to create a visual representation of the workflow, use `dag` instead of `dry`. Open the generated `.dot` file with a [viewer](https://dreampuf.github.io/GraphvizOnline/) that supports the format.
+- Here you can add the path to your reference genome
 
-> **Nb 2:** Frist execution of the workflow will be slow since images need to be pulled.
+Example config : 
+```yaml
+samples:       
+  my_frist_run:                
+    fasta_gz: "small_test_genome.fa.gz"  # You can try with this small genome for your first run
+    chr_n: 1
+    population_size: 5000
+    mutation_rate: 1e-5
+    recombination_rate: 1e-7
+    sample_size: 10
+```
+#### ⚠️ Important warning :
 
-> **Nb 3:** The workflow is in two parts because we want to execute the simulations chromosome by chromosome. Snakemake cannot retrieve the number of chromosomes in one go and needs to index and split first.
+You can tailor the config file to your dataset with many parameters -> **[Configuration](doc/configuration.md)**
 
-> **Nb 4:** Since the cbib dose not support `python:3.9.7` we cant use cookie cutter config, use the `cbib_job.sh` to run. 
+Keep in mind that the parameters of the simulation need to be adjusted to the genome size. 
+For large genomes, please start with `1e-11` for `mutation_rate` and `recombination_rate` then go down to your desired value. 
 
-## B. Run localy
-- Ensure `snakemake` and `singularity` are installed on your machine, then run the workflow:
+### 3. Run the workflow 
+#### On the cluster
+- Run the workflow :
 ```bash
-./local_run [split or simulate] dry
+sbatch mspangepop dry # Check for warnings
+sbatch mspangepop run # Then
 ```
-If the workflow cannot download images from the container registry, install `Docker`, log in with your credentials, and rerun the workflow:
+> **Nb :** If your account name can't be automatically determined, add it in the `.config/snakemake/profiles/slurm/config.yaml` file.
+
+> **Nb :** Use the command `squeue --format="%.10i %.9P %.6j %.10k %.8u %.2t %.10M %.6D %.20R" -A $user` to see job **names**
+
+#### Localy
 ```bash
-docker login -u "<your_username>" -p "<your_token>" "registry.forgemia.inra.fr" 
+./mspangepop dry # Check for warnings
+./mspangepop local-run # Then
 ```
 
-# Workflow
-![Dag of the workflow](workflow/dag.svg)
-
-# More informations
-
-The variants generation is inspired by [VISOR](https://github.com/davidebolo1993/VISOR).
-
-You can extract a VCF from the graph using the `vg deconstruct` command. It is not implemented in the pipeline.
-
-You can use the script `workflow/scripts/split_path.sh` to cut the final fasta into chromosome level fasta files. 
-```bash
-./split_fasta.sh input.fasta /path/to/output_directory
+## ⚙️ Other runing options
 ```
-# Dependencies
-TODO
-pandas, msprime, argprase, os, multiprocessing, yaml, Bio.Seq
-singularity, snakemake
-vg:1.60.0, bcftools:1.12, bgzip:latest, tabix:1.7. 
+mspangepop [dry|run|local-run|dag|rulegraph|unlock|touch] [additional snakemake args]
+    dry - run in dry-run mode
+    run - run the workflow with SLURM
+    local-run - run the workflow localy (on a single node)
+    dag - generate the directed acyclic graph for the workflow
+    rulegraph - generate the rulegraph for the workflow
+    unlock - Unlock the directory if snakemake crashed
+    touch - Tell snakemake that all files are up to date (use with caution)
+    [additional snakemake args] - for any snakemake arg, like --until hifiasm
+```
+
+## Support and Development
+
+MSpangepop is developed at INRAe as part of the PangenOak project.
+
+
