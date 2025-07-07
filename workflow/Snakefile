@@ -147,7 +147,7 @@ rule msprime_simulation:
             --recap {output.recap}
         """
 
-rule plot_msprime_simulation:
+rule tree_vizualisation:
     input:
         ancestry_ts = rules.msprime_simulation.output.ancestry_ts,
         mutated_ts = rules.msprime_simulation.output.mutated_ts
@@ -168,7 +168,7 @@ rule plot_msprime_simulation:
     priority: 1
     shell:
         """
-        python3 workflow/scripts/tree_visualizer.py {input.mutated_ts} \
+        python3 workflow/scripts/visualizer_tree.py {input.mutated_ts} \
             {input.ancestry_ts} \
             -o {params.out} \
             -c {wildcards.chromosome} \
