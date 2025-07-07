@@ -11,10 +11,13 @@ From: python:3.11-slim
         libfreetype6-dev \
         libpng-dev \
         pkg-config \
+        libopenblas-dev \
+        liblapack-dev \
+        gfortran \
     && rm -rf /var/lib/apt/lists/*
     
     pip install --upgrade pip
-    pip install msprime tskit pandas h5py numpy matplotlib ipython pyyaml biopython pytest bitarray tskit-arg-visualizer psutil networkx
+    pip install msprime tskit pandas h5py numpy matplotlib ipython pyyaml biopython pytest bitarray tskit-arg-visualizer psutil networkx scipy seaborn
 
 %environment
     export PYTHONUNBUFFERED=1
