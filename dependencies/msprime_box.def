@@ -8,13 +8,17 @@ From: python:3.11-slim
         libbz2-dev \
         liblzma-dev \
         libcurl4-openssl-dev \
+        libfreetype6-dev \
+        libpng-dev \
+        pkg-config \
     && rm -rf /var/lib/apt/lists/*
     
     pip install --upgrade pip
-    pip install msprime tskit pandas h5py numpy matplotlib ipython pyyaml biopython pytest bitarray tskit-arg-visualizer psutil
+    pip install msprime tskit pandas h5py numpy matplotlib ipython pyyaml biopython pytest bitarray tskit-arg-visualizer psutil networkx
 
 %environment
     export PYTHONUNBUFFERED=1
+    export MPLBACKEND=Agg
 
 %labels
     maintainer "Lucien Piat"
