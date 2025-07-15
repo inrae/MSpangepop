@@ -27,6 +27,7 @@ def get_all_targets():
         for chr_num in range(1, chr_n + 1):
             targets.append(os.path.join(output_dir, sample, graph, f"{sample}_chr_{chr_num}_graph.gfa"))
             targets.append(os.path.join(output_dir, sample, plot_dir, f"chr_{chr_num}_tree_plots", "visualization_complete.txt"))
+            targets.append(os.path.join(output_dir, sample, plot_dir, f"chr_{chr_num}_arg_plots", "visualization_complete.txt"))
         # Add global recap
         targets.append(os.path.join(output_dir, sample, simulation_data, f"{sample}_global_recap.txt"))
     return targets
@@ -147,7 +148,7 @@ rule msprime_simulation:
             --recap {output.recap}
         """
 
-rule tree_vizualisation:
+rule tree_visualization:
     input:
         ancestry_ts = rules.msprime_simulation.output.ancestry_ts,
         mutated_ts = rules.msprime_simulation.output.mutated_ts
@@ -175,6 +176,31 @@ rule tree_vizualisation:
             --occasions 5 \
             --edge-width 4
         echo "Visualization completed at $(date)" > {output.completion_flag}
+        """
+
+rule arg_visualization:
+    input:
+        ancestry_ts = rules.msprime_simulation.output.ancestry_ts,
+        mutated_ts = rules.msprime_simulation.output.mutated_ts
+    output:
+        completion_flag = os.path.join(output_dir, "{sample}", plot_dir, "chr_{chromosome}_arg_plots", "visualization_complete.txt")
+    params:
+        out_dir = lambda wildcards: os.path.join(
+            output_dir, wildcards.sample, plot_dir, f"chr_{wildcards.chromosome}_arg_plots"
+        )
+    resources:
+        mem_mb=lambda wildcards: int(5000 * memory_multiplier),
+        time="01:00:00"
+    threads: 1
+    benchmark:
+        os.path.join(output_dir, "{sample}", "benchmark", "chr_{chromosome}", "arg_visualization_benchmark.txt")
+    container:
+        "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
+    priority: 1
+    shell:
+        """
+        python3 workflow/scripts/visualizer_arg.py {input.ancestry_ts} {params.out_dir}
+        echo "ARG visualization completed at $(date)" > {output.completion_flag}
         """
 
 # Use the preorder traversal to get the order in which the mutations should be handled, save a json
@@ -266,7 +292,8 @@ rule graph_creation:
         gfa = temp(os.path.join(output_dir, "{sample}", graph, "unmerged_chr_{chromosome}_graph.gfa")),
         recap = os.path.join(output_dir, "{sample}", simulation_data, "chr_{chromosome}","graph_creation_recap.txt")
     params:
-        out_dir = lambda wildcards: os.path.join(output_dir, wildcards.sample, plot_dir)
+        out_dir = lambda wildcards: os.path.join(output_dir, wildcards.sample, plot_dir), 
+        fasta_folder = lambda wildcards: os.path.join(output_dir, wildcards.sample, graph, "fasta")
     resources:
         mem_mb=lambda wildcards: int(200000 * memory_multiplier),
         time="10:00:00"
@@ -286,6 +313,7 @@ rule graph_creation:
             --chromosome {wildcards.chromosome} \
             --recap_file {output.recap} \
             --variant_plot_dir {params.out_dir} \
+            --fasta_folder {params.fasta_folder} \
             --threads {threads}
         """
 
