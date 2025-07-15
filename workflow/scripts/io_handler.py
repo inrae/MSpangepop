@@ -228,4 +228,54 @@ class MSpangepopDataHandler:
         try:
             return pd.read_table(fai_file, header=None, usecols=[1], names=["length"])["length"].values
         except Exception as e:
-            raise MSerror(f"Error reading FAI file {fai_file}: {e}")
+            raise MSerror(f"Error reading FAI file {fai_file}: {e}")      
+
+    @staticmethod
+    def write_fasta_multithreaded(graph, sample, chromosome, fasta_folder, threads=4, compress=True):
+        """
+        Writes lineage sequences from a graph to a FASTA file using multithreading.
+
+        Parameters:
+            graph (object): A graph object with a `paths` dictionary of {lineage: Path}.
+            sample (str): Sample name for FASTA header.
+            chromosome (str): Chromosome identifier.
+            fasta_folder (str): Directory to write the output FASTA file.
+            threads (int): Number of worker threads to use for record generation.
+            compress (bool): Whether to gzip compress the output file. Default: True
+        """
+        from concurrent.futures import ThreadPoolExecutor
+        from Bio.SeqRecord import SeqRecord
+        from Bio.Seq import Seq
+        os.makedirs(fasta_folder, exist_ok=True)
+        ext = ".fasta.gz" if compress else ".fasta"
+        fasta_output_path = os.path.join(fasta_folder, f"{sample}_chr{chromosome}{ext}")
+
+        def generate_seqrecord(lineage, path):
+            if lineage == "Ancestral":
+                return None  # Skip "Ancestral" lineage
+            try:
+                sequence_str = str(path)
+                record_id = f"sample_{sample}#lineage_{lineage}#chr_{chromosome}"
+                return SeqRecord(Seq(sequence_str), id=record_id, description="")
+            except Exception as e:
+                MSwarning(f"Failed to convert path for lineage '{lineage}': {e}")
+                return None
+
+        with ThreadPoolExecutor(max_workers=threads) as executor:
+            futures = [
+                executor.submit(generate_seqrecord, lineage, path)
+                for lineage, path in graph.paths.items()
+                if lineage != "Ancestral"
+            ]
+
+            # Open gzipped or plain text output file
+            open_func = gzip.open if compress else open
+            with open_func(fasta_output_path, "wt") as out_handle:
+                count = 0
+                for future in futures:
+                    record = future.result()
+                    if record:
+                        SeqIO.write(record, out_handle, "fasta")
+                        count += 1
+
+        MSsuccess(f"Wrote {count} lineage FASTA sequences to {fasta_output_path}")
