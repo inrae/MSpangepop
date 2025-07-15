@@ -547,3 +547,43 @@ class VariantSizeVisualizer:
         plt.tight_layout()
         plt.savefig(output_path, dpi=300, bbox_inches='tight')
         plt.close()
+
+class LintVisualizer:
+    def __init__(self):
+        self.total_nodes_before = 0
+        self.total_nodes_after = 0
+        self.removed_nodes = set()  # Names of removed nodes
+
+    def record(self, before: int, after: int, removed: set):
+        self.total_nodes_before = before
+        self.total_nodes_after = after
+        self.removed_nodes = removed
+
+    def write_txt_report(self, output_path: str):
+        try:
+            num_removed = len(self.removed_nodes)
+            percent_removed = (
+                (num_removed / self.total_nodes_before) * 100
+                if self.total_nodes_before else 0
+            )
+
+            with open(output_path, "a") as f:
+                f.write("\n"+"-"*120+"\n")
+                f.write("Lint Summary Report\n")
+                f.write(f"Total nodes: {self.total_nodes_before}\n")
+                f.write(f"Remaining nodes after linting: {self.total_nodes_after}\n")
+                f.write(f"Orphan nodes removed by linting: {num_removed}\n")
+                f.write(f"Percent removed: {percent_removed:.2f}%\n\n")
+
+                f.write("# Removed Node Names\n")
+                i=0
+                for node in self.removed_nodes:
+                    i+=1
+                    f.write(f"{node.id},")
+                    if i == 20 : 
+                        f.write(f"\n")
+                        i=0
+            
+            MSsuccess(f"Saved lint stats and removed node list to {output_path}")
+        except Exception as e:
+            MSwarning(f"Could not write lint report: {e}")

@@ -19,11 +19,17 @@ import argparse
 import psutil # type: ignore
 from bitarray import bitarray # type: ignore
 import threading
-from concurrent.futures import ThreadPoolExecutor
 from io import StringIO
+import os
+from Bio.Seq import Seq
+from Bio.SeqRecord import SeqRecord
+from Bio import SeqIO
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from io import StringIO
+import time
 
 from io_handler import MSpangepopDataHandler, MSerror, MSsuccess, MScompute, MSwarning
-from graph_utils import mutate_base, generate_sequence,gather_lineages, MutationRecap, VariantSizeVisualizer
+from graph_utils import mutate_base, generate_sequence,gather_lineages, MutationRecap, VariantSizeVisualizer, LintVisualizer
 
 # You can choose a matrix here for the SNP and insertion sequences
 from matrix import random_matrix as snp_matrix, simple_at_bias_matrix as insertion_matrix
@@ -606,7 +612,7 @@ class Graph:
         self.start_node: Node = None
         self.end_node: Node = None
 
-    def lint(self, ignore_ancestral=False) -> None:
+    def lint(self, ignore_ancestral=False, visualizer=None) -> None:
         """
         Removes orphan nodes from the graph.
         
@@ -618,20 +624,24 @@ class Graph:
         - ignore_ancestral (bool): If True, nodes used only in the ancestral path
                                 will be considered orphans and removed
         """
-        # Collect all nodes that are actually used in path edges
         used_nodes = set()
-        
+
         for lineage, path in self.paths.items():
-            # Skip ancestral path if ignore_ancestral is True
             if ignore_ancestral and lineage == "Ancestral":
                 continue
-                
             for edge in path.path_edges:
-                # Direct access
                 used_nodes.add(edge.node1)
                 used_nodes.add(edge.node2)
-        
-        # Keep only used nodes (more efficient than removing orphans)
+
+        if visualizer:
+            all_nodes = set(self.nodes)
+            removed_nodes = all_nodes - used_nodes
+            visualizer.record(
+                before=len(all_nodes),
+                after=len(used_nodes),
+                removed=removed_nodes
+            )
+
         self.nodes &= used_nodes
     
     def __iter__(self):
@@ -921,12 +931,12 @@ class GraphEnsemble:
                 concatenated_graph += graph
             self.graphs = [concatenated_graph]
 
-    def lint(self, ignore_ancestral = False): 
+    def lint(self, ignore_ancestral = False, visualizer=None): 
         """
         Warper method to lint all graphs in self, remove all node not in the paths
         """
         for graph in self: 
-            graph.lint(ignore_ancestral)
+            graph.lint(ignore_ancestral, visualizer=visualizer)
 
     # Care, method below is NOT AT ALL optimised, we should use node.outgoing_edges instead
     # But since we dont update them yet, we cant. 
@@ -999,9 +1009,6 @@ class GraphEnsemble:
         Hybrid approach with progress reporting: parallel data collection + sequential writing.
         Best balance of performance and simplicity with detailed progress updates.
         """
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-        from io import StringIO
-        import time
         
         if not self.graphs:
             raise MSerror("No graphs to save")
@@ -1399,15 +1406,16 @@ def apply_mutations_to_graphs(graphs, traversal, recap: MutationRecap, visualize
                 visualizer.add_variant(mut_type, start, length, success, affected_lineages)
         
         i += 1 
-        
+
 def main(splited_fasta: str, augmented_traversal: str, output_file: str, 
-         sample: str, chromosome: str, recap_file: str = None, 
+         sample: str, chromosome: str, fasta_folder: str, recap_file: str = None, 
          variant_plot_dir: str = None, threads = 1) -> None:
     """Main function for graph creation with recap and visualization."""
     
     # Initialize tracking objects
     recap = MutationRecap(sample, chromosome)
-    visualizer = VariantSizeVisualizer(sample, chromosome)
+    var_visualizer = VariantSizeVisualizer(sample, chromosome)
+    lint_visualizer = LintVisualizer()
     MScompute("Starting to generate the variation graph")
     try:
         sequences = MSpangepopDataHandler.read_fasta(splited_fasta)
@@ -1437,7 +1445,7 @@ def main(splited_fasta: str, augmented_traversal: str, output_file: str,
         
         # Apply mutations with tracking
         MScompute(f"Starting to integrate mutation to all graphs")
-        apply_mutations_to_graphs(graphs, traversal, recap, visualizer, chromosome)
+        apply_mutations_to_graphs(graphs, traversal, recap, var_visualizer, chromosome)
         ensemble = GraphEnsemble(name=f"{sample}_chr_{chromosome}", graph_list=graphs)
         MScompute(f"Concatenating all graphs")
         ensemble.concatenate
@@ -1447,13 +1455,21 @@ def main(splited_fasta: str, augmented_traversal: str, output_file: str,
             for lineage, path in final_graph.paths.items():
                 # Calculate the actual sequence length of the path
                 lineage_lengths[lineage] = path.node_count + 1  # edges + 1 = nodes
-            visualizer.set_lineage_lengths(lineage_lengths)
+            var_visualizer.set_lineage_lengths(lineage_lengths)
 
         MScompute(f"Removing nodes orphaned by the mutations on {chromosome}")
-        ensemble.lint(ignore_ancestral=True)
+        ensemble.lint(ignore_ancestral=True, visualizer=lint_visualizer)
 
         ensemble.save_to_gfav1_1_hybrid(output_file, ignore_ancestral=True, max_workers=threads)
         
+        MSpangepopDataHandler.write_fasta_multithreaded(
+            graph=final_graph,
+            sample=sample,
+            chromosome=chromosome,
+            fasta_folder=fasta_folder,
+            threads=threads
+        )
+
     except Exception as e:
         recap.summary["fatal_error"] = str(e)
         raise
@@ -1465,35 +1481,35 @@ def main(splited_fasta: str, augmented_traversal: str, output_file: str,
             MSsuccess(f"Recap saved to {recap_file}")
         
         if variant_plot_dir:
-            import os
+            
             os.makedirs(variant_plot_dir, exist_ok=True)
             
-            # Original plots
             dist_plot_path = os.path.join(variant_plot_dir, 
                                         f"{sample}_chr{chromosome}_graph_variant_sizes.png")
-            visualizer.save_size_distribution_plot(dist_plot_path)
+            var_visualizer.save_size_distribution_plot(dist_plot_path)
             
-            # New density plot instead of scatter
             density_plot_path = os.path.join(variant_plot_dir,
                                             f"{sample}_chr{chromosome}_graph_variant_density.png")
-            visualizer.save_variant_density_plot(density_plot_path)
+            var_visualizer.save_variant_density_plot(density_plot_path)
             
-            # Additional new plots
             shared_plot_path = os.path.join(variant_plot_dir,
                                         f"{sample}_chr{chromosome}_graph_shared_variants.png")
-            visualizer.save_shared_variants_heatmap(shared_plot_path)
+            var_visualizer.save_shared_variants_heatmap(shared_plot_path)
             
             proportions_plot_path = os.path.join(variant_plot_dir,
                                             f"{sample}_chr{chromosome}_graph_variant_proportions.png")
-            visualizer.save_variant_type_proportions_plot(proportions_plot_path)
+            var_visualizer.save_variant_type_proportions_plot(proportions_plot_path)
             
             cumulative_plot_path = os.path.join(variant_plot_dir,
                                             f"{sample}_chr{chromosome}_graph_cumulative_variants.png")
-            visualizer.save_cumulative_variants_plot(cumulative_plot_path)
+            var_visualizer.save_cumulative_variants_plot(cumulative_plot_path)
             
             lengths_plot_path = os.path.join(variant_plot_dir,
                                         f"{sample}_chr{chromosome}_graph_lineage_lengths.png")
-            visualizer.save_lineage_lengths_plot(lengths_plot_path)
+            var_visualizer.save_lineage_lengths_plot(lengths_plot_path)
+
+            lint_visualizer.write_txt_report(recap_file)
+
         
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Create variation graph from mutations")
@@ -1504,8 +1520,9 @@ if __name__ == "__main__":
     parser.add_argument("--chromosome", required=True, help="Chromosome identifier")
     parser.add_argument("--recap_file", help="Path to save recap file")
     parser.add_argument("--variant_plot_dir", help="Directory to save variant size plots")
+    parser.add_argument("--fasta_folder", help="Directory to save all fasta")
     parser.add_argument("--threads", type=int)
 
     args = parser.parse_args()
     main(args.splited_fasta, args.augmented_traversal, args.output_file, 
-         args.sample, args.chromosome, args.recap_file, args.variant_plot_dir, args.threads)
+         args.sample, args.chromosome,args.fasta_folder, args.recap_file, args.variant_plot_dir, args.threads)  
