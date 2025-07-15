@@ -205,8 +205,9 @@ def simulate_chromosome_evolution(
             samples=sample_size,
             recombination_rate=recombination_map,
             population_size=population_size,
-            random_seed=pseed
-        ).simplify()
+            random_seed=pseed, 
+            record_full_arg=True
+        )
 
         # Simulate mutations
         mutated_ts = msprime.sim_mutations(
