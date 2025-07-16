@@ -35,18 +35,18 @@ class MSLogger:
 class MSsuccess(MSLogger):
     """Logs a success message."""
     def __init__(self, message):
-        super().__init__("✅ MSpangepop ->", message)
+        super().__init__("✅", message)
 
 
 class MScompute(MSLogger):
     """Logs a compute-related message."""
     def __init__(self, message):
-        super().__init__("🔹 MSpangepop ->", message)
+        super().__init__("🔹", message)
 
 class MSwarning(MSLogger):
     """Logs a warning message."""
     def __init__(self, message):
-        super().__init__("⚠️  MSpangepop ->", message)
+        super().__init__("⚠️", message)
 
 class MSerror(Exception):
     """Custom exception for MSpangepop errors with clean display."""
