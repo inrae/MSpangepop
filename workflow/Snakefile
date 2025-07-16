@@ -58,11 +58,11 @@ rule global_recap:
         """
 
 # Check if the input file is usable if not, tell the user why
-rule input_validation:
+rule input_index:
     input:
         fasta=lambda wildcards: config["samples"][wildcards.sample]["fasta_gz"]
     output:
-        validation_file = temp(os.path.join(output_dir, "{sample}", temp_dir, "valid_input.tmp"))
+        fai=temp(os.path.join(output_dir, "{sample}", temp_dir, "{sample}_full.fai"))
     params:
         chr_n =lambda wildcards: config["samples"][wildcards.sample]["chr_n"]
     priority: 10
@@ -74,40 +74,15 @@ rule input_validation:
         "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
     shell:
         """
-        python3 workflow/scripts/input_validation.py --fasta_file {input.fasta} \
-            --output_file {output.validation_file} \
+        python3 workflow/scripts/input_index.py --fasta_file {input.fasta} \
+            --output_file {output.fai} \
             --min_contigs {params.chr_n}
-        """
-
-# Index the fasta file to gather contig length (used by msprime)
-rule samtools_index:
-    input:
-        validation_file=rules.input_validation.output.validation_file,
-        fasta=lambda wildcards: config["samples"][wildcards.sample]["fasta_gz"]
-    output:
-        fai=temp(os.path.join(output_dir, "{sample}", temp_dir, "{sample}_full.fai"))
-    resources:
-        mem_mb=lambda wildcards: int(5000 * memory_multiplier),
-        time="01:00:00"
-    threads: 1
-    container:
-        "docker://registry.forge.inrae.fr/pangepop/mspangepop/samtool:1.21"
-    priority: 10
-    shell:
-        """
-        echo '🔹 MSpangepop -> Starting {wildcards.sample} indexing...' 
-        samtools faidx {input.fasta} && \
-        mv {input.fasta}.fai {output.fai} && \
-        echo '✅ MSpangepop -> {wildcards.sample} indexing successful.'
-        if [ -f {input.fasta}.gzi ]; then 
-            rm {input.fasta}.gzi
-        fi
         """
 
 # Simulate the coalescent and save it to a json file
 rule msprime_simulation:    
     input:
-        fai=rules.samtools_index.output.fai
+        fai=rules.input_index.output.fai
     output:
         json = temp(os.path.join(output_dir, "{sample}", temp_dir, "chr_{chromosome}", "chr_{chromosome}_msprime_simulation.json")),
         ancestry_ts = os.path.join(output_dir, "{sample}", simulation_data, "chr_{chromosome}", "ancestry_ts.trees"), 
@@ -261,7 +236,7 @@ rule draw_variants:
         augmented_traversal = os.path.join(output_dir, "{sample}", graph, "traversal", "chr_{chromosome}_augmented_traversal.json")
     params:
         sv_type_file = config.get("sv_type_file"),
-        minimal_variant_size=lambda wildcards: config["samples"][wildcards.sample].get("minimal_variant_size", 1),
+        minimal_sv_length=lambda wildcards: config["samples"][wildcards.sample].get("minimal_sv_length", 1),
         readable_json=lambda wildcards: config["samples"][wildcards.sample].get("readable_json", False) 
     threads: 10
     priority: 8
@@ -279,7 +254,7 @@ rule draw_variants:
             --output {output.augmented_traversal} \
             --chromosome {wildcards.chromosome} \
             --threads {threads} \
-            --minimal_variant_size {params.minimal_variant_size} \
+            --minimal_sv_length {params.minimal_sv_length} \
             --readable_json {params.readable_json}
         """
 
