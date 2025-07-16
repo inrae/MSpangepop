@@ -88,7 +88,7 @@ def save_output_v1(mutated_ts, chromosome_name: str, output_dir: str, readable_j
 
             f.write('\n]')  # End JSON array
 
-        MSsuccess(f"Successfully saved output to {json_filename}")
+        MSsuccess(f"Chr {chromosome_name} simulation saved")
 
     except Exception as e:
         raise MSerror(f"Error saving JSON output: {e}")
@@ -150,8 +150,6 @@ def save_output_v2(mutated_ts, chromosome_name: str, json_file: str, readable_js
                 json.dump(tree_data, f, indent=get_indent(readable_json))
             
             f.write('\n]')
-        
-        MSsuccess(f"Successfully saved output to {json_filename}")
     
     except Exception as e:
         raise MSerror(f"Error saving JSON output: {e}")
@@ -172,7 +170,6 @@ def get_chromosome_length(fai_file, chromosome_name):
 
     if chrom_length <= 0:
         raise MSerror(f"Invalid chromosome length ({chrom_length}) for {chromosome_name}")
-    MSsuccess(f"Found chr {chromosome_name} of length: {chrom_length}")
 
     return chrom_length
 
@@ -195,7 +192,7 @@ def simulate_chromosome_evolution(
 
         # Fetch chromosome length
         chrom_length = get_chromosome_length(fai_file, chromosome_name)
-        MScompute("Starting MSprime simulation...")
+        MScompute(f"Chr {chromosome_name}, starting MSprime simulation...")
 
         # Create recombination map
         recombination_map = create_recombination_map(chrom_length, recombination_rate)
@@ -220,7 +217,6 @@ def simulate_chromosome_evolution(
         mutated_ts = mutated_ts.keep_intervals([[0, chrom_length]], simplify=True).trim()
 
         simulation_time = time.time() - start_time  # Time taken for simulation
-        MSsuccess(f"Simulation completed for chromosome {chromosome_name}")
 
         # Save mutation visualization
         MScompute(f"Saving output for chromosome {chromosome_name}")
@@ -252,12 +248,8 @@ def simulate_chromosome_evolution(
             recap_file.write(f"Time Taken for Simulation: {simulation_time:.2f} seconds\n")
             recap_file.write(f"Time Taken for Saving Output: {save_time:.2f} seconds\n")
             recap_file.write("-" * 40 + "\n")
-
-        MSsuccess(f"Simulation recap saved to {recap_file_path}")
-
-        # Final timing
         total_time = time.time() - start_time
-        MSsuccess(f"Total runtime: {total_time/60:.2f} min.")
+        MSsuccess(f"Chr {chromosome_name} msprime recap created, total runtime: {total_time/60:.2f} min.")
 
     except FileNotFoundError as e:
         raise MSerror(f"MSpangepop -> Missing file: {e}")
