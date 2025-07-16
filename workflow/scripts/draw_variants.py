@@ -10,7 +10,7 @@ Usage : Augment JSON file with variant type and size..
 --yaml Path to the YAML configuration file with variant probabilities.
 --chromosome Chromosome name
 --threads Number of threads for parallel processing
---minimal_variant_size Minimal size for variants generated
+--minimal_sv_length Minimal size for variants generated
 --readable_json Save JSON in a human-readable format (True/False, default: False)
 """
 
@@ -40,16 +40,16 @@ class Selector:
             raise MSerror(f"Error in selecting type length: {e}")
 
     @staticmethod 
-    def length(length_df, max_length, minimal_variant_size):
+    def length(length_df, max_length, minimal_sv_length):
         try:
             rand_val = random.random()
             row = length_df[length_df['cumulative_pb'] >= rand_val].iloc[0]
             lower_bound, upper_bound = map(float, row['size_interval'].strip('[]').split(','))
             length = random.randint(int(lower_bound), int(upper_bound))
             if max_length:
-                return max(min(minimal_variant_size, max_length), min(length, max_length))
+                return max(min(minimal_sv_length, max_length), min(length, max_length))
             else :
-                return max(minimal_variant_size, length)
+                return max(minimal_sv_length, length)
         except Exception as e:
             raise MSerror(f"Error in selecting variant length : {e}")
         
@@ -65,7 +65,7 @@ def augment_type(tree, variant_probabilities):
         MSerror(f"Error augmenting mutations: {e}")
         return None
     
-def augment_length_and_position(tree, length_files, minimal_variant_size):
+def augment_length_and_position(tree, length_files, minimal_sv_length):
     """Augments mutations in a tree with length and position based on variant types."""
     try:
         for node in tree.get("nodes", []):  
@@ -98,7 +98,7 @@ def augment_length_and_position(tree, length_files, minimal_variant_size):
 
                 elif variant_type == "INS": #For INSs select a random length (no limit)
                     length_df = length_files.get(variant_type)
-                    length = Selector.length(length_df, None, minimal_variant_size)
+                    length = Selector.length(length_df, None, minimal_sv_length)
 
                     affected_nodes = node.get("affected_nodes", [])
                     for affected_node_id in affected_nodes:
@@ -109,11 +109,11 @@ def augment_length_and_position(tree, length_files, minimal_variant_size):
                 elif variant_type == "DUP": #For DUPs select a length with the remaining 3' bases 
                     length_df = length_files.get(variant_type)
                     max_size = node["interval"][1] - start_pos - 1
-                    if max_size < minimal_variant_size:
+                    if max_size < minimal_sv_length:
                         MSwarning(f"Insufficient space for DUP at node {node['node']}, skipping")
                         length = None
                     else:
-                        length = Selector.length(length_df, max_size, minimal_variant_size)
+                        length = Selector.length(length_df, max_size, minimal_sv_length)
                         affected_nodes = node.get("affected_nodes", [])
                         for affected_node_id in affected_nodes:
                             affected_node = next((n for n in tree.get("nodes", []) if n["node"] == affected_node_id), None)
@@ -142,11 +142,11 @@ def augment_length_and_position(tree, length_files, minimal_variant_size):
                 elif variant_type == "INV": #For the INVs we don't change the total size
                     length_df = length_files.get(variant_type)
                     max_size = node["interval"][1] - start_pos - 1
-                    if max_size < minimal_variant_size:
+                    if max_size < minimal_sv_length:
                         MSwarning(f"Insufficient space for INV at node {node['node']}, skipping")
                         length = None
                     else:
-                        length = Selector.length(length_df, max_size, minimal_variant_size)
+                        length = Selector.length(length_df, max_size, minimal_sv_length)
 
                 mutation["length"] = length
                 mutation["start"] = start_pos
@@ -155,25 +155,25 @@ def augment_length_and_position(tree, length_files, minimal_variant_size):
     except Exception as e:
         raise MSerror(f"Error augmenting mutations with length and position: {e}")
 
-def process_single_tree(tree, length_files, variant_probabilities, minimal_variant_size):
+def process_single_tree(tree, length_files, variant_probabilities, minimal_sv_length):
     """Processes a single tree, augmenting mutation types, positions, and lengths."""
     try:
         # First augment with mutation types
         augmented_tree = augment_type(tree, variant_probabilities)
         
         # Now augment with lengths and positions
-        augmented_tree = augment_length_and_position(augmented_tree, length_files, minimal_variant_size)
+        augmented_tree = augment_length_and_position(augmented_tree, length_files, minimal_sv_length)
         
         return augmented_tree
     except MSerror as e:
         raise MSerror(f"Error processing the tree: {e}")
 
-def process_trees_in_parallel(tree_list, length_files, variant_probabilities, num_threads, minimal_variant_size):
+def process_trees_in_parallel(tree_list, length_files, variant_probabilities, num_threads, minimal_sv_length):
     with concurrent.futures.ProcessPoolExecutor(max_workers=num_threads) as executor:
-        results = list(executor.map(process_single_tree, tree_list, [length_files]*len(tree_list), [variant_probabilities]*len(tree_list), [minimal_variant_size]*len(tree_list)))
+        results = list(executor.map(process_single_tree, tree_list, [length_files]*len(tree_list), [variant_probabilities]*len(tree_list), [minimal_sv_length]*len(tree_list)))
     return results 
 
-def main(json_file, output_json_file, yaml_file, chromosome, num_threads, minimal_variant_size, readable_json):
+def main(json_file, output_json_file, yaml_file, chromosome, num_threads, minimal_sv_length, readable_json):
     """Processes a JSON list of trees, augmenting mutations with variant type and size."""
     try:
         start_time = time.time()
@@ -202,7 +202,7 @@ def main(json_file, output_json_file, yaml_file, chromosome, num_threads, minima
             length_files[var_type] = MSpangepopDataHandler.read_variant_length_file(file_path)
 
         # Process and augment mutations in parallel
-        tree_list = process_trees_in_parallel(tree_list, length_files, variant_probabilities, num_threads, minimal_variant_size)
+        tree_list = process_trees_in_parallel(tree_list, length_files, variant_probabilities, num_threads, minimal_sv_length)
 
         # Count total mutations
         total_mutations = sum(len(node.get("mutations", [])) for tree in tree_list for node in tree.get("nodes", []))
@@ -225,14 +225,14 @@ if __name__ == "__main__":
     parser.add_argument("--yaml", required=True, help="Path to the YAML configuration file with variant probabilities.")
     parser.add_argument("--chromosome", required=True, help="Chromosome name")
     parser.add_argument("--threads", type=int, default=4, help="Number of threads for parallel processing")
-    parser.add_argument("--minimal_variant_size", type=int, default=1, help="Minimal size for variants generated")
+    parser.add_argument("--minimal_sv_length", type=int, default=1, help="Minimal size for variants generated")
     parser.add_argument("--readable_json", type=lambda x: x.lower() == 'true',
                         choices=[True, False],
                         help="Save JSON in a human-readable format (True/False, default: False).")
 
     args = parser.parse_args()
 
-    if args.minimal_variant_size < 1:
-            raise MSerror('minimal_variant_size cant be less than 1')
+    if args.minimal_sv_length < 1:
+            raise MSerror('minimal_sv_length cant be less than 1')
 
-    main(args.json, args.output, args.yaml, args.chromosome, args.threads, args.minimal_variant_size, args.readable_json)
+    main(args.json, args.output, args.yaml, args.chromosome, args.threads, args.minimal_sv_length, args.readable_json)
