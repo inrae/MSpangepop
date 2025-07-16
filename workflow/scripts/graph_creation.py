@@ -135,16 +135,16 @@ class Path:
         self.node_count += 1
 
     def __repr__(self) -> str:
-        """Returns a readable representation of the path without repeating nodes."""
+        """Returns the gfa sting of the path"""
         if not self.path_edges:
             return ""  # If there are no edges, return an empty string
 
         # Start with the first node
-        path_repr = f"{self.path_edges[0].node1.id}"
+        path_repr = f"{self.path_edges[0].node1.id}+"
 
         # Then for each edge, append the node2 id (only if it's not the first node)
         for edge in self.path_edges:
-            path_repr += f"{'>' if not edge.node2_side else '<'}{edge.node2.id}"
+            path_repr += f",{edge.node2.id}{'+' if not edge.node2_side else '-'}"
 
         return path_repr
 
@@ -938,72 +938,6 @@ class GraphEnsemble:
         for graph in self: 
             graph.lint(ignore_ancestral, visualizer=visualizer)
 
-    # Care, method below is NOT AT ALL optimised, we should use node.outgoing_edges instead
-    # But since we dont update them yet, we cant. 
-    def save_to_gfav1_1(self, file_path, ignore_ancestral=False):
-        """
-        Saves the given graph to a GFA V1.1 (Graphical Fragment Assembly) file.
-        The GFA format consists of:
-        - "H" lines defining headers.
-        - "S" lines defining sequence segments (nodes).
-        - "L" lines defining links (edges) between segments.
-        
-        Parameters:
-        - file_path (str): The output GFA file path.
-        - ignore_ancestral (bool): If True, don't include edges from ancestral path
-        
-        Returns:
-        None (writes to a file).
-        """
-        with open(file_path, 'w') as f:
-            # Step 1: Write header with graph name
-            f.write(f"H\t{self.name}\n")
-            
-            # Step 2: Write all nodes as sequence segments
-            # Format: S\t{node_id}\t{sequence}\n
-            for graph in self:
-                for node in graph.nodes:
-                    f.write(f"S\t{node.id}\t{node}\n")
-            
-                # Step 3: Collect all unique edges from paths
-                unique_edges = set()
-                
-                for lineage, path in graph.paths.items():
-                    # Skip ancestral path if ignore_ancestral is True
-                    if ignore_ancestral and lineage == "Ancestral":
-                        continue
-                    
-                    # Add all edges from this path to the set
-                    for edge in path.path_edges:
-                        # Create a tuple that uniquely identifies this edge
-                        # (node1_id, node1_side, node2_id, node2_side)
-                        edge_signature = (
-                            edge.node1.id,
-                            edge.node1_side,
-                            edge.node2.id,
-                            edge.node2_side
-                        )
-                        unique_edges.add(edge_signature)
-                
-                # Step 4: Write all unique edges as links
-                # Format: L\t{node1_id}\t{orientation1}\t{node2_id}\t{orientation2}\t0M\n
-                for node1_id, node1_side, node2_id, node2_side in unique_edges:
-                    # Convert sides to GFA orientation symbols
-                    # True = +, False = - for node1_side
-                    orientation1 = "+" if node1_side else "-"
-                    
-                    # False = +, True = - for node2_side (as specified)
-                    orientation2 = "+" if not node2_side else "-"
-                    
-                    f.write(f"L\t{node1_id}\t{orientation1}\t{node2_id}\t{orientation2}\t0M\n")
-                
-                # Step 5, Write the paths as W-lines
-                for lineage, path in graph.paths.items():
-                    # Skip ancestral path if ignore_ancestral is True
-                    if ignore_ancestral and lineage == "Ancestral":
-                        continue
-                    f.write(f"W\tlineage_{path.lineage}\t0\tlineage_{path.lineage}\t0\t0\t>{repr(path)}\n")
-
     def save_to_gfav1_1_hybrid(self, file_path, ignore_ancestral=False, max_workers=None):
         """
         Hybrid approach with progress reporting: parallel data collection + sequential writing.
@@ -1029,7 +963,6 @@ class GraphEnsemble:
         
         def process_nodes_parallel():
             """Process nodes with chunking if beneficial"""
-            MScompute("Processing nodes...")
 
             nodes_list = list(graph.nodes)
 
@@ -1067,7 +1000,6 @@ class GraphEnsemble:
         
         def process_paths_and_edges():
             """Process paths and collect edges simultaneously"""
-            MScompute("Processing paths and collecting edges...")
             
             paths_buffer = StringIO()
             unique_edges = set()
@@ -1082,7 +1014,7 @@ class GraphEnsemble:
                     progress = (processed_paths / total_paths) * 100
                 
                 # Process path
-                paths_buffer.write(f"W\tlineage_{path.lineage}\t0\tlineage_{path.lineage}\t0\t0\t>{repr(path)}\n")
+                paths_buffer.write(f"P\tlineage_{path.lineage}\t{repr(path)}\n")
                 
                 # Collect edges from this path
                 path_edges_count = 0
@@ -1125,11 +1057,10 @@ class GraphEnsemble:
             paths_str, edges_str = paths_edges_future.result()
         
         # Calculate data sizes for reporting
-        header_size = len(f"H\t{self.name}\n")
         nodes_size = len(nodes_str)
         edges_size = len(edges_str)
         paths_size = len(paths_str)
-        total_size = header_size + nodes_size + edges_size + paths_size
+        total_size = nodes_size + edges_size + paths_size
         
         MScompute(f"Data prepared: {total_size:,} characters ({nodes_size:,} nodes, {edges_size:,} edges, {paths_size:,} paths)")
         
@@ -1138,9 +1069,6 @@ class GraphEnsemble:
         write_start = time.time()
         
         with open(file_path, 'w') as f:
-            print("\t\tWriting header...")
-            f.write(f"H\t{self.name}\n")
-            
             print("\t\tWriting nodes...")
             f.write(nodes_str)
             
@@ -1444,9 +1372,11 @@ def main(splited_fasta: str, augmented_traversal: str, output_file: str,
         MSsuccess(f"Initialized {len(graphs)} graphs for chromosome {chromosome}")
         
         # Apply mutations with tracking
+        print("")
         MScompute(f"Starting to integrate mutation to all graphs")
         apply_mutations_to_graphs(graphs, traversal, recap, var_visualizer, chromosome)
         ensemble = GraphEnsemble(name=f"{sample}_chr_{chromosome}", graph_list=graphs)
+        print("")
         MScompute(f"Concatenating all graphs")
         ensemble.concatenate
         if ensemble.graphs:  # Should have exactly one graph after concatenation
