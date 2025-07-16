@@ -31,7 +31,6 @@ def parse_args():
 
 def main():
     args = parse_args()
-
     # Define output recap file path
     recap_file = os.path.join(args.output_dir, f"{args.current_run}_global_recap.txt")
 
@@ -93,7 +92,7 @@ def main():
         else:
             f.write(f"⚠️ Warning: No parameters found for {args.current_run}\n")
 
-    MSsuccess(f"Recap file saved: {recap_file}")
+    MSsuccess(f"Created global simulation recap")
 
 if __name__ == "__main__":
     main()
