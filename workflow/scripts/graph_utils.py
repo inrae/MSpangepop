@@ -574,15 +574,6 @@ class LintVisualizer:
                 f.write(f"Remaining nodes after linting: {self.total_nodes_after}\n")
                 f.write(f"Orphan nodes removed by linting: {num_removed}\n")
                 f.write(f"Percent removed: {percent_removed:.2f}%\n\n")
-
-                f.write("# Removed Node Names\n")
-                i=0
-                for node in self.removed_nodes:
-                    i+=1
-                    f.write(f"{node.id},")
-                    if i == 20 : 
-                        f.write(f"\n")
-                        i=0
             
             MSsuccess(f"Saved lint stats and removed node list to {output_path}")
         except Exception as e:
