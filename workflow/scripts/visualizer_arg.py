@@ -15,6 +15,7 @@ import argparse
 import tskit
 import msprime
 import numpy as np
+os.environ['MPLCONFIGDIR'] = './.config/matplotlib'
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import networkx as nx
@@ -71,7 +72,7 @@ def get_node_types(ts):
 
 def create_local_trees_plot(ts, output_dir, basename):
     """Create local trees visualization with colored nodes."""
-    MScompute("Creating local trees visualization...")
+    MScompute("Creating arg local trees visualization...")
     
     # Get node types
     node_types = get_node_types(ts)
@@ -109,7 +110,7 @@ def create_local_trees_plot(ts, output_dir, basename):
 
 def create_networkx_plot(ts, output_dir, basename):
     """Create NetworkX graph visualization."""
-    MScompute("Creating NetworkX graph visualization...")
+    MScompute("Creating arg NetworkX graph visualization...")
     
     # Convert to NetworkX graph
     D = dict(source=ts.edges_parent, target=ts.edges_child, 
@@ -424,98 +425,113 @@ def compute_STEAC_matrix(ts):
 
 def create_hierarchical_clustering_plot(ts, output_dir, basename):
     """
-    Create hierarchical clustering based on STEAC (Species Tree Estimation using Average Coalescence times).
-    
-    This method uses the average coalescence times between samples across all local trees
-    to build a distance matrix and perform hierarchical clustering.
+    Create horizontal hierarchical clustering plot using STEAC (Species Tree Estimation using Average Coalescence times).
+    Adapted for large numbers of samples.
     """
-    MScompute("Creating STEAC hierarchical clustering plot...")
-    
-    coalescence_times, samples = compute_STEAC_matrix(ts)
-    
-    plt.figure(figsize=(12, 8))
-    
-    if len(samples) > 2:
-        # Create condensed distance matrix (upper triangle)
-        condensed_dist = []
-        for i in range(len(samples)):
-            for j in range(i+1, len(samples)):
-                condensed_dist.append(coalescence_times[i, j])
-        
-        if len(condensed_dist) > 0:
-            # Perform hierarchical clustering
-            linkage_matrix = linkage(condensed_dist, method='average')
-            
-            # Create dendrogram
-            dendrogram(linkage_matrix, labels=[f'Sample {s}' for s in samples], 
-                      leaf_font_size=12)
-            plt.title(f'STEAC Hierarchical Clustering\n(Species Tree Estimation using Average Coalescence times): {basename}', 
-                     fontsize=16, fontweight='bold')
-            plt.ylabel('Average Coalescence Time', fontsize=14)
-            plt.xlabel('Sample', fontsize=14)
-    else:
-        plt.text(0.5, 0.5, 'Need more than 2 samples for clustering', 
-                transform=plt.gca().transAxes, ha='center', va='center', fontsize=14)
-        plt.title(f'STEAC Hierarchical Clustering: {basename}', fontsize=16, fontweight='bold')
-    
-    plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, f"{basename}_STEAC_hierarchical_clustering.png"), 
-                dpi=300, bbox_inches='tight')
-    plt.close()
+    MScompute("Creating STEAC horizontal hierarchical clustering plot...")
 
+    coalescence_times, samples = compute_STEAC_matrix(ts)
+    n = len(samples)
+
+    if n > 2:
+        # Compute condensed distance matrix
+        condensed_dist = [
+            coalescence_times[i, j]
+            for i in range(n)
+            for j in range(i + 1, n)
+        ]
+
+        linkage_matrix = linkage(condensed_dist, method='average')
+        plt.figure(figsize=(max(12, n * 0.3), 10))  # Expand width with number of samples
+
+        dendrogram(
+            linkage_matrix,
+            labels=[f"Sample {s}" for s in samples],
+            leaf_rotation=0,
+            leaf_font_size=8,
+            orientation="left"
+        )
+
+        plt.title(
+            f"STEAC Hierarchical Clustering\n(Species Tree Estimation using Average Coalescence times): {basename}",
+            fontsize=14,
+            fontweight='bold'
+        )
+        plt.xlabel("Average Coalescence Time", fontsize=12)
+        plt.ylabel("Samples", fontsize=12)
+
+        plt.tight_layout()
+        plt.savefig(os.path.join(output_dir, f"{basename}_STEAC_hierarchical_clustering.png"),
+                    dpi=300, bbox_inches='tight')
+        plt.close()
+    else:
+        plt.figure(figsize=(6, 4))
+        plt.text(0.5, 0.5, 'Need more than 2 samples for clustering',
+                 transform=plt.gca().transAxes, ha='center', va='center', fontsize=14)
+        plt.title(f'STEAC Hierarchical Clustering: {basename}', fontsize=16, fontweight='bold')
+        plt.savefig(os.path.join(output_dir, f"{basename}_STEAC_hierarchical_clustering.png"),
+                    dpi=300, bbox_inches='tight')
+        plt.close()
 
 def create_clustermap_with_dendrogram(ts, output_dir, basename):
-    """Create a clustered heatmap with dendrogram using STEAC method."""
-    MScompute("Creating STEAC clustered heatmap with dendrogram...")
+    """
+    Create a clustered heatmap (clustermap) using STEAC coalescence times.
+    Only shows left-side dendrogram; annotations are small and rounded.
+    Suitable for large sample sizes.
+    """
+    MScompute("Creating STEAC clustermap with left dendrogram...")
 
     coalescence_times, samples = compute_STEAC_matrix(ts)
-    sample_labels = [f"Sample {s}" for s in samples]
+    n = len(samples)
 
-    if len(samples) > 2:
-        # Convert to condensed distance matrix for clustering
-        condensed_dist = []
-        for i in range(len(samples)):
-            for j in range(i+1, len(samples)):
-                condensed_dist.append(coalescence_times[i, j])
-        
-        # Pre-compute the linkage
+    if n > 2:
+        sample_labels = [f"Sample {s}" for s in samples]
+
+        # Compute condensed distance matrix
+        condensed_dist = [
+            coalescence_times[i, j]
+            for i in range(n)
+            for j in range(i + 1, n)
+        ]
+
         row_linkage = linkage(condensed_dist, method='average')
-        col_linkage = row_linkage  # Use same linkage for rows and columns (symmetric matrix)
-        
-        # Create DataFrame for heatmap
+
         df = pd.DataFrame(coalescence_times, index=sample_labels, columns=sample_labels)
 
-        # Create clustermap with pre-computed linkage
-        g = sns.clustermap(df,
-                           row_linkage=row_linkage,
-                           col_linkage=col_linkage,
-                           cmap='coolwarm',
-                           figsize=(14, 12),
-                           annot=True,
-                           fmt=".2f",
-                           dendrogram_ratio=(0.25, 0.25),
-                           cbar_pos=(0.02, 0.8, 0.03, 0.18),
-                           linewidths=0.5,
-                           tree_kws={'linewidths': 3.0},  # Increased tree branch width
-                           )
-        
-        # Remove the legend/colorbar
-        g.cax.set_visible(False)
-        
-        plt.suptitle(f"STEAC Clustering Analysis: {basename}", fontsize=18, y=0.98)
-        g.fig.subplots_adjust(top=0.94)
+        g = sns.clustermap(
+            df,
+            row_linkage=row_linkage,
+            col_cluster=False,  # Only cluster rows
+            cmap="coolwarm",
+            figsize=(max(12, n * 0.35), max(10, n * 0.3)),
+            annot=True,
+            fmt=".1f",  # Rounded numbers
+            annot_kws={"size": 6},
+            dendrogram_ratio=(0.25, 0.01),  # Hide top dendrogram
+            cbar_pos=(0.02, 0.8, 0.03, 0.18),
+            linewidths=0.4,
+            xticklabels=True,
+            yticklabels=True,
+            tree_kws={"linewidths": 1.5}
+        )
+
+        g.cax.set_visible(False)  # Hide colorbar
+
+        plt.suptitle(f"STEAC Clustering (Left Tree Only): {basename}", fontsize=16, y=0.98)
+        g.figure.subplots_adjust(top=0.93)
         g.savefig(os.path.join(output_dir, f"{basename}_STEAC_clustermap.png"),
                   dpi=300, bbox_inches='tight')
         plt.close()
     else:
-        MScompute("  ⚠️ Not enough samples for clustering heatmap")
+        MSwarning("Not enough samples for clustering heatmap")
+
 
 
 def main():
     parser = argparse.ArgumentParser(description="ARG visualization script")
     parser.add_argument("input_file", help="Input .trees file")
     parser.add_argument("output_dir", help="Output directory for visualizations")
-    
+    parser.add_argument("chromosome")
     args = parser.parse_args()
     
     # Validate input file
@@ -533,7 +549,7 @@ def main():
         MSerror(f"Error loading tree sequence: {e}")
         sys.exit(1)
     
-    basename = Path(args.input_file).stem
+    basename = f"chromosome_{args.chromosome}"
     
     try:
         create_local_trees_plot(ts, args.output_dir, basename)
