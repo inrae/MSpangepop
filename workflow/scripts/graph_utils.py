@@ -9,6 +9,8 @@ This scripts holds usefull function for the graph creation step
 import random
 from io_handler import MSerror, MSsuccess, MSwarning, MScompute
 from datetime import datetime
+import os
+os.environ['MPLCONFIGDIR'] = './.config/matplotlib'
 import matplotlib.pyplot as plt # type: ignore
 import matplotlib.patches as mpatches # type: ignore
 import numpy as np
