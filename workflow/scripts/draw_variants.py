@@ -74,7 +74,7 @@ def augment_length_and_position(tree, length_files, minimal_sv_length):
                 # Check if interval is too small for any mutation
                 interval_size = node["interval"][1] - node["interval"][0]
                 if interval_size < 3:  # Need at least 3 bases for any meaningful mutation
-                    MSwarning(f"Node {node['node']} interval too small ({interval_size} bases), skipping mutation")
+                    MSwarning(f"Node {node['node']} interval too small ({interval_size} bases), mutation skip, consider decreasing recombination rate.")
                     mutation["type"] = None
                     mutation["length"] = None
                     mutation["start"] = None
