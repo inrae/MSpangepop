@@ -1,0 +1,31 @@
+{
+  "name": "Isolation_Model",
+  "description": "Three populations with gene flow, then POP_C becomes isolated after 500 generations",
+  "mutation_rate": 1e-6,
+  "recombination_rate": 0.5e-7,
+  "generation_time": 25,
+  "populations": [
+    { "id": "POP_A", "initial_size": 1000, "description": "Population A" },
+    { "id": "POP_B", "initial_size": 1000, "description": "Population B" },
+    { "id": "POP_C", "initial_size": 1000, "description": "Population C (becomes isolated)" }
+  ],
+  "samples": [
+    { "population": "POP_A", "sample_size": 2 },
+    { "population": "POP_B", "sample_size": 2 },
+    { "population": "POP_C", "sample_size": 2 }
+  ],
+  "migration_matrix": [
+    { "time": 0, "source": "POP_A", "dest": "POP_B", "rate": 5e-3 },
+    { "time": 0, "source": "POP_B", "dest": "POP_A", "rate": 5e-3 },
+    { "time": 0, "source": "POP_A", "dest": "POP_C", "rate": 5e-3 },
+    { "time": 0, "source": "POP_C", "dest": "POP_A", "rate": 5e-3 },
+    { "time": 0, "source": "POP_B", "dest": "POP_C", "rate": 5e-3 },
+    { "time": 0, "source": "POP_C", "dest": "POP_B", "rate": 5e-3 }
+  ],
+  "demographic_events": [
+    { "type": "add_migration_rate_change", "time": 500, "source": "POP_A", "dest": "POP_C", "rate": 0.0 },
+    { "type": "add_migration_rate_change", "time": 525, "source": "POP_C", "dest": "POP_A", "rate": 0.0 },
+    { "type": "add_migration_rate_change", "time": 550, "source": "POP_B", "dest": "POP_C", "rate": 0.0 },
+    { "type": "add_migration_rate_change", "time": 575, "source": "POP_C", "dest": "POP_B", "rate": 0.0 }
+  ]
+}
