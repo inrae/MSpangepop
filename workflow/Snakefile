@@ -26,8 +26,7 @@ def get_all_targets():
         # Add polished GFA files
         for chr_num in range(1, chr_n + 1):
             targets.append(os.path.join(output_dir, sample, graph, f"{sample}_chr_{chr_num}_graph.gfa"))
-            targets.append(os.path.join(output_dir, sample, plot_dir, f"chr_{chr_num}_tree_plots", "visualization_complete.txt"))
-            targets.append(os.path.join(output_dir, sample, plot_dir, f"chr_{chr_num}_arg_plots", "visualization_complete.txt"))
+            targets.append(os.path.join(output_dir, sample, plot_dir, f"chr_{chr_num}", "visualization_complete.txt"))
         # Add global recap
         targets.append(os.path.join(output_dir, sample, simulation_data, f"{sample}_global_recap.txt"))
     return targets
@@ -82,17 +81,15 @@ rule input_index:
 # Simulate the coalescent and save it to a json file
 rule msprime_simulation:    
     input:
-        fai=rules.input_index.output.fai
+        fai=rules.input_index.output.fai,
+        demographic=lambda wildcards: config["samples"][wildcards.sample]["demographic_file"]
     output:
         json = temp(os.path.join(output_dir, "{sample}", temp_dir, "chr_{chromosome}", "chr_{chromosome}_msprime_simulation.json")),
-        ancestry_ts = os.path.join(output_dir, "{sample}", simulation_data, "chr_{chromosome}", "ancestry_ts.trees"), 
         mutated_ts = os.path.join(output_dir, "{sample}", simulation_data, "chr_{chromosome}", "mutated_ts.trees"),
+        ancestry_ts = os.path.join(output_dir, "{sample}", simulation_data, "chr_{chromosome}", "ancestry_ts.trees"), 
+        full_ancestry_ts = os.path.join(output_dir, "{sample}", simulation_data, "chr_{chromosome}", "full_ancestry_ts.trees"), 
         recap = os.path.join(output_dir, "{sample}", simulation_data, "chr_{chromosome}", "msprime_recap.txt"),
     params:
-        pop_size=lambda wildcards: config["samples"][wildcards.sample]["population_size"],
-        mut_rate=lambda wildcards: config["samples"][wildcards.sample]["mutation_rate"],
-        reco_rate=lambda wildcards: config["samples"][wildcards.sample]["recombination_rate"],
-        n=lambda wildcards: config["samples"][wildcards.sample]["sample_size"],
         model=lambda wildcards: config["samples"][wildcards.sample].get("model", "binary"), 
         readable_json=lambda wildcards: config["samples"][wildcards.sample].get("readable_json", False), 
         seed=lambda wildcards: config["samples"][wildcards.sample].get("seed", None)
@@ -109,36 +106,36 @@ rule msprime_simulation:
         """
         python3 workflow/scripts/msprime_simulation.py \
             -fai {input.fai} \
-            -p {params.pop_size} \
-            -mu {params.mut_rate} \
-            -r {params.reco_rate} \
-            -n {params.n} \
+            -d {input.demographic} \
             -c {wildcards.chromosome} \
             -mo {params.model} \
             --readable_json {params.readable_json} \
             --seed {params.seed} \
-            --ancestry_ts {output.ancestry_ts} \
             --mutated_ts {output.mutated_ts} \
+            --ancestry_ts {output.ancestry_ts} \
+            --full_ancestry_ts {output.full_ancestry_ts} \
             --json {output.json} \
             --recap {output.recap}
         """
 
-rule tree_visualization:
+rule visualization:
     input:
+        mutated_ts = rules.msprime_simulation.output.mutated_ts,
         ancestry_ts = rules.msprime_simulation.output.ancestry_ts,
-        mutated_ts = rules.msprime_simulation.output.mutated_ts
+        full_ancestry_ts = rules.msprime_simulation.output.full_ancestry_ts
     output:
-        completion_flag = os.path.join(output_dir, "{sample}", plot_dir, "chr_{chromosome}_tree_plots", "visualization_complete.txt")
+        completion_flag = os.path.join(output_dir, "{sample}", plot_dir, "chr_{chromosome}", "visualization_complete.txt")
     params:
-        out = lambda wildcards: os.path.join(
-            output_dir, wildcards.sample, plot_dir, f"chr_{wildcards.chromosome}", "01_tree_plots"
-        )
+        out_tree = lambda wildcards: os.path.join(
+            output_dir, wildcards.sample, plot_dir, f"chr_{wildcards.chromosome}", "01_tree_plots"),
+        out_arg = lambda wildcards: os.path.join(
+            output_dir, wildcards.sample, plot_dir, f"chr_{wildcards.chromosome}", "02_arg_plots")
     resources:
         mem_mb=lambda wildcards: int(5000 * memory_multiplier),
         time="01:00:00"
     threads: 1
     benchmark:
-        os.path.join(output_dir, "{sample}", "benchmark", "chr_{chromosome}", "plot_msprime_simulation_benchmark.txt")
+        os.path.join(output_dir, "{sample}", "benchmark", "chr_{chromosome}", "visualization.txt")
     container:
         "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
     priority: 1
@@ -146,36 +143,12 @@ rule tree_visualization:
         """
         python3 workflow/scripts/visualizer_tree.py {input.mutated_ts} \
             {input.ancestry_ts} \
-            -o {params.out} \
+            -o {params.out_tree} \
             -c {wildcards.chromosome} \
             --occasions 5 \
             --edge-width 4
+        python3 workflow/scripts/visualizer_arg.py {input.full_ancestry_ts} {params.out_arg} {wildcards.chromosome}
         echo "Visualization completed at $(date)" > {output.completion_flag}
-        """
-
-rule arg_visualization:
-    input:
-        ancestry_ts = rules.msprime_simulation.output.ancestry_ts,
-        mutated_ts = rules.msprime_simulation.output.mutated_ts
-    output:
-        completion_flag = os.path.join(output_dir, "{sample}", plot_dir, "chr_{chromosome}_arg_plots", "visualization_complete.txt")
-    params:
-        out_dir = lambda wildcards: os.path.join(
-            output_dir, wildcards.sample, plot_dir, f"chr_{wildcards.chromosome}", "02_arg_plots"
-        )
-    resources:
-        mem_mb=lambda wildcards: int(5000 * memory_multiplier),
-        time="01:00:00"
-    threads: 1
-    benchmark:
-        os.path.join(output_dir, "{sample}", "benchmark", "chr_{chromosome}", "arg_visualization_benchmark.txt")
-    container:
-        "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
-    priority: 1
-    shell:
-        """
-        python3 workflow/scripts/visualizer_arg.py {input.ancestry_ts} {params.out_dir}
-        echo "ARG visualization completed at $(date)" > {output.completion_flag}
         """
 
 # Use the preorder traversal to get the order in which the mutations should be handled, save a json
@@ -235,7 +208,7 @@ rule draw_variants:
     output:
         augmented_traversal = os.path.join(output_dir, "{sample}", graph, "traversal", "chr_{chromosome}_augmented_traversal.json")
     params:
-        sv_type_file = config.get("sv_type_file"),
+        sv_type_file = lambda wildcards: config["samples"][wildcards.sample].get("sv_types"),
         minimal_sv_length=lambda wildcards: config["samples"][wildcards.sample].get("minimal_sv_length", 1),
         readable_json=lambda wildcards: config["samples"][wildcards.sample].get("readable_json", False) 
     threads: 10
