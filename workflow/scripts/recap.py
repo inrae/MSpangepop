@@ -17,6 +17,7 @@ import platform
 from io_handler import MSsuccess
 
 # Import necessary libraries to get their versions
+os.environ['MPLCONFIGDIR'] = './.config/matplotlib'
 import msprime, tskit, pandas, numpy, matplotlib, IPython, yaml, Bio
 
 def parse_args():

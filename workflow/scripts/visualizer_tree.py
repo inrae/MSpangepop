@@ -2,6 +2,7 @@
 import os
 import tskit
 import random
+os.environ['MPLCONFIGDIR'] = './.config/matplotlib'
 import matplotlib.pyplot as plt
 import argparse
 import sys
@@ -276,7 +277,7 @@ def main():
             MSerror(f"Error: File does not exist: {filepath}")
             sys.exit(1)
     
-    MScompute("Loading tree sequences...")
+    MScompute("Starting to compute tree visualizations")
     mutated_ts, ancestry_ts = load_tree_sequences(args.mutated_ts, args.ancestry_ts)
     
     # Create visualizer with custom edge width
@@ -293,7 +294,7 @@ def main():
     if not args.skip_extra:
         visualizer.save_additional_visualizations()
     
-    MSsuccess("All visualizations completed! [100%]")
+    MSsuccess("All tree visualizations completed! [100%]")
 
 
 if __name__ == "__main__":
