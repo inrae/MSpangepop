@@ -95,7 +95,7 @@ def main():
         generate_fai(fasta_records, args.output_file)
 
 
-        MSsuccess(f"FASTA file is valid. FAI file created")
+        MSsuccess(f"FASTA file is valid. FAI index created")
 
     except MSerror as e:
         raise e
