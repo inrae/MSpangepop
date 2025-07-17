@@ -17,7 +17,7 @@ From: python:3.11-slim
     && rm -rf /var/lib/apt/lists/*
     
     pip install --upgrade pip
-    pip install msprime tskit pandas h5py numpy matplotlib ipython pyyaml biopython pytest bitarray tskit-arg-visualizer psutil networkx scipy seaborn
+    pip install msprime tskit pandas h5py numpy matplotlib ipython pyyaml biopython pytest bitarray tskit-arg-visualizer psutil networkx scipy seaborn demesdraw
 
 %environment
     export PYTHONUNBUFFERED=1
