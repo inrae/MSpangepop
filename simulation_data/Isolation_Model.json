@@ -1,31 +1,33 @@
 {
-  "name": "Isolation_Model",
-  "description": "Three populations with gene flow, then POP_C becomes isolated after 500 generations",
-  "mutation_rate": 1e-6,
-  "recombination_rate": 0.5e-7,
+  "name": "Simple_AB_Split_Model",
+  "description": "Large POP_A and small isolated POP_B with common ancestor",
+  "mutation_rate": 1e-7,
+  "recombination_rate": 1e-8,
   "generation_time": 25,
   "populations": [
-    { "id": "POP_A", "initial_size": 1000, "description": "Population A" },
-    { "id": "POP_B", "initial_size": 1000, "description": "Population B" },
-    { "id": "POP_C", "initial_size": 1000, "description": "Population C (becomes isolated)" }
+    { "id": "POP_A", "initial_size": 5000, "description": "Large population" },
+    { "id": "POP_B", "initial_size": 500, "description": "Small isolated population" }
   ],
   "samples": [
-    { "population": "POP_A", "sample_size": 2 },
-    { "population": "POP_B", "sample_size": 2 },
-    { "population": "POP_C", "sample_size": 2 }
+    { "population": "POP_A", "sample_size": 10 },
+    { "population": "POP_B", "sample_size": 10 }
   ],
-  "migration_matrix": [
-    { "time": 0, "source": "POP_A", "dest": "POP_B", "rate": 5e-3 },
-    { "time": 0, "source": "POP_B", "dest": "POP_A", "rate": 5e-3 },
-    { "time": 0, "source": "POP_A", "dest": "POP_C", "rate": 5e-3 },
-    { "time": 0, "source": "POP_C", "dest": "POP_A", "rate": 5e-3 },
-    { "time": 0, "source": "POP_B", "dest": "POP_C", "rate": 5e-3 },
-    { "time": 0, "source": "POP_C", "dest": "POP_B", "rate": 5e-3 }
-  ],
+  "migration_matrix": [],
   "demographic_events": [
-    { "type": "add_migration_rate_change", "time": 500, "source": "POP_A", "dest": "POP_C", "rate": 0.0 },
-    { "type": "add_migration_rate_change", "time": 525, "source": "POP_C", "dest": "POP_A", "rate": 0.0 },
-    { "type": "add_migration_rate_change", "time": 550, "source": "POP_B", "dest": "POP_C", "rate": 0.0 },
-    { "type": "add_migration_rate_change", "time": 575, "source": "POP_C", "dest": "POP_B", "rate": 0.0 }
+    {
+      "type": "mass_migration",
+      "time": 40,
+      "source": "POP_B",
+      "dest": "POP_A",
+      "proportion": 1.0,
+      "_comment": "All B lineages merge into A at 1000 years ago"
+    },
+    {
+      "type": "population_parameters_change",
+      "time": 40,
+      "population": "POP_A",
+      "initial_size": 10000,
+      "_comment": "Ancestral population size"
+    }
   ]
 }
