@@ -136,7 +136,7 @@ def load_demographic_model(demographic_file: str):
     except Exception as e:
         raise MSerror(f"Error loading demographic model: {e}")
 
-def plot_demographic(demographic_file: str, output_file: str, log_time: bool = False):
+def plot_demographic(demographic_file: str, output_file: str, log_time: bool = True):
     """
     Plot demographic model using demes visualization.
     
@@ -268,7 +268,7 @@ def simulate_chromosome_evolution(
 
         # Load demographic model
         demography, samples, sample_size, mutation_rate, recombination_rate, demo_data = load_demographic_model(demographic_file)
-        
+        plot_demographic(demographic_file, recap.replace('.txt', '_plot.png'))
         MScompute(f"Using mutation rate: {mutation_rate}")
         MScompute(f"Using recombination rate: {recombination_rate}")
         MScompute(f"Total sample size: {sample_size}")
@@ -339,7 +339,7 @@ def simulate_chromosome_evolution(
             recap_file.write(f"\nTime Taken for Simulation: {simulation_time:.2f} seconds\n")
             recap_file.write(f"Time Taken for Saving Output: {save_time:.2f} seconds\n")
             recap_file.write("-" * 40 + "\n")
-        plot_demographic(demographic_file, recap.replace('.txt', '_plot.png'))
+        
         total_time = time.time() - start_time
         MSsuccess(f"Chr {chromosome_name} msprime recap created, total runtime: {total_time/60:.2f} min.")
 
