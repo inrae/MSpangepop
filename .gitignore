@@ -25,3 +25,5 @@ results
 !mspangepop
 .config/matplotlib
 !doc/*
+.config/expanded_config.yaml
+.config/expanded*
