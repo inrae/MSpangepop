@@ -17,11 +17,6 @@ Example :
 > sequences = MSpangepopDataHandler.read_fasta(splited_fasta)
 """
 
-import json
-import yaml
-import pandas as pd
-from Bio import SeqIO
-import gzip
 import sys
 import os
 import traceback
@@ -46,7 +41,7 @@ class MScompute(MSLogger):
 class MSwarning(MSLogger):
     """Logs a warning message."""
     def __init__(self, message):
-        super().__init__("⚠️", message)
+        super().__init__("⚠️ ", message)
 
 class MSerror(Exception):
     """Custom exception for MSpangepop errors with clean display."""
@@ -110,6 +105,7 @@ class MSpangepopDataHandler:
         Raises:
             FileReadError: If there is an issue reading the JSON file.
         """
+        import json
         try:
             with open(json_path, 'r') as file:
                 return json.load(file)
@@ -128,36 +124,12 @@ class MSpangepopDataHandler:
         Raises:
             FileReadError: If there is an issue saving the JSON file.
         """
-
+        import json
         try:
             with open(output_path, 'w') as file:
                 json.dump(data, file, indent=get_indent(readable_json)) # Set indent to none to reduce json file size
         except Exception as e:
             raise MSerror(f"Error saving JSON file: {e}")
-    
-    @staticmethod
-    def read_yaml(yaml_file):
-        """
-        Reads variant probabilities from a YAML configuration file.
-        
-        Parameters:
-            yaml_file (str): Path to the YAML file containing variant probabilities.
-        
-        Returns:
-            dict: Dictionary of variant types and their associated probabilities.
-        
-        Raises:
-            ValueError: If the sum of the probabilities does not equal 100.
-            FileReadError: If there is an issue reading the YAML file.
-        """
-        try:
-            with open(yaml_file, 'r') as file:
-                variant_probabilities = yaml.safe_load(file)
-            if sum(variant_probabilities.values()) != 100:
-                raise MSerror("Sum of variant probabilities in YAML must equal 100.")
-            return variant_probabilities
-        except Exception as e:
-            raise MSerror(f"Error reading YAML file: {e}")
     
     @staticmethod
     def read_fasta(fasta_file):
@@ -173,6 +145,8 @@ class MSpangepopDataHandler:
         Raises:
             FileReadError: If unable to read the FASTA file.
         """
+        import gzip
+        from Bio import SeqIO
         try:
             with gzip.open(fasta_file, "rt") as handle:
                 return list(SeqIO.parse(handle, "fasta"))
@@ -200,6 +174,7 @@ class MSpangepopDataHandler:
         Raises:
             FileReadError: If there is an issue reading the file.
         """
+        import pandas as pd
         try:
             df = pd.read_table(file_path)
             df['cumulative_pb'] = df['pb'].cumsum()
@@ -223,6 +198,7 @@ class MSpangepopDataHandler:
         Raises:
             MSerror: If the .fai file does not exist or cannot be read.
         """
+        import pandas as pd
         if not os.path.exists(fai_file):
             raise MSerror(f"FAI file not found: {fai_file}")
         try:
@@ -243,6 +219,8 @@ class MSpangepopDataHandler:
             threads (int): Number of worker threads to use for record generation.
             compress (bool): Whether to gzip compress the output file. Default: True
         """
+        import gzip
+        from Bio import SeqIO
         from concurrent.futures import ThreadPoolExecutor
         from Bio.SeqRecord import SeqRecord
         from Bio.Seq import Seq

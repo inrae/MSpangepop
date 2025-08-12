@@ -1,44 +1,69 @@
-# MSprime configuration file : 
-
+# MSpangepop configuration file
+# 
 # Each sample is defined by a unique name and associated parameters.
-# WARNING : please do a test run with small population sizes first.
+# WARNING: please do a test run with small population sizes first.
 
+
+# Individual samples: Manually defined samples with fixed parameters
 samples:
-  Five_Island_Model:
-    fasta_gz: "small_test_genome.fa.gz"
-    chr_n: 1
-    demographic_file: "simulation_data/Island_Model.json"
-    sv_types: "simulation_data/sv_type.yaml" 
-    seed: Pangenome
-  Panmictic_Model:
+  Test_A:
     fasta_gz: "small_test_genome.fa.gz"
     chr_n: 1
     demographic_file: "simulation_data/Panmictic_Model.json"
-    sv_types: "simulation_data/sv_type.yaml" 
-    seed: Pangenome
-  Chain_Migration_Model:
-    fasta_gz: "small_test_genome.fa.gz"
-    chr_n: 1
-    demographic_file: "simulation_data/Chain_Migration_Model.json"
-    sv_types: "simulation_data/sv_type.yaml" 
-    seed: Pangenome
-  Isolation_Model:
-    fasta_gz: "small_test_genome.fa.gz"
-    chr_n: 1
-    demographic_file: "simulation_data/Isolation_Model.json"
-    sv_types: "simulation_data/sv_type.yaml" 
+    sv_distribution: {SNP: 50, DEL: 20, INS: 20, INV: 10, DUP: 0} 
     seed: Pangenome
 
+# Parameter sweeps: Automatically generate multiple samples with parameter combinations
+sweep_samples:
+  Test_B:
+    base_demographic_file: "simulation_data/Panmictic_Model.json"
+    fasta_gz: "small_test_genome.fa.gz"
+    chr_n: 1
+    sweep_params:
+      mutation_rate: [1e-6, 1e-7]
+    sv_sweep:
+      - {SNP: 50, DEL: 20, INS: 20, INV: 10, DUP: 0} 
+    replicates: 1
+
+# CONFIGURATION REFERENCE:
+#
 # samples:
-#   test_sample1:                  # One sample per simulation (whole genome)   
-#     fasta_gz: str                # Path to the compressed FASTA file (genome sequence) for this sample.
-#     chr_n: int                   # Number of chromosomes in the fasta file (contigs)                      
-#     demographic_file: str        # Path to the demographic scenario JSON file (contains population structure, sample sizes, mutation/recombination rates)
-#     sv_type: str                 # Path to the variant type probabilities
-#     model: str                   # Mutation model for msprime ['binary', 'infinite_alleles', 'jc69'] (default binary)
-#     minimal_sv_length: int       # Minimal length for generated structural variants (default 1)
-#     readable_json: [True, False] # If set to true output a human readable json (bigger file size) (default False)
-#     seed : [None, int, str]      # Run the msprime simulation using a seed
- 
-memory_multiplier: 1  # Multiplier for scaling memory across all rules
-output_dir: "results/" # Output directory name
+#   sample_name:                       # Unique identifier for this simulation
+#     fasta_gz: str                    # Path to compressed FASTA file (genome sequence)
+#     chr_n: int                       # Number of chromosomes to simulate
+#     demographic_file: str            # Path to demographic JSON file (population structure, sizes)
+#     sv_distribution: dict            # SV type percentages: {SNP: %, DEL: %, INS: %, INV: %, DUP: %}
+#                                      # Must sum to 100. Example: {SNP: 50, DEL: 20, INS: 20, INV: 10, DUP: 0}
+#     model: str                       # Mutation model: 'binary', 'infinite_alleles', 'jc69' (default: 'binary')
+#     minimal_sv_length: int           # Minimum length for structural variants in bp (default: 1)
+#     readable_json: bool              # Output human-readable JSON files (default: False)
+#     seed: [str, int, None]           # Random seed for reproducibility (default: None for random)
+#
+# sweep_samples:
+#   sweep_name:                        # Unique identifier for this parameter sweep
+#     base_demographic_file: str       # Base demographic JSON file to modify
+#     fasta_gz: str                    # Path to compressed FASTA file
+#     chr_n: int                       # Number of chromosomes to simulate
+#     sweep_params:                    # Demographic parameters to sweep (all optional):
+#       mutation_rate: list            # List of mutation rates to test, e.g., [1e-6, 1e-5, 1e-4]
+#       recombination_rate: list       # List of recombination rates to test
+#       # Any parameter from the demographic JSON can be swept
+#     sv_sweep: list                   # List of SV distributions to test (optional)
+#       - {SNP: %, DEL: %, INS: %, INV: %, DUP: %}  # Each distribution must sum to 100
+#     sv_distribution: dict            # Default SV distribution if sv_sweep not specified
+#     replicates: int                  # Number of replicates per parameter combination (default: 1)
+#     seed: [str, int, None]           # Fixed seed for all expanded samples (default: None for random)
+#     model: str                       # Mutation model (default: 'binary')
+#     minimal_sv_length: int           # Minimum SV length (default: 1)
+#     readable_json: bool              # Human-readable JSON output (default: False)
+#
+# NOTES:
+# - Parameter sweeps create all combinations: sweep_params × sv_sweep × replicates
+# - Expanded samples are automatically named: sweepname_param1value_param2value_rep#
+# - If seed is specified in a sweep, ALL expanded samples use the SAME seed
+# - If no seed is specified, each run uses a different random seed
+# - SV distributions must sum to 100 (will warn if not, then normalize)
+
+# Global settings
+memory_multiplier: 1    # Memory scaling factor for all rules (increase if OOM errors)
+output_dir: "results/"  # Base directory for all simulation outputs

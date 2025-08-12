@@ -4,10 +4,6 @@
 
 Before running MSpangepop, ensure you have Snakemake installed and access to Singularity containers. The workflow is designed to run on high-performance computing clusters with SLURM scheduling, though it can be adapted for other environments.
 
-## Basic Execution
-
-The workflow is executed using Snakemake with the provided configuration files. The main configuration file defines your samples and simulation parameters, while the Snakemake configuration handles execution settings like job submission and resource allocation.
-
 ## Configuration Setup
 
 Start by editing the master configuration file to define your samples. Each sample requires a compressed FASTA file, population genetics parameters, and simulation settings. The workflow supports multiple samples that can be processed in parallel.

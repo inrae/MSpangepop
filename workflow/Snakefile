@@ -4,10 +4,34 @@ Institution: INRAe
 Project: PangenOak
 """
 
-configfile: ".config/masterconfig.yaml"
-
 import os
 import yaml
+import subprocess
+import sys
+import json
+
+# Check if we should expand sweeps (can be controlled by an environment variable)
+EXPAND_SWEEPS = os.environ.get("EXPAND_SWEEPS", "true").lower() == "true"
+
+if EXPAND_SWEEPS:
+    # First, expand any parameter sweeps in the config
+    print("🔹 Checking for parameter sweeps...")
+    result = subprocess.run([sys.executable, "workflow/scripts/expand_sweeps.py", 
+                            ".config/masterconfig.yaml"], 
+                           capture_output=True, text=True)
+    print(result.stdout)
+    if result.returncode != 0:
+        print(f"❌ Error expanding sweeps: {result.stderr}", file=sys.stderr)
+        sys.exit(1)
+    
+    # Use the expanded config if it exists
+    if os.path.exists(".config/expanded_config.yaml"):
+        configfile: ".config/expanded_config.yaml"
+    else:
+        configfile: ".config/masterconfig.yaml"
+else:
+    configfile: ".config/masterconfig.yaml"
+
 
 output_dir = config.get("output_dir", "results/")
 temp_dir= config.get("tempfile_location", "00_temp/")
@@ -25,7 +49,7 @@ def get_all_targets():
         chr_n = config["samples"][sample]["chr_n"]
         # Add polished GFA files
         for chr_num in range(1, chr_n + 1):
-            targets.append(os.path.join(output_dir, sample, graph, f"{sample}_chr_{chr_num}_graph.gfa"))
+            targets.append(os.path.join(output_dir, sample, graph,f"chr_{chr_num}", f"{sample}_chr_{chr_num}_graph.gfa"))
             targets.append(os.path.join(output_dir, sample, plot_dir, f"chr_{chr_num}", "visualization_complete.txt"))
         # Add global recap
         targets.append(os.path.join(output_dir, sample, simulation_data, f"{sample}_global_recap.txt"))
@@ -84,11 +108,11 @@ rule msprime_simulation:
         fai=rules.input_index.output.fai,
         demographic=lambda wildcards: config["samples"][wildcards.sample]["demographic_file"]
     output:
-        json = temp(os.path.join(output_dir, "{sample}", temp_dir, "chr_{chromosome}", "chr_{chromosome}_msprime_simulation.json")),
-        mutated_ts = os.path.join(output_dir, "{sample}", simulation_data, "chr_{chromosome}", "mutated_ts.trees"),
-        ancestry_ts = os.path.join(output_dir, "{sample}", simulation_data, "chr_{chromosome}", "ancestry_ts.trees"), 
-        full_ancestry_ts = os.path.join(output_dir, "{sample}", simulation_data, "chr_{chromosome}", "full_ancestry_ts.trees"), 
-        recap = os.path.join(output_dir, "{sample}", simulation_data, "chr_{chromosome}", "msprime_recap.txt"),
+        json = temp(os.path.join(output_dir, "{sample}", temp_dir, "chr_{chromosome}", "{sample}_chr_{chromosome}_msprime_simulation.json")),
+        mutated_ts = os.path.join(output_dir, "{sample}", simulation_data, "chr_{chromosome}", "{sample}_chr_{chromosome}_mutated_ts.trees"),
+        ancestry_ts = os.path.join(output_dir, "{sample}", simulation_data, "chr_{chromosome}", "{sample}_chr_{chromosome}_ancestry_ts.trees"), 
+        full_ancestry_ts = os.path.join(output_dir, "{sample}", simulation_data, "chr_{chromosome}", "{sample}_chr_{chromosome}_full_ancestry_ts.trees"), 
+        recap = os.path.join(output_dir, "{sample}", simulation_data, "chr_{chromosome}", "{sample}_chr_{chromosome}_msprime_recap.txt"),
     params:
         model=lambda wildcards: config["samples"][wildcards.sample].get("model", "binary"), 
         readable_json=lambda wildcards: config["samples"][wildcards.sample].get("readable_json", False), 
@@ -156,7 +180,7 @@ rule coalescent_traversal:
     input:
         json = rules.msprime_simulation.output.json
     output:
-        traversal = temp(os.path.join(output_dir, "{sample}", temp_dir, "chr_{chromosome}", "chr_{chromosome}_traversal.json"))
+        traversal = temp(os.path.join(output_dir, "{sample}", temp_dir, "chr_{chromosome}", "{sample}_chr_{chromosome}_traversal.json"))
     params:
         readable_json=lambda wildcards: config["samples"][wildcards.sample].get("readable_json", False) 
     resources:
@@ -183,7 +207,7 @@ rule split_recombination:
         json = rules.msprime_simulation.output.json,
         fasta=lambda wildcards: config["samples"][wildcards.sample]["fasta_gz"]
     output:
-        split_fasta = os.path.join(output_dir, "{sample}", simulation_data, "chr_{chromosome}", "chr_{chromosome}_recombinations.fasta.gz")
+        split_fasta = os.path.join(output_dir, "{sample}", simulation_data, "chr_{chromosome}", "{sample}_chr_{chromosome}_recombinations.fasta.gz")
     resources:
         mem_mb=lambda wildcards: int(50000 * memory_multiplier),
         time="10:00:00"
@@ -206,11 +230,12 @@ rule draw_variants:
     input:
         traversal_json = rules.coalescent_traversal.output.traversal
     output:
-        augmented_traversal = os.path.join(output_dir, "{sample}", graph, "traversal", "chr_{chromosome}_augmented_traversal.json")
+        augmented_traversal = os.path.join(output_dir, "{sample}", graph, "chr_{chromosome}", "traversal", "{sample}_chr_{chromosome}_augmented_traversal.json")
     params:
-        sv_type_file = lambda wildcards: config["samples"][wildcards.sample].get("sv_types"),
-        minimal_sv_length=lambda wildcards: config["samples"][wildcards.sample].get("minimal_sv_length", 1),
-        readable_json=lambda wildcards: config["samples"][wildcards.sample].get("readable_json", False) 
+        sv_distribution = lambda wildcards: json.dumps(config["samples"][wildcards.sample].get("sv_distribution")),
+        minimal_sv_length = lambda wildcards: config["samples"][wildcards.sample].get("minimal_sv_length", 1),
+        readable_json = lambda wildcards: config["samples"][wildcards.sample].get("readable_json", False), 
+        seed=lambda wildcards: config["samples"][wildcards.sample].get("seed", None)
     threads: 10
     priority: 8
     resources:
@@ -222,13 +247,15 @@ rule draw_variants:
         os.path.join(output_dir, "{sample}", "benchmark", "chr_{chromosome}", "draw_variants_benchmark.txt")
     shell:
         """
-        python3 workflow/scripts/draw_variants.py --json {input.traversal_json} \
-            --yaml {params.sv_type_file} \
+        python3 workflow/scripts/draw_variants.py \
+            --json {input.traversal_json} \
+            --sv_distribution '{params.sv_distribution}' \
             --output {output.augmented_traversal} \
             --chromosome {wildcards.chromosome} \
             --threads {threads} \
             --minimal_sv_length {params.minimal_sv_length} \
-            --readable_json {params.readable_json}
+            --readable_json {params.readable_json} \
+            --seed {params.seed} 
         """
 
 # Create the graph from the augmented traversal (headache inducing script)
@@ -237,11 +264,11 @@ rule graph_creation:
         split_fasta=rules.split_recombination.output.split_fasta,
         augmented_traversal = rules.draw_variants.output.augmented_traversal,
     output:
-        gfa = temp(os.path.join(output_dir, "{sample}", graph, "unmerged_chr_{chromosome}_graph.gfa")),
-        recap = os.path.join(output_dir, "{sample}", simulation_data, "chr_{chromosome}","graph_creation_recap.txt")
+        gfa = temp(os.path.join(output_dir, "{sample}", temp_dir, "{sample}_chr_{chromosome}_unmergeg_graph.gfa")),
+        recap = os.path.join(output_dir, "{sample}", simulation_data, "chr_{chromosome}","{sample}_chr_{chromosome}_graph_creation_recap.txt")
     params:
         out_dir = lambda wildcards: os.path.join(output_dir, wildcards.sample, plot_dir, f"chr_{wildcards.chromosome}", "03_graph_plots"), 
-        fasta_folder = lambda wildcards: os.path.join(output_dir, wildcards.sample, graph, "fasta")
+        fasta_folder = lambda wildcards: os.path.join(output_dir, wildcards.sample, graph,  f"chr_{wildcards.chromosome}", "fasta")
     resources:
         mem_mb=lambda wildcards: int(200000 * memory_multiplier),
         time="60:00:00"
@@ -270,7 +297,8 @@ rule gfa_merge:
     input:
         initial_gfa = rules.graph_creation.output.gfa
     output:
-        polished_gfa = os.path.join(output_dir, "{sample}", graph, "{sample}_chr_{chromosome}_graph.gfa"),
+        polished_gfa = os.path.join(output_dir, "{sample}", graph, "chr_{chromosome}", "{sample}_chr_{chromosome}_graph.gfa"),
+        polished_gfa_stats = os.path.join(output_dir, "{sample}", graph, "chr_{chromosome}", "{sample}_chr_{chromosome}_graph_stats.txt"),
         og_raw = temp(os.path.join(output_dir, "{sample}", temp_dir, "{sample}_chr_{chromosome}_raw.og")),
         og_unchoped = temp(os.path.join(output_dir, "{sample}", temp_dir, "{sample}_chr_{chromosome}_unchoped.og"))
     resources:
@@ -292,7 +320,8 @@ rule gfa_merge:
         echo "\n🔹[gfa_merge] Starting to unchop"
         odgi unchop -i {output.og_raw} -o {output.og_unchoped} -t {threads} -P
         echo "\n🔹[gfa_merge] Final state"
-        odgi stats -i {output.og_unchoped} -S -S -L -b -t {threads} -P
+        odgi stats -i {output.og_unchoped} -S -S -L -b -t {threads} -P > {output.polished_gfa_stats}
+        cat {output.polished_gfa_stats}
         echo "\n🔹[gfa_merge] Saving final GFA"
         odgi view -i {output.og_unchoped} -t {threads} -g > {output.polished_gfa}
         echo "✅ Final GFA @ {output.polished_gfa}"

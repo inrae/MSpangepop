@@ -86,12 +86,6 @@ def main():
         
         f.write("\U0001F539 Run Parameters:\n")
         f.write("-" * 30 + "\n")
-        samples = config.get("samples", {})
-        if args.current_run in samples:
-            for param, value in samples[args.current_run].items():
-                f.write(f"{param}: {value}\n")
-        else:
-            f.write(f"⚠️ Warning: No parameters found for {args.current_run}\n")
 
     MSsuccess(f"Created global simulation recap")
 
