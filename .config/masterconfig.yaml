@@ -7,7 +7,7 @@ samples:
   Five_Island_Model:
     fasta_gz: "small_test_genome.fa.gz"
     chr_n: 1
-    demographic_file: "simulation_data/Five_Island_Model.json"
+    demographic_file: "simulation_data/Island_Model.json"
     sv_types: "simulation_data/sv_type.yaml" 
     seed: Pangenome
   Panmictic_Model:

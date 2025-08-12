@@ -1,5 +1,6 @@
 {
-  "name": "Five_Island_Model",
+  "name": "Island_Model",
+  "description": "Model made for 5 islands",
   "mutation_rate": 1e-7,
   "recombination_rate": 0.5e-8,
   "generation_time": 25,
