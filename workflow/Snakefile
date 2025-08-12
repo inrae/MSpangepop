@@ -235,9 +235,10 @@ rule draw_variants:
     output:
         augmented_traversal = os.path.join(output_dir, "{sample}", graph, "traversal", "chr_{chromosome}_augmented_traversal.json")
     params:
-        sv_type_file = lambda wildcards: config["samples"][wildcards.sample].get("sv_types"),
-        minimal_sv_length=lambda wildcards: config["samples"][wildcards.sample].get("minimal_sv_length", 1),
-        readable_json=lambda wildcards: config["samples"][wildcards.sample].get("readable_json", False) 
+        sv_distribution = lambda wildcards: json.dumps(config["samples"][wildcards.sample].get("sv_distribution", 
+                                                       {"SNP": 50, "DEL": 20, "INS": 20, "INV": 10, "DUP": 0})),
+        minimal_sv_length = lambda wildcards: config["samples"][wildcards.sample].get("minimal_sv_length", 1),
+        readable_json = lambda wildcards: config["samples"][wildcards.sample].get("readable_json", False) 
     threads: 10
     priority: 8
     resources:
@@ -249,8 +250,9 @@ rule draw_variants:
         os.path.join(output_dir, "{sample}", "benchmark", "chr_{chromosome}", "draw_variants_benchmark.txt")
     shell:
         """
-        python3 workflow/scripts/draw_variants.py --json {input.traversal_json} \
-            --yaml {params.sv_type_file} \
+        python3 workflow/scripts/draw_variants.py \
+            --json {input.traversal_json} \
+            --sv_distribution '{params.sv_distribution}' \
             --output {output.augmented_traversal} \
             --chromosome {wildcards.chromosome} \
             --threads {threads} \
