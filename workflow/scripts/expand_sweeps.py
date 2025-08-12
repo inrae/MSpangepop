@@ -114,7 +114,7 @@ def process_demographic_params(demo_copy, param_names, param_values):
     
     return demo_copy
 
-def expand_parameter_sweeps(config):
+def expand_sweep_samples(config):
     """
     Expand parameter sweeps into individual sample configurations
     """
@@ -123,12 +123,12 @@ def expand_parameter_sweeps(config):
     sweep_dir = Path(".config/expanded_demographics")
     sweep_dir.mkdir(parents=True, exist_ok=True)
     
-    if 'parameter_sweeps' not in config:
+    if 'sweep_samples' not in config:
         return new_samples
     
     MScompute("EXPANDING PARAMETER SWEEPS")
     
-    for sweep_name, sweep_config in config['parameter_sweeps'].items():
+    for sweep_name, sweep_config in config['sweep_samples'].items():
 
         # Load base demographic file
         base_demo_path = sweep_config['base_demographic_file']
@@ -152,9 +152,7 @@ def expand_parameter_sweeps(config):
         
         # If no SV sweep specified, use default
         if not sv_distributions:
-            default_sv = sweep_config.get('sv_distribution', 
-                                         {'SNP': 50, 'DEL': 20, 'INS': 20, 'INV': 10, 'DUP': 0})
-            sv_distributions = [default_sv]
+            raise MSerror("Please specify a sv_distribution")
         
         # Validate all SV distributions
         for sv_dist in sv_distributions:
@@ -280,7 +278,7 @@ def main():
     
     config = load_config(config_path)
     
-    expanded_samples = expand_parameter_sweeps(config)
+    expanded_samples = expand_sweep_samples(config)
     
     if expanded_samples:
         output_path = write_expanded_config(config, expanded_samples)
