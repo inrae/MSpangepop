@@ -12,7 +12,7 @@ import os
 import time
 import json
 import concurrent.futures
-from io_handler import MSpangepopDataHandler, MSerror, MSsuccess, MScompute, MSwarning
+from io_handler import MSpangepopDataHandler, MSerror, MSsuccess, MScompute, MSwarning, process_seed
 
 class Selector:
     """Static methods for selecting mutation attributes."""
@@ -89,6 +89,7 @@ def augment_type(tree, variant_probabilities):
 
 def augment_length_and_position(tree, length_files, minimal_sv_length):
     """Augments mutations in a tree with length and position based on variant types."""
+    fails = 0
     try:
         for node in tree.get("nodes", []):  
             for mutation in node.get("mutations", []):  # Iterate over mutations of the node
@@ -96,7 +97,7 @@ def augment_length_and_position(tree, length_files, minimal_sv_length):
                 # Check if interval is too small for any mutation
                 interval_size = node["interval"][1] - node["interval"][0]
                 if interval_size < 3:  # Need at least 3 bases for any meaningful mutation
-                    MSwarning(f"Node {node['node']} interval too small ({interval_size} bases), mutation skip, consider decreasing recombination rate.")
+                    fails+=1
                     mutation["type"] = None
                     mutation["length"] = None
                     mutation["start"] = None
@@ -173,12 +174,19 @@ def augment_length_and_position(tree, length_files, minimal_sv_length):
                 mutation["length"] = length
                 mutation["start"] = start_pos
 
+        if fails != 0 : 
+            MSwarning(f"{fails} mutation skip, consider decreasing recombination rate.")
         return tree
     except Exception as e:
         raise MSerror(f"Error augmenting mutations with length and position: {e}")
 
-def process_single_tree(tree, length_files, variant_probabilities, minimal_sv_length):
-    """Processes a single tree, augmenting mutation types, positions, and lengths."""
+def process_single_tree(tree, length_files, variant_probabilities, minimal_sv_length, seed_offset):
+    """
+    Processes a single tree, augmenting mutation types, positions, and lengths.
+    A deterministic seed is set here so each tree gets reproducible random results
+    regardless of which process executes it.
+    """
+    random.seed(seed_offset)  # <-- NEW: Set deterministic seed per tree for reproducibility
     try:
         # First augment with mutation types
         augmented_tree = augment_type(tree, variant_probabilities)
@@ -190,18 +198,31 @@ def process_single_tree(tree, length_files, variant_probabilities, minimal_sv_le
     except MSerror as e:
         raise MSerror(f"Error processing the tree: {e}")
 
-def process_trees_in_parallel(tree_list, length_files, variant_probabilities, num_threads, minimal_sv_length):
+def process_trees_in_parallel(tree_list, length_files, variant_probabilities, num_threads, minimal_sv_length, base_seed):
+    """
+    Parallel processing of trees, passing a unique deterministic seed to each worker.
+    If base_seed is None, seeds are generated randomly for non-deterministic runs.
+    """
+    if base_seed is None:
+        # Generate a fresh random seed for each tree (non-deterministic)
+        seed_list = [random.randint(0, 2**32 - 1) for _ in range(len(tree_list))]
+    else:
+        # Deterministic: base_seed + index
+        seed_list = [base_seed + i for i in range(len(tree_list))]
+
     with concurrent.futures.ProcessPoolExecutor(max_workers=num_threads) as executor:
         results = list(executor.map(
             process_single_tree, 
             tree_list, 
-            [length_files]*len(tree_list), 
-            [variant_probabilities]*len(tree_list), 
-            [minimal_sv_length]*len(tree_list)
+            [length_files] * len(tree_list), 
+            [variant_probabilities] * len(tree_list), 
+            [minimal_sv_length] * len(tree_list),
+            seed_list
         ))
-    return results 
+    return results
 
-def main(json_file, output_json_file, sv_distribution, chromosome, num_threads, minimal_sv_length, readable_json):
+
+def main(json_file, output_json_file, sv_distribution, chromosome, num_threads, minimal_sv_length, readable_json, seed):
     """Processes a JSON list of trees, augmenting mutations with variant type and size."""
     try:
         start_time = time.time()
@@ -222,6 +243,10 @@ def main(json_file, output_json_file, sv_distribution, chromosome, num_threads, 
         sv_summary = ", ".join([f"{k}:{v}%" for k, v in variant_probabilities.items()])
         MScompute(f"Using SV distribution: {sv_summary}")
 
+        # Set deterministic seed for the main process
+        seed = process_seed(seed)
+        random.seed(seed)
+
         # Read tree data (only once)
         tree_list = MSpangepopDataHandler.read_json(json_file)
         if not isinstance(tree_list, list) or not tree_list:
@@ -236,13 +261,12 @@ def main(json_file, output_json_file, sv_distribution, chromosome, num_threads, 
             'DUP': 'simulation_data/size_distribDUP.tsv'
         }.items():
             if not os.path.exists(file_path):
-                MSwarning(f"Length distribution file missing for {var_type}, using defaults.")
-                # You could provide default distributions here if files are missing
+                MSwarning(f"Length distribution file missing for {var_type}")
             else:
                 length_files[var_type] = MSpangepopDataHandler.read_variant_length_file(file_path)
 
-        # Process and augment mutations in parallel
-        tree_list = process_trees_in_parallel(tree_list, length_files, variant_probabilities, num_threads, minimal_sv_length)
+        # Process and augment mutations in parallel with reproducible seeds
+        tree_list = process_trees_in_parallel(tree_list, length_files, variant_probabilities, num_threads, minimal_sv_length, seed)
 
         # Count total mutations by type
         mutation_counts = {sv_type: 0 for sv_type in variant_probabilities.keys()}
@@ -282,10 +306,10 @@ if __name__ == "__main__":
     parser.add_argument("--readable_json", type=lambda x: x.lower() == 'true',
                         choices=[True, False], default=False,
                         help="Save JSON in a human-readable format (True/False, default: False).")
-
+    parser.add_argument("--seed", help="Random seed for reproducibility")
     args = parser.parse_args()
 
     if args.minimal_sv_length < 1:
         raise MSerror('minimal_sv_length cant be less than 1')
 
-    main(args.json, args.output, args.sv_distribution, args.chromosome, args.threads, args.minimal_sv_length, args.readable_json)
+    main(args.json, args.output, args.sv_distribution, args.chromosome, args.threads, args.minimal_sv_length, args.readable_json, args.seed)
