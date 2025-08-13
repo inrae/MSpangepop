@@ -107,7 +107,6 @@ def create_local_trees_plot(ts, output_dir, basename):
     with open(os.path.join(output_dir, f"{basename}_local_trees.svg"), 'w') as f:
         f.write(svg_str)
 
-
 def create_networkx_plot(ts, output_dir, basename):
     """Create NetworkX graph visualization."""
     MScompute("Creating arg NetworkX graph visualization...")
@@ -137,19 +136,19 @@ def create_networkx_plot(ts, output_dir, basename):
     # Draw edges
     nx.draw_networkx_edges(G, pos, alpha=0.4, arrows=True, arrowsize=15, width=2)
     
-    # Draw nodes with different colors
+    # Draw nodes with different colors - using darker colors
     if node_types['samples']:
         nx.draw_networkx_nodes(G, pos, nodelist=list(node_types['samples']), 
-                              node_color='#87CEEB', node_size=400, label='Samples')
+                              node_color='#4682B4', node_size=400, label='Lineages')
     if node_types['recombination']:
         nx.draw_networkx_nodes(G, pos, nodelist=list(node_types['recombination']), 
-                              node_color='#FF4444', node_size=300, label='Recombination')
+                              node_color='#8B0000', node_size=300, label='Recombination')
     if node_types['common_ancestor']:
         nx.draw_networkx_nodes(G, pos, nodelist=list(node_types['common_ancestor']), 
-                              node_color='#FFA500', node_size=250, label='Common Ancestor')
+                              node_color='#FF8C00', node_size=250, label='Common Ancestor')
     if node_types['coalescent']:
         nx.draw_networkx_nodes(G, pos, nodelist=list(node_types['coalescent']), 
-                              node_color='#F08080', node_size=200, label='Coalescent')
+                              node_color='#CD5C5C', node_size=200, label='Coalescent')
     
     # Draw labels
     nx.draw_networkx_labels(G, pos, font_size=8)
@@ -247,11 +246,10 @@ def compute_STEAC_matrix(ts):
 
     return coalescence_times, samples
 
-
 def create_hierarchical_clustering_plot(ts, output_dir, basename):
     """
-    Create horizontal hierarchical clustering plot using STEAC (Species Tree Estimation using Average Coalescence times).
-    Adapted for large numbers of samples.
+    Create horizontal hierarchical clustering plot using STEAC with population-based coloring.
+    Each branch is colored by the population of its descendants if all are the same.
     """
     MScompute("Creating STEAC horizontal hierarchical clustering plot...")
 
@@ -259,36 +257,239 @@ def create_hierarchical_clustering_plot(ts, output_dir, basename):
     n = len(samples)
 
     if n > 2:
-        # Compute condensed distance matrix
+        # --- Get population information ---
+        sample_populations = {}
+        population_names = {}
+        
+        try:
+            demography = ts.dump_tables().populations
+            for i in range(len(demography)):
+                if demography[i].metadata:
+                    try:
+                        import json
+                        metadata = json.loads(demography[i].metadata.decode('utf-8'))
+                        if 'name' in metadata:
+                            population_names[i] = metadata['name']
+                        else:
+                            population_names[i] = f'Pop_{i}'
+                    except:
+                        population_names[i] = f'Pop_{i}'
+                else:
+                    population_names[i] = f'Pop_{i}'
+        except:
+            for i in range(ts.num_populations):
+                population_names[i] = f'Pop_{i}'
+        
+        for sample_id in samples:
+            pop_id = ts.node(sample_id).population
+            sample_populations[sample_id] = pop_id
+        
+        # --- Color palette ---
+        unique_pops = list(set(sample_populations.values()))
+        dark_colors = ['#8B0000', '#00468B', '#2F4F4F', '#4B0082',
+                       '#8B4513', '#191970', '#006400', '#8B008B']
+        pop_colors = {pop: dark_colors[i % len(dark_colors)] for i, pop in enumerate(unique_pops)}
+        
+        # --- Labels ---
+        labels = []
+        label_colors = []
+        sample_to_pop = []
+        for s in samples:
+            pop_id = sample_populations[s]
+            pop_name = population_names.get(pop_id, f'Pop_{pop_id}')
+            labels.append(f"L{s} ({pop_name})")
+            label_colors.append(pop_colors[pop_id])
+            sample_to_pop.append(pop_id)
+        
+        # --- Distance matrix ---
         condensed_dist = [
             coalescence_times[i, j]
             for i in range(n)
             for j in range(i + 1, n)
         ]
-
         linkage_matrix = linkage(condensed_dist, method='average')
-        plt.figure(figsize=(max(12, n * 0.3), 10))  # Expand width with number of samples
-
-        dendrogram(
+        
+        # --- Build complete cluster population mapping ---
+        def get_cluster_populations(cluster_id):
+            """Get all populations in a cluster."""
+            if cluster_id < n:
+                # Leaf node
+                return {sample_to_pop[cluster_id]}
+            else:
+                # Internal node
+                idx = cluster_id - n
+                left_child = int(linkage_matrix[idx, 0])
+                right_child = int(linkage_matrix[idx, 1])
+                left_pops = get_cluster_populations(left_child)
+                right_pops = get_cluster_populations(right_child)
+                return left_pops.union(right_pops)
+        
+        # Pre-compute all cluster populations
+        cluster_pops = {}
+        for i in range(n):
+            cluster_pops[i] = {sample_to_pop[i]}
+        for i in range(len(linkage_matrix)):
+            cluster_pops[i + n] = get_cluster_populations(i + n)
+        
+        # --- Create figure ---
+        fig, ax = plt.subplots(figsize=(max(12, n * 0.3), 10))
+        
+        # --- Plot dendrogram to get structure ---
+        dend = dendrogram(
             linkage_matrix,
-            labels=[f"Sample {s}" for s in samples],
+            labels=labels,
             leaf_rotation=0,
             leaf_font_size=8,
-            orientation="left"
+            orientation="left",
+            ax=ax,
+            color_threshold=0,  # All black by default
+            above_threshold_color='black'
         )
-
-        plt.title(
+        
+        # Get the dendrogram structure
+        icoord = dend['icoord']  # y-coordinates for horizontal dendrogram
+        dcoord = dend['dcoord']  # x-coordinates (distances) for horizontal dendrogram
+        
+        # Get the correspondence between plot order and cluster IDs
+        # The 'leaves' gives us the order of leaves in the plot
+        # The color_list tells us which clusters are being plotted
+        plot_order = dend['leaves']
+        
+        # Build a mapping from merge index to the corresponding icoord/dcoord index
+        # This is needed because dendrogram may reorder things for visualization
+        ivl = dend['ivl']  # The labels in plot order
+        
+        # Remove all existing lines
+        for line in ax.get_lines():
+            line.remove()
+        
+        # Create a mapping of which clusters appear at which y-coordinates
+        # For leaves, we know their positions
+        leaf_positions = {}
+        y_tick_positions = [i * 10.0 for i in range(n)]  # Default spacing is 10
+        for i, leaf_idx in enumerate(plot_order):
+            leaf_positions[leaf_idx] = y_tick_positions[i]
+        
+        # Now redraw each segment with correct colors
+        # We need to match each icoord/dcoord set with the correct merge
+        for i in range(len(icoord)):
+            y_coords = icoord[i]  # [left_child_y, merge_y, merge_y, right_child_y]
+            x_coords = dcoord[i]  # [left_child_x, merge_x, merge_x, right_child_x]
+            
+            # Find which merge this corresponds to by looking at the structure
+            # The merge that created this should be at distance x_coords[1] (or x_coords[2])
+            merge_distance = x_coords[1]
+            
+            # Find the merge with this distance
+            merge_idx = None
+            for j in range(len(linkage_matrix)):
+                if abs(linkage_matrix[j, 2] - merge_distance) < 1e-10:
+                    # Check if the y-coordinates match what we expect
+                    # This is the likely merge
+                    merge_idx = j
+                    break
+            
+            if merge_idx is not None:
+                left_child = int(linkage_matrix[merge_idx, 0])
+                right_child = int(linkage_matrix[merge_idx, 1])
+                parent = merge_idx + n
+                
+                # Get populations for coloring
+                left_pops = cluster_pops[left_child]
+                right_pops = cluster_pops[right_child]
+                parent_pops = cluster_pops[parent]
+                
+                # Determine colors - each segment is colored by what it leads TO
+                left_color = pop_colors[next(iter(left_pops))] if len(left_pops) == 1 else 'black'
+                right_color = pop_colors[next(iter(right_pops))] if len(right_pops) == 1 else 'black'
+                parent_color = pop_colors[next(iter(parent_pops))] if len(parent_pops) == 1 else 'black'
+            else:
+                # Fallback to black if we can't match
+                left_color = right_color = parent_color = 'black'
+            
+            # Draw the three segments
+            # Left vertical branch (leads to left child)
+            ax.plot([x_coords[0], x_coords[1]], [y_coords[0], y_coords[1]], 
+                   color=left_color, lw=2)
+            
+            # Horizontal connector (represents the parent cluster)
+            ax.plot([x_coords[1], x_coords[2]], [y_coords[1], y_coords[2]], 
+                   color=parent_color, lw=2)
+            
+            # Right vertical branch (leads to right child)
+            ax.plot([x_coords[2], x_coords[3]], [y_coords[2], y_coords[3]], 
+                   color=right_color, lw=2)
+        
+        # Handle the root extension if there is one
+        # Sometimes there's an additional vertical line extending from the root
+        # This should be colored based on what the entire tree contains
+        all_pops = set(sample_to_pop)
+        root_color = pop_colors[next(iter(all_pops))] if len(all_pops) == 1 else 'black'
+        
+        # Check if there's a line at the far left that needs coloring
+        max_x = max(max(d) for d in dcoord)
+        for i in range(len(dcoord)):
+            # Look for vertical segments at the maximum distance
+            if abs(dcoord[i][0] - max_x) < 1e-10 or abs(dcoord[i][3] - max_x) < 1e-10:
+                # This might be a root extension
+                # Color it based on what it contains
+                y1, y2 = min(icoord[i]), max(icoord[i])
+                
+                # Determine what this segment contains by its y-position
+                # Find all leaves in this y-range
+                contained_leaves = []
+                for leaf_idx, y_pos in leaf_positions.items():
+                    if y1 <= y_pos <= y2:
+                        contained_leaves.append(leaf_idx)
+                
+                if contained_leaves:
+                    contained_pops = {sample_to_pop[idx] for idx in contained_leaves}
+                    segment_color = pop_colors[next(iter(contained_pops))] if len(contained_pops) == 1 else 'black'
+                    
+                    # Redraw this segment if needed
+                    if dcoord[i][0] == max_x and dcoord[i][1] == max_x:
+                        # Left side extension
+                        ax.plot([dcoord[i][0], dcoord[i][1]], [icoord[i][0], icoord[i][1]], 
+                               color=segment_color, lw=2)
+        
+        # Color the labels
+        ylabels = ax.get_yticklabels()
+        for i, label in enumerate(ylabels):
+            label_text = label.get_text()
+            for idx, orig_label in enumerate(labels):
+                if label_text == orig_label:
+                    label.set_color(label_colors[idx])
+                    label.set_weight('bold')
+                    break
+        
+        # --- Add legend ---
+        from matplotlib.patches import Patch
+        legend_elements = [
+            Patch(facecolor=pop_colors[pop], label=population_names.get(pop, f'Pop_{pop}'))
+            for pop in unique_pops
+        ]
+        ax.legend(handles=legend_elements, loc='upper left', title='Populations', frameon=True, 
+                 fancybox=True, shadow=True)
+        
+        # --- Set titles and labels ---
+        ax.set_title(
             f"STEAC Hierarchical Clustering\n(Species Tree Estimation using Average Coalescence times): {basename}",
             fontsize=14,
-            fontweight='bold'
+            fontweight='bold',
+            pad=20
         )
-        plt.xlabel("Average Coalescence Time", fontsize=12)
-        plt.ylabel("Samples", fontsize=12)
-
+        ax.set_xlabel("Average Coalescence Time", fontsize=12)
+        ax.set_ylabel("Lineages", fontsize=12)
+        
+        # Add grid for better readability
+        ax.grid(True, axis='x', alpha=0.3, linestyle='--')
+        
+        # Adjust layout
         plt.tight_layout()
         plt.savefig(os.path.join(output_dir, f"{basename}_STEAC_hierarchical_clustering.png"),
                     dpi=300, bbox_inches='tight')
         plt.close()
+        
     else:
         plt.figure(figsize=(6, 4))
         plt.text(0.5, 0.5, 'Need more than 2 samples for clustering',
@@ -297,11 +498,11 @@ def create_hierarchical_clustering_plot(ts, output_dir, basename):
         plt.savefig(os.path.join(output_dir, f"{basename}_STEAC_hierarchical_clustering.png"),
                     dpi=300, bbox_inches='tight')
         plt.close()
-
+        
 def create_clustermap_with_dendrogram(ts, output_dir, basename):
     """
     Create a clustered heatmap (clustermap) using STEAC coalescence times.
-    Only shows left-side dendrogram; annotations are small and rounded.
+    Only shows left-side dendrogram; annotations are rounded to integers.
     Suitable for large sample sizes.
     """
     MScompute("Creating STEAC clustermap with left dendrogram...")
@@ -310,7 +511,8 @@ def create_clustermap_with_dendrogram(ts, output_dir, basename):
     n = len(samples)
 
     if n > 2:
-        sample_labels = [f"Sample {s}" for s in samples]
+        # Use L instead of Sample for labels
+        sample_labels = [f"L{s}" for s in samples]
 
         # Compute condensed distance matrix
         condensed_dist = [
@@ -330,7 +532,7 @@ def create_clustermap_with_dendrogram(ts, output_dir, basename):
             cmap="coolwarm",
             figsize=(max(12, n * 0.35), max(10, n * 0.3)),
             annot=True,
-            fmt=".1f",  # Rounded numbers
+            fmt=".0f",  # Round to integer
             annot_kws={"size": 6},
             dendrogram_ratio=(0.25, 0.01),  # Hide top dendrogram
             cbar_pos=(0.02, 0.8, 0.03, 0.18),
@@ -349,7 +551,6 @@ def create_clustermap_with_dendrogram(ts, output_dir, basename):
         plt.close()
     else:
         MSwarning("Not enough samples for clustering heatmap")
-
 
 
 def main():
