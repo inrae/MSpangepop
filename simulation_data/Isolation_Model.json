@@ -5,29 +5,22 @@
   "recombination_rate": 1e-8,
   "generation_time": 25,
   "populations": [
-    { "id": "POP_A", "initial_size": 5000, "description": "Large population" },
-    { "id": "POP_B", "initial_size": 500, "description": "Small isolated population" }
+    { "id": "POP_1", "initial_size": 5000, "description": "Large population" },
+    { "id": "POP_2", "initial_size": 500, "description": "Small isolated population" }
   ],
   "samples": [
-    { "population": "POP_A", "sample_size": 10 },
-    { "population": "POP_B", "sample_size": 10 }
+    { "population": "POP_1", "sample_size": 10 },
+    { "population": "POP_2", "sample_size": 10 }
   ],
   "migration_matrix": [],
   "demographic_events": [
     {
       "type": "mass_migration",
-      "time": 40,
-      "source": "POP_B",
-      "dest": "POP_A",
+      "time": 1000,
+      "source": "POP_2",
+      "dest": "POP_1",
       "proportion": 1.0,
       "_comment": "All B lineages merge into A at 1000 years ago"
-    },
-    {
-      "type": "population_parameters_change",
-      "time": 40,
-      "population": "POP_A",
-      "initial_size": 10000,
-      "_comment": "Ancestral population size"
     }
   ]
 }
