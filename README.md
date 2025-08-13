@@ -16,7 +16,7 @@ MSpangepop is a workflow for simulating variation graphs from coalescent simulat
 
 Clone the Git repository
 ```bash
-git https://forge.inrae.fr/pangepop/MSpangepop 
+git clone https://forge.inrae.fr/pangepop/MSpangepop 
 ```
 
 - Create an environement for snakemake (from the provided envfile): 
