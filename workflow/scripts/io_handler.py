@@ -20,28 +20,31 @@ Example :
 import sys
 import os
 import traceback
+import threading
+
+#IDF = ["A","B","C","D","E","F","G","H","I","J"]
+
+IDF = ["🌱", "🌿", "🌳", "🌲", "🌻", "🌷", "🪴", "🍄", "🦠", "🧬"]
 
 class MSLogger:
-    """Base logging class that prints messages with a standardized prefix."""
+    """Base logging class with PID-based identifier."""
     def __init__(self, prefix, message):
-        self.script = os.path.basename(sys.argv[0])  # Get the script that is running
-        print(f"{prefix} [{self.script}] {message}")
+        self.script = os.path.basename(sys.argv[0])
+        thread_id = threading.get_ident()
+        self.identifier = IDF[thread_id % len(IDF)]  # Map PID to an identifier
+        print(f"{prefix} [{self.script} | t {self.identifier}] {message}")
 
 class MSsuccess(MSLogger):
-    """Logs a success message."""
     def __init__(self, message):
         super().__init__("✅", message)
 
-
 class MScompute(MSLogger):
-    """Logs a compute-related message."""
     def __init__(self, message):
         super().__init__("🔹", message)
 
 class MSwarning(MSLogger):
-    """Logs a warning message."""
     def __init__(self, message):
-        super().__init__("⚠️ ", message)
+        super().__init__("⚠️", message)
 
 class MSerror(Exception):
     """Custom exception for MSpangepop errors with clean display."""
@@ -53,21 +56,17 @@ def custom_traceback():
     """Install a custom exception handler for cleaner MSerror display."""
     def handle_mserror(exc_type, exc_value, exc_traceback):
         if exc_type == MSerror:
-            # For MSerror, show clean format without full traceback
             print(f"❌ MSpangepop -> Error: {exc_value.clean_message}")
-            
-            # Optionally show just the relevant line
             tb = traceback.extract_tb(exc_traceback)
             if tb:
                 last_frame = tb[-1]
                 print(f"\t- {os.path.basename(last_frame.filename)}:{last_frame.lineno} in {last_frame.name}()")
         else:
-            # Default handler for other exceptions
             sys.__excepthook__(exc_type, exc_value, exc_traceback)
     
     sys.excepthook = handle_mserror
 
-custom_traceback() # This is used to simplify the traceback message
+custom_traceback()
 
 def get_indent(readable_json):
     if readable_json == True or readable_json == "True":
