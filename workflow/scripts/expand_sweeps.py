@@ -146,10 +146,29 @@ def process_demographic_params(demo_copy, param_names, param_values):
     """
     Update demographic parameters in a demographic model, ensuring proper numeric types.
     Handles both top-level parameters and nested parameters within demographic events.
+    
+    Special handling for event parameters using notation:
+    - 'mass_migration.time' -> updates time in mass_migration events
+    - 'migration_time' -> shorthand for mass_migration.time
     """
-    # Update top-level swept parameters
+    # Process swept parameters
     for param_name, param_value in zip(param_names, param_values):
-        if param_name in demo_copy:
+        # Special handling for migration_time or mass_migration.time
+        if param_name in ['migration_time', 'mass_migration.time']:
+            if 'demographic_events' in demo_copy:
+                for event in demo_copy['demographic_events']:
+                    if event.get('type') == 'mass_migration':
+                        event['time'] = ensure_numeric(param_value, 'time')
+                        break  # Update only the first mass_migration event
+        # Handle other event parameters with dot notation
+        elif '.' in param_name:
+            event_type, field = param_name.split('.', 1)
+            if 'demographic_events' in demo_copy:
+                for event in demo_copy['demographic_events']:
+                    if event.get('type') == event_type:
+                        event[field] = ensure_numeric(param_value, field)
+        # Update top-level parameters
+        elif param_name in demo_copy:
             demo_copy[param_name] = ensure_numeric(param_value, param_name)
     
     # Ensure all top-level numeric fields are properly typed
@@ -163,7 +182,7 @@ def process_demographic_params(demo_copy, param_names, param_values):
             if 'initial_size' in pop:
                 pop['initial_size'] = ensure_numeric(pop['initial_size'], 'initial_size')
     
-    # Process demographic events (size changes, splits, mergers, etc.)
+    # Process all demographic events
     if 'demographic_events' in demo_copy:
         for event in demo_copy['demographic_events']:
             for key in ['time', 'size', 'growth_rate', 'proportion', 'rate']:
