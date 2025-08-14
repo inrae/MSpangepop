@@ -32,7 +32,7 @@ class MSLogger:
         self.script = os.path.basename(sys.argv[0])
         thread_id = threading.get_ident()
         self.identifier = IDF[thread_id % len(IDF)]  # Map PID to an identifier
-        print(f"{prefix} [{self.script} | t {self.identifier}] {message}")
+        print(f"{prefix} [{self.script} | t:{self.identifier}] {message}")
 
 class MSsuccess(MSLogger):
     def __init__(self, message):
@@ -44,7 +44,7 @@ class MScompute(MSLogger):
 
 class MSwarning(MSLogger):
     def __init__(self, message):
-        super().__init__("⚠️", message)
+        super().__init__("⚠️ ", message)
 
 class MSerror(Exception):
     """Custom exception for MSpangepop errors with clean display."""
