@@ -32,7 +32,7 @@ def create_recombination_map(chrom_length:int, recombination_rate:float)-> mspri
     except Exception as e:
             raise MSerror(f"Error creating recombination map: {e}")
 
-def load_demographic_model(demographic_file: str):
+def load_demographic_model(demographic_file: str, verbose = True):
     """
     Load demographic model from JSON file and create msprime demography object.
     Returns demography object, sample configuration, mutation rate, and recombination rate.
@@ -41,7 +41,8 @@ def load_demographic_model(demographic_file: str):
         with open(demographic_file, 'r') as f:
             demo_data = json.load(f)
 
-        MScompute(f"Loading demographic model: {demo_data.get('name', 'Unknown')}")
+        if verbose == True : 
+            MScompute(f"Loading demographic model: {demo_data.get('name', 'Unknown')}")
 
         # Validate required fields
         required_fields = ['populations', 'samples', 'mutation_rate', 'recombination_rate']
@@ -147,7 +148,7 @@ def plot_demographic(demographic_file: str, output_file: str, log_time: bool = T
     """
         
     # Load the demographic model
-    demography, _, _, _, _, demo_data = load_demographic_model(demographic_file)
+    demography, _, _, _, _, demo_data = load_demographic_model(demographic_file, verbose = False)
     
     # Create figure and plot
     fig, ax = plt.subplots(figsize=(10, 8))
@@ -162,7 +163,6 @@ def plot_demographic(demographic_file: str, output_file: str, log_time: bool = T
     plt.savefig(output_file, dpi=300, bbox_inches='tight')
     plt.close()
     
-    print(f"Demographic plot saved to: {output_file}")
 
 def save_output(mutated_ts, chromosome_name: str, json_file: str, readable_json: bool):
     """
