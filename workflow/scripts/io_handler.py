@@ -22,17 +22,29 @@ import os
 import traceback
 import threading
 
-#IDF = ["A","B","C","D","E","F","G","H","I","J"]
+#IDF = ["A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P","Q","R","S","T","U","V","W","X","Y","Z"]
 
-IDF = ["🌱", "🌿", "🌳", "🌲", "🌻", "🌷", "🪴", "🍄", "🦠", "🧬"]
+IDF = [
+    "🌱", "🌿", "🌳", "🌲", "🌻", "🌷", "🪴", "🍄", "🦠", "🧬",
+    "🍀", "🌾", "🌼", "🌹", "🪻", "🍁", "🍂", "🌵", "🪹", "🪵"
+]
 
 class MSLogger:
     """Base logging class with PID-based identifier."""
+    SCRIPT_COL_WIDTH = 20
+    THREAD_COL_WIDTH = 10
+
     def __init__(self, prefix, message):
-        self.script = os.path.basename(sys.argv[0])
+        self.script = os.path.basename(sys.argv[0][:-3])
         thread_id = threading.get_ident()
-        self.identifier = IDF[thread_id % len(IDF)]  # Map PID to an identifier
-        print(f"{prefix} [{self.script} | t:{self.identifier}] {message}")
+        self.identifier = IDF[thread_id % len(IDF)]
+
+        # Fixed-width columns inside the brackets
+        script_part = self.script.center(self.SCRIPT_COL_WIDTH)
+        thread_part = f"thread:{self.identifier}".center(self.THREAD_COL_WIDTH)
+
+        bracket_text = f"[{script_part}|{thread_part}]"
+        print(f"{prefix} {bracket_text} {message}")
 
 class MSsuccess(MSLogger):
     def __init__(self, message):
@@ -40,7 +52,7 @@ class MSsuccess(MSLogger):
 
 class MScompute(MSLogger):
     def __init__(self, message):
-        super().__init__("🔹", message)
+        super().__init__("  ", message)
 
 class MSwarning(MSLogger):
     def __init__(self, message):
