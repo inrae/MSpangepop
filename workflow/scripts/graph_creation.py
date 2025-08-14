@@ -1099,24 +1099,15 @@ def apply_mutations_to_graphs(graphs, traversal, recap: MutationRecap, visualize
     """
     Apply mutations from the augmented traversal to the corresponding graphs.
     
-    This function processes mutations in the order they appear in the traversal,
-    validates them against actual path lengths (not static tree lengths), and
-    tracks all attempts for reporting and visualization.
-    
-    Parameters:
-    - graphs: List of Graph objects, one per tree
-    - traversal: List of tree data dictionaries from augmented traversal JSON
-    - recap: MutationRecap object to track mutation applications
-    - visualizer: VariantSizeVisualizer object to track variant sizes
+    Simplified version that only validates against actual path lengths, not static tree boundaries.
     """
     i = 0 
     # Process each tree and its corresponding graph
     for tree_idx, (tree_data, graph) in enumerate(zip(traversal, graphs)):
-        # Extract tree metadata
+        # Extract tree metadata (for reporting only)
         tree_index = tree_data.get("tree_index", "unknown")
         tree_interval = tree_data.get("initial_tree_interval", [0, 0])
         tree_start = tree_interval[0]
-        tree_length = tree_interval[1] - tree_interval[0]
         
         if i == 0 or i % 10 == 0 : 
             MScompute(f"Applying mutations to chromosome {chromosome} subgraphs -> {(tree_index*100)/len(graphs):.0f} %")
@@ -1146,12 +1137,12 @@ def apply_mutations_to_graphs(graphs, traversal, recap: MutationRecap, visualize
                 # HANDLE NONE MUTATIONS - Skip mutations that couldn't be placed
                 if mut_type is None:
                     # This mutation was skipped in draw_variants.py due to interval constraints
-                    error_msg = "Mutation skipped beacause the locus is less that 3 bases long"
+                    error_msg = "Mutation skipped in draw_variants.py"
                     recap.add_mutation(tree_index, node_id, "SKIPPED", start, length, 
                                      affected_lineages, False, error_msg)
                     continue
                 
-                # Check if start position is None (shouldn't happen if mut_type is not None, but be safe)
+                # Check if start position is None
                 if start is None:
                     error_msg = "Mutation has no start position"
                     recap.add_mutation(tree_index, node_id, mut_type, start, length, 
@@ -1159,59 +1150,10 @@ def apply_mutations_to_graphs(graphs, traversal, recap: MutationRecap, visualize
                     visualizer.add_variant(mut_type, start, length, False, affected_lineages)
                     continue
                 
+                # Convert to relative position within the tree
                 relative_start = start - tree_start
                 
-                # PROTECTION: Check if mutation affects first or last position
-                mutation_affects_boundaries = False
-                boundary_error_msg = ""
-                
-                if mut_type == "SNP":
-                    # SNP at position 0 or last position
-                    if relative_start == 0:
-                        mutation_affects_boundaries = True
-                        boundary_error_msg = "SNP at first position would break the conectivity"
-                    elif relative_start == tree_length - 1:
-                        mutation_affects_boundaries = True
-                        boundary_error_msg = "SNP at last position would break the conectivity"
-                
-                elif mut_type == "INS":
-                    # Insertion at position 0 would shift the first node
-                    if relative_start == 0:
-                        mutation_affects_boundaries = True
-                        boundary_error_msg = "Insertion at position 0 would break the conectivity"
-                    # Note: Insertion at end is OK - it adds after the last node
-                
-                elif mut_type in ["DEL", "INV", "DUP"]:
-                    # These affect a range - check if range includes first or last position
-                    if length is None:
-                        mutation_affects_boundaries = True
-                        boundary_error_msg = f"{mut_type} has no length specified"
-                    else :    
-                        end_position = relative_start + length
-                        
-                        if relative_start == 0:
-                            mutation_affects_boundaries = True
-                            boundary_error_msg = f"{mut_type} starting at first position would break the conectivity"
-                        elif end_position > tree_length - 1:
-                            mutation_affects_boundaries = True
-                            boundary_error_msg = f"{mut_type} affecting last position would break the conectivity"
-                
-                # If mutation affects boundaries, reject it entirely
-                if mutation_affects_boundaries:
-                    recap.add_mutation(tree_index, node_id, mut_type, start, length, 
-                                     affected_lineages, False, boundary_error_msg)
-                    visualizer.add_variant(mut_type, start, length, False, affected_lineages)
-                    continue
-                
-                # Continue with normal validation...
-                if relative_start < 0:
-                    error_msg = f"Position {start} is before tree start {tree_start}"
-                    recap.add_mutation(tree_index, node_id, mut_type, start, length, 
-                                     affected_lineages, False, error_msg)
-                    visualizer.add_variant(mut_type, start, length, False, affected_lineages)
-                    continue
-                
-                # Second validation: Check position against each affected lineage's path length
+                # Validate against each affected lineage's CURRENT path length
                 # Path lengths can vary between lineages due to previous mutations
                 failed_lineages = []
                 error_messages = []
@@ -1225,42 +1167,94 @@ def apply_mutations_to_graphs(graphs, traversal, recap: MutationRecap, visualize
                         continue
                     
                     # Get current path length (number of nodes)
-                    # node_count is the number of edges, so total nodes = edges + 1
+                    # CRITICAL FIX: node_count is edges, actual nodes = edges + 1
                     current_path_length = path.node_count + 1
                     
-                    # Validate based on mutation type
-                    # Each mutation type has different position requirements
+                    # Validate based on mutation type - only check against current path
+                    # No need to check static tree boundaries!
                     
                     if mut_type == "SNP":
-                        # SNPs modify a single existing position
-                        # Position must be within [0, path_length-1]
-                        if relative_start >= current_path_length:
+                        # SNPs modify a single existing position [0, path_length-1]
+                        # Cannot be at first or last position for connectivity
+                        if relative_start == 0:
+                            failed_lineages.append(lineage)
+                            error_messages.append("SNP at first position would break connectivity")
+                        elif relative_start >= current_path_length - 1:
                             failed_lineages.append(lineage)
                             error_messages.append(
-                                f"SNP position {relative_start} >= path length {current_path_length}"
+                                f"SNP at or beyond last position (pos {relative_start}, path length {current_path_length})"
                             )
                     
                     elif mut_type == "INS":
-                        # Insertions add sequence between two positions
-                        # Can insert after the last position, so [0, path_length] is valid
-                        if relative_start > current_path_length:
+                        # Insertions add sequence between two adjacent positions
+                        # Cannot insert at position 0 (before first node)
+                        # Can insert up to position path_length-1 (after last node)
+                        if relative_start == 0:
+                            failed_lineages.append(lineage)
+                            error_messages.append("INS at position 0 would break connectivity")
+                        elif relative_start >= current_path_length:
                             failed_lineages.append(lineage)
                             error_messages.append(
-                                f"INS position {relative_start} > path length {current_path_length}"
+                                f"INS position {relative_start} >= path length {current_path_length}"
                             )
                     
-                    elif mut_type in ["DEL", "INV", "DUP"]:
-                        # These mutations affect a range of positions
-                        # The entire range must fit within the current path
+                    elif mut_type == "DEL":
+                        # Deletion removes nodes from [start, start+length) 
+                        # Cannot delete first or last node
                         if length is None:
                             failed_lineages.append(lineage)
-                            error_messages.append(f"{mut_type} has no length specified")
+                            error_messages.append("DEL has no length specified")
                         else:
-                            end_position = relative_start + length
-                            if end_position > current_path_length:
+                            # Check boundaries against current path
+                            if relative_start == 0:
+                                failed_lineages.append(lineage)
+                                error_messages.append("DEL at first position would break connectivity")
+                            elif relative_start + length > current_path_length - 1:
                                 failed_lineages.append(lineage)
                                 error_messages.append(
-                                    f"{mut_type} end position {end_position} > path length {current_path_length}"
+                                    f"DEL would affect last position (end {relative_start + length}, path length {current_path_length})"
+                                )
+                            # Also ensure we don't delete too much
+                            elif length >= current_path_length - 2:
+                                failed_lineages.append(lineage)
+                                error_messages.append(
+                                    f"DEL would leave less than 3 nodes (deleting {length} from {current_path_length} nodes)"
+                                )
+                    
+                    elif mut_type == "INV":
+                        # Inversion affects nodes [start, start+length-1] inclusive
+                        # Cannot invert first or last node
+                        if length is None:
+                            failed_lineages.append(lineage)
+                            error_messages.append("INV has no length specified")
+                        else:
+                            actual_end = relative_start + length - 1
+                            
+                            if relative_start == 0:
+                                failed_lineages.append(lineage)
+                                error_messages.append("INV at first position would break connectivity")
+                            elif actual_end >= current_path_length - 1:
+                                failed_lineages.append(lineage)
+                                error_messages.append(
+                                    f"INV would affect last position (end {actual_end}, path length {current_path_length})"
+                                )
+                    
+                    elif mut_type == "DUP":
+                        # Duplication affects nodes [start, start+length-1] inclusive
+                        # Cannot duplicate first or last node
+                        if length is None:
+                            failed_lineages.append(lineage)
+                            error_messages.append("DUP has no length specified")
+                        else:
+                            actual_end = relative_start + length - 1
+                            
+                            if relative_start == 0:
+                                failed_lineages.append(lineage)
+                                error_messages.append("DUP at first position would break connectivity")
+                            elif actual_end >= current_path_length - 1:
+                                failed_lineages.append(lineage)
+                                error_messages.append(
+                                    f"DUP would affect last position (end {actual_end}, path length {current_path_length})"
                                 )
                 
                 # Handle validation failures
@@ -1335,10 +1329,10 @@ def apply_mutations_to_graphs(graphs, traversal, recap: MutationRecap, visualize
                                      affected_lineages, False, error_msg)
                 
                 # Track variant size for visualization (both success and failure)
-                # SNPs are excluded from visualization as requested
                 visualizer.add_variant(mut_type, start, length, success, affected_lineages)
         
-        i += 1 
+        i += 1
+
 
 def main(splited_fasta: str, augmented_traversal: str, output_file: str, 
          sample: str, chromosome: str, fasta_folder: str, recap_file: str = None, 
@@ -1364,7 +1358,7 @@ def main(splited_fasta: str, augmented_traversal: str, output_file: str,
         y = 0
         for i, (record, (tree_index, lineages)) in enumerate(zip(sequences, tree_lineages)):
 
-            if y == 0 or y % 10 == 0 :
+            if y == 0 or y % 50 == 0 :
                 memory = psutil.virtual_memory()
                 available_gb = memory.available / (1024**3)
                 MScompute(f"Initialization of chromosome {chromosome} subgraphs -> {(tree_index*100)/len(sequences):.0f}% | {available_gb:.1f} GB available")
