@@ -3,6 +3,6 @@ channels:
   - conda-forge
   - bioconda
 dependencies:
-  #- toposort>=1.10,<2
+  - toposort>=1.10,<2
   - snakemake=8.4.7
   - snakemake-executor-plugin-slurm
