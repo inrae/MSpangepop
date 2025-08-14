@@ -17,13 +17,13 @@ build-and-push-image:
     name: kaczmarj/apptainer:latest
     entrypoint: [""]
   script:
-    - echo "🔹 MSprime -> Building msprime_box container from ${DEF_FILE}..."
+    - echo "    MSprime -> Building msprime_box container from ${DEF_FILE}..."
     - apptainer build --force msprime_box.sif ${DEF_FILE}
     
-    - echo "🔹 MSprime -> Pushing image ${IMAGE_NAME}:${CI_COMMIT_SHORT_SHA}..."
+    - echo "    MSprime -> Pushing image ${IMAGE_NAME}:${CI_COMMIT_SHORT_SHA}..."
     - apptainer push --docker-username "${CI_REGISTRY_USER}" --docker-password "${CI_REGISTRY_PASSWORD}" msprime_box.sif oras://"${CI_REGISTRY_IMAGE}"/${IMAGE_NAME}:"${CI_COMMIT_SHORT_SHA}"
     
-    - echo "🔹 MSprime -> Pushing image ${IMAGE_NAME}:latest..."
+    - echo "    MSprime -> Pushing image ${IMAGE_NAME}:latest..."
     - apptainer push --docker-username "${CI_REGISTRY_USER}" --docker-password "${CI_REGISTRY_PASSWORD}" msprime_box.sif oras://"${CI_REGISTRY_IMAGE}"/${IMAGE_NAME}:latest
     
     - echo "✅ MSprime -> Images successfully pushed to registry."
@@ -43,7 +43,7 @@ test-workflow:
     APPTAINER_CACHEDIR: "${CI_PROJECT_DIR}/.apptainer"
     SINGULARITY_CACHEDIR: "${CI_PROJECT_DIR}/.singularity"
   before_script:
-    - echo "🔹 MSprime -> Creating conda environment..."
+    - echo "    MSprime -> Creating conda environment..."
     - mamba create -n wf_env -c conda-forge -c bioconda snakemake=8.4.7 -y
     - mkdir -p slurm_logs
   script:
@@ -70,7 +70,7 @@ pages:
   stage: deploy
   image: alpine:latest
   script:
-    - echo "🔹 MSprime -> Preparing documentation for GitLab Pages..."
+    - echo "    MSprime -> Preparing documentation for GitLab Pages..."
     - mkdir -p public
     - cp -r doc/* public/
     - echo "✅ MSprime -> Documentation copied to public/"
