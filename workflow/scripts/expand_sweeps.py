@@ -234,7 +234,7 @@ def expand_sweep_samples(config):
         
         # ===== STEP 1: Load base demographic model =====
         base_demo_path = sweep_config['base_demographic_file']
-        MScompute(f"   Base model: {base_demo_path}")
+        MScompute(f"Base model: {base_demo_path}")
         
         with open(base_demo_path, 'r') as f:
             base_demo = json.load(f)
@@ -281,7 +281,7 @@ def expand_sweep_samples(config):
         
         # Calculate total number of configurations that will be generated
         total_runs = len(demo_combinations) * len(sv_distributions) * replicates
-        MScompute(f"   Will generate {total_runs} configurations")
+        MScompute(f"Will generate {total_runs} configurations")
         
         # ===== STEP 5: Generate all combinations =====
         run_count = 0
@@ -346,9 +346,8 @@ def expand_sweep_samples(config):
                     
                     # Log progress for this configuration
                     sv_summary = ", ".join([f"{k}:{v}%" for k, v in sv_distribution.items() if v > 0])
-                    MScompute(f"   [{run_count}/{total_runs}] {sample_name}: {sv_summary}")
+                    MScompute(f"[{run_count}/{total_runs}] {sample_name}: {sv_summary}")
 
-    MSsuccess(f"Expanded {len(new_samples)} sample configurations")
     return new_samples
 
 # ============================================================================
@@ -374,7 +373,6 @@ def write_expanded_config(config, expanded_samples, output_path=".config/expande
     with open(output_path, 'w') as f:
         yaml.dump(expanded_config, f, default_flow_style=False, sort_keys=False)
     
-    MSsuccess(f"Expanded configuration written to: {output_path}")
     return output_path
 
 # ============================================================================

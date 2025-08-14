@@ -356,10 +356,11 @@ def main(json_file, output_json_file, sv_distribution, chromosome, num_threads, 
         end_time = time.time()
         elapsed_time = end_time - start_time
         
-        MSsuccess(f"Successfully processed chromosome {chromosome}")
+        
         MScompute(f"Total mutations: {total_mutations}")
         MScompute(f"Mutation breakdown: {', '.join([f'{k}:{v}' for k, v in mutation_counts.items()])}")
         MScompute(f"Processing time: {elapsed_time:.2f} seconds")
+        
 
     except Exception as e:
         raise MSerror(f"Critical error processing (Chromosome {chromosome}): {e}")

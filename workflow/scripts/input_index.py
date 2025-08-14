@@ -84,7 +84,6 @@ def main():
     parser.add_argument("--min_contigs", type=int, default=0, help="Minimum required number of contigs (default: 0).")
 
     args = parser.parse_args()
-    MScompute("Validating given FASTA file")
 
     try:
         # Read and validate FASTA

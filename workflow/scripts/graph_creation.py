@@ -1090,7 +1090,7 @@ class GraphEnsemble:
         file_size_mb = total_size / (1024 * 1024)
         write_speed_mb_s = file_size_mb / write_time if write_time > 0 else 0
         print()
-        MSsuccess(f"GFA export completed successfully!")
+        MScompute(f"GFA export completed successfully!")
         print(f"\t\tSize: {file_size_mb:.2f} MB")
         print(f"\t\tWrite speed: {write_speed_mb_s:.2f} MB/s")
         print()
@@ -1137,7 +1137,7 @@ def apply_mutations_to_graphs(graphs, traversal, recap: MutationRecap, visualize
                 # HANDLE NONE MUTATIONS - Skip mutations that couldn't be placed
                 if mut_type is None:
                     # This mutation was skipped in draw_variants.py due to interval constraints
-                    error_msg = "Mutation skipped in draw_variants.py"
+                    error_msg = "Mutation skipped in previous step (locus got too small)"
                     recap.add_mutation(tree_index, node_id, "SKIPPED", start, length, 
                                      affected_lineages, False, error_msg)
                     continue
@@ -1341,12 +1341,20 @@ def main(splited_fasta: str, augmented_traversal: str, output_file: str,
     
     # Initialize tracking objects
     recap = MutationRecap(sample, chromosome)
-    var_visualizer = VariantSizeVisualizer(sample, chromosome)
     lint_visualizer = LintVisualizer()
     MScompute("Starting to generate the variation graph")
+    
+    # Read input data first to get reference length
+    sequences = MSpangepopDataHandler.read_fasta(splited_fasta)
+    traversal = MSpangepopDataHandler.read_json(augmented_traversal)
+    
+    # Calculate reference length (sum of all original sequence lengths)
+    reference_length = sum(len(str(record.seq)) for record in sequences)
+    
+    # Initialize visualizer with reference length
+    var_visualizer = VariantSizeVisualizer(sample, chromosome, reference_length)
+    
     try:
-        sequences = MSpangepopDataHandler.read_fasta(splited_fasta)
-        traversal = MSpangepopDataHandler.read_json(augmented_traversal)
         tree_lineages = gather_lineages(traversal)
         
         if len(sequences) != len(tree_lineages):
@@ -1367,15 +1375,16 @@ def main(splited_fasta: str, augmented_traversal: str, output_file: str,
             new_graph = Graph(node_id_generator)
             new_graph.build_from_sequence(sequence, lineages)
             graphs.append(new_graph)
+            y += 1
         
-        MSsuccess(f"Initialized {len(graphs)} graphs for chromosome {chromosome}")
+        MScompute(f"Initialized {len(graphs)} graphs for chromosome {chromosome}")
         
         # Apply mutations with tracking
-        print("")
+
         MScompute(f"Starting to integrate mutation to all graphs")
         apply_mutations_to_graphs(graphs, traversal, recap, var_visualizer, chromosome)
         ensemble = GraphEnsemble(name=f"{sample}_chr_{chromosome}", graph_list=graphs)
-        print("")
+
         MScompute(f"Concatenating all graphs")
         ensemble.concatenate
         if ensemble.graphs:  # Should have exactly one graph after concatenation
@@ -1407,7 +1416,7 @@ def main(splited_fasta: str, augmented_traversal: str, output_file: str,
         # Save recap
         if recap_file:
             recap.save_recap(recap_file)
-            MSsuccess(f"Recap saved to {recap_file}")
+            MScompute(f"Recap saved to {recap_file}")
         
         if variant_plot_dir:
             
