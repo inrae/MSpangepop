@@ -405,7 +405,7 @@ def main():
         MSsuccess(f"Successfully expanded {len(expanded_samples)} samples")
     else:
         output_path = config_path
-        MSwarning("No sweep samples found in configuration")
+        
     
     return output_path
 
