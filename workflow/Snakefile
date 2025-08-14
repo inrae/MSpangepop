@@ -15,7 +15,6 @@ EXPAND_SWEEPS = os.environ.get("EXPAND_SWEEPS", "true").lower() == "true"
 
 if EXPAND_SWEEPS:
     # First, expand any parameter sweeps in the config
-    print("🔹 Checking for parameter sweeps...")
     result = subprocess.run([sys.executable, "workflow/scripts/expand_sweeps.py", 
                             ".config/masterconfig.yaml"], 
                            capture_output=True, text=True)
@@ -59,44 +58,28 @@ rule all:
     input: get_all_targets()
 
 # This rule is used to create a recap file for the workflow
-rule global_recap:
+rule setup:
     input:
-        configfile= ".config/masterconfig.yaml"
+        configfile= ".config/masterconfig.yaml",
+        fasta=lambda wildcards: config["samples"][wildcards.sample]["fasta_gz"]
     output:
-        recap_file=os.path.join(output_dir, "{sample}", simulation_data, "{sample}_global_recap.txt")
+        recap_file=os.path.join(output_dir, "{sample}", simulation_data, "{sample}_global_recap.txt"),
+        fai=temp(os.path.join(output_dir, "{sample}", temp_dir, "{sample}_full.fai"))
     params:
         out=lambda wildcards: os.path.join(output_dir, wildcards.sample, simulation_data),
+        chr_n =lambda wildcards: config["samples"][wildcards.sample]["chr_n"]
     resources:
         mem_mb=lambda wildcards: int(1000 * memory_multiplier),
         time="00:10:00"
     threads: 1
     container:
         "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
-    priority: 1
+    priority: 10
     shell:
         """
         python3 workflow/scripts/recap.py {input.configfile} \
             {params.out} \
             {wildcards.sample}
-        """
-
-# Check if the input file is usable if not, tell the user why
-rule input_index:
-    input:
-        fasta=lambda wildcards: config["samples"][wildcards.sample]["fasta_gz"]
-    output:
-        fai=temp(os.path.join(output_dir, "{sample}", temp_dir, "{sample}_full.fai"))
-    params:
-        chr_n =lambda wildcards: config["samples"][wildcards.sample]["chr_n"]
-    priority: 10
-    resources:
-        mem_mb=lambda wildcards: int(1000 * memory_multiplier),
-        time="00:10:00"
-    threads: 1
-    container:
-        "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
-    shell:
-        """
         python3 workflow/scripts/input_index.py --fasta_file {input.fasta} \
             --output_file {output.fai} \
             --min_contigs {params.chr_n}
@@ -105,7 +88,7 @@ rule input_index:
 # Simulate the coalescent and save it to a json file
 rule msprime_simulation:    
     input:
-        fai=rules.input_index.output.fai,
+        fai=rules.setup.output.fai,
         demographic=lambda wildcards: config["samples"][wildcards.sample]["demographic_file"]
     output:
         json = temp(os.path.join(output_dir, "{sample}", temp_dir, "chr_{chromosome}", "{sample}_chr_{chromosome}_msprime_simulation.json")),
@@ -150,19 +133,19 @@ rule visualization:
     output:
         completion_flag = os.path.join(output_dir, "{sample}", plot_dir, "chr_{chromosome}", "visualization_complete.txt")
     params:
-        out_tree = lambda wildcards: os.path.join(
-            output_dir, wildcards.sample, plot_dir, f"chr_{wildcards.chromosome}", "01_tree_plots"),
-        out_arg = lambda wildcards: os.path.join(
-            output_dir, wildcards.sample, plot_dir, f"chr_{wildcards.chromosome}", "02_arg_plots")
+        out_tree = lambda wc: os.path.join(
+            output_dir, wc.sample, plot_dir, f"chr_{wc.chromosome}", "01_tree_plots"),
+        out_arg = lambda wc: os.path.join(
+            output_dir, wc.sample, plot_dir, f"chr_{wc.chromosome}", "02_arg_plots")
     resources:
-        mem_mb=lambda wildcards: int(5000 * memory_multiplier),
+        mem_mb=lambda wc: int(5000 * memory_multiplier),
         time="01:00:00"
-    threads: 1
+    threads: 2  
     benchmark:
         os.path.join(output_dir, "{sample}", "benchmark", "chr_{chromosome}", "visualization.txt")
     container:
         "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
-    priority: 1
+    priority: 2
     shell:
         """
         python3 workflow/scripts/visualizer_tree.py {input.mutated_ts} \
@@ -170,10 +153,17 @@ rule visualization:
             -o {params.out_tree} \
             -c {wildcards.chromosome} \
             --occasions 5 \
-            --edge-width 4
-        python3 workflow/scripts/visualizer_arg.py {input.full_ancestry_ts} {params.out_arg} {wildcards.chromosome}
+            --edge-width 4 &
+
+        python3 workflow/scripts/visualizer_arg.py \
+            {input.full_ancestry_ts} \
+            {params.out_arg} \
+            {wildcards.chromosome} &
+
+        wait
         echo "Visualization completed at $(date)" > {output.completion_flag}
         """
+
 
 # Use the preorder traversal to get the order in which the mutations should be handled, save a json
 rule coalescent_traversal:
@@ -188,6 +178,7 @@ rule coalescent_traversal:
         time="10:00:00"
     threads: 10
     priority: 9
+    group: "traversal_pipeline"
     benchmark:
         os.path.join(output_dir, "{sample}", "benchmark", "chr_{chromosome}", "coalescent_traversal_benchmark.txt")
     container:
@@ -237,6 +228,7 @@ rule draw_variants:
         readable_json = lambda wildcards: config["samples"][wildcards.sample].get("readable_json", False), 
         seed=lambda wildcards: config["samples"][wildcards.sample].get("seed", None)
     threads: 10
+    group: "traversal_pipeline"
     priority: 8
     resources:
         mem_mb=lambda wildcards: int(10000 * memory_multiplier),
@@ -276,7 +268,8 @@ rule graph_creation:
         os.path.join(output_dir, "{sample}", "benchmark", "chr_{chromosome}", "graph_creation_benchmark.txt")
     container:
         "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
-    threads: 10
+    threads: 20
+    group: "graph_creation_pipeline"
     priority: 7
     shell:
         """
@@ -309,20 +302,21 @@ rule gfa_merge:
     container:
         "docker://registry.forge.inrae.fr/pangepop/mspangepop/odgi:v0.9.2"
     threads: 20
+    group: "graph_creation_pipeline"
     priority: 7
     shell:
         """
-        echo "🔹[gfa_merge] Starting to clean the GFA file using odgi"
-        echo "🔹[gfa_merge] Importing..."
+        echo "   [gfa_merge] Starting to clean the GFA file using odgi"
+        echo "   [gfa_merge] Importing..."
         odgi build -g {input.initial_gfa} -o {output.og_raw} -O -t {threads} -P
-        echo "\n🔹[gfa_merge] Initial GFA state :"
+        echo "\n   [gfa_merge] Initial GFA state :"
         odgi stats -i {output.og_raw} -S -L -b -t {threads} -P
-        echo "\n🔹[gfa_merge] Starting to unchop"
+        echo "\n   [gfa_merge] Starting to unchop"
         odgi unchop -i {output.og_raw} -o {output.og_unchoped} -t {threads} -P
-        echo "\n🔹[gfa_merge] Final state"
+        echo "\n   [gfa_merge] Final state"
         odgi stats -i {output.og_unchoped} -S -S -L -b -t {threads} -P > {output.polished_gfa_stats}
         cat {output.polished_gfa_stats}
-        echo "\n🔹[gfa_merge] Saving final GFA"
+        echo "\n   [gfa_merge] Saving final GFA"
         odgi view -i {output.og_unchoped} -t {threads} -g > {output.polished_gfa}
         echo "✅ Final GFA @ {output.polished_gfa}"
         """
