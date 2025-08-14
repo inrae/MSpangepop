@@ -15,6 +15,8 @@ import matplotlib.pyplot as plt # type: ignore
 import matplotlib.patches as mpatches # type: ignore
 import numpy as np
 from collections import defaultdict
+from scipy.stats import gaussian_kde
+from scipy.interpolate import interp1d
 
 def mutate_base(original_base: str, traition_matrix: dict) -> str:
     """Uses the provided transition matrix to determine the mutated base."""
@@ -181,16 +183,21 @@ class MutationRecap:
 class VariantSizeVisualizer:
     """Creates visualization graphs for variant sizes from mutation data."""
     
-    def __init__(self, sample: str, chromosome: str):
+    def __init__(self, sample: str, chromosome: str, reference_length: int = None):
         self.sample = sample
         self.chromosome = chromosome
+        self.reference_length = reference_length  # Original/reference genome length
         self.variant_sizes = defaultdict(list)
         self.variant_positions = defaultdict(list)
         self.lineage_lengths = {}
         self.max_position = 0
-        # New: Track variants by lineage for shared variant analysis
-        self.variants_by_lineage = defaultdict(set)  # lineage -> set of (type, position) tuples
-        self.variant_lineages = defaultdict(set)  # (type, position) -> set of lineages
+        # Track variants by lineage for shared variant analysis
+        self.variants_by_lineage = defaultdict(set)
+        self.variant_lineages = defaultdict(set)
+        
+    def set_reference_length(self, length: int):
+        """Set the reference length for relative position calculations."""
+        self.reference_length = length
         
     def add_variant(self, variant_type: str, position: int, length: int, success: bool, affected_lineages: set):
         """Add a variant to tracking, handling SNPs and None types properly."""
@@ -227,12 +234,24 @@ class VariantSizeVisualizer:
     
     def set_lineage_lengths(self, lineage_lengths: dict):
         self.lineage_lengths = lineage_lengths
+        # If reference length not set, use the ancestral or first lineage length
+        if not self.reference_length:
+            if "Ancestral" in lineage_lengths:
+                self.reference_length = lineage_lengths["Ancestral"]
+            else:
+                self.reference_length = max(lineage_lengths.values())
+
+    def _get_relative_position(self, position: int) -> float:
+        """Convert absolute position to relative position (0-100%)."""
+        if self.reference_length and self.reference_length > 0:
+            return (position / self.reference_length) * 100
+        return position  # Fallback to absolute if no reference
 
     def save_variant_density_plot(self, output_path: str):
-        """Create a density plot showing variant counts by position for each type."""
+        """Create a density plot showing variant counts by RELATIVE position for each type."""
         MScompute(f"Creating variant density plot for sample {self.sample} chr {self.chromosome}")
         if not self.variant_positions:
-            MSwarning("No variant data to plot")
+            MSwarning("Warning: No variant data to plot")
             return
             
         plt.style.use('seaborn-v0_8-darkgrid')
@@ -254,21 +273,21 @@ class VariantSizeVisualizer:
             'REPL': '#9b59b6'
         }
         
-        x_max = max(self.lineage_lengths.values()) if self.lineage_lengths else self.max_position * 1.05
-        
         for ax, var_type in zip(axes, variant_types):
-            positions = [pos for pos, _ in self.variant_positions[var_type]]
+            # Convert to relative positions
+            positions = [self._get_relative_position(pos) for pos, _ in self.variant_positions[var_type]]
             
             # Create histogram with many bins for high resolution
-            n_bins = min(500, len(positions) // 10)  # Adaptive bin count
-            if n_bins < 50:
-                n_bins = 50
+            n_bins = min(100, len(positions) // 10)  # Use 100 bins for percentage scale
+            if n_bins < 20:
+                n_bins = 20
             
-            ax.hist(positions, bins=n_bins, color=colors.get(var_type, '#95a5a6'), 
+            ax.hist(positions, bins=n_bins, range=(0, 100),
+                   color=colors.get(var_type, '#95a5a6'), 
                    alpha=0.7, edgecolor='none')
             
             ax.set_ylabel(f'{var_type}\nCount', fontsize=10)
-            ax.set_xlim(0, x_max)
+            ax.set_xlim(0, 100)
             ax.grid(True, alpha=0.3)
             
             # Add count annotation
@@ -276,7 +295,7 @@ class VariantSizeVisualizer:
                    transform=ax.transAxes, ha='right', va='top',
                    bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
         
-        axes[-1].set_xlabel('Genomic Position', fontsize=12)
+        axes[-1].set_xlabel('Relative Genomic Position (%)', fontsize=12)
         fig.suptitle(f'Variant Density by Type - {self.sample} Chr{self.chromosome}',
                     fontsize=14, fontweight='bold')
         
@@ -285,7 +304,7 @@ class VariantSizeVisualizer:
         plt.close()
 
     def save_size_distribution_plot(self, output_path: str):
-        """Size distribution with log-scale count axis."""
+        """Size distribution with SMOOTH DENSITY LINES instead of histograms."""
         MScompute(f"Creating variant size distribution for sample {self.sample} chr {self.chromosome}")
         
         # Filter out SNPs for the size distribution plot
@@ -306,23 +325,64 @@ class VariantSizeVisualizer:
             'REPL': '#9b59b6'
         }
         
-        # Plot each variant type separately for better visualization
+        # Plot smooth density lines for each variant type
         for var_type in sorted(variant_sizes_no_snp.keys()):
             sizes = variant_sizes_no_snp[var_type]
-            if sizes:
-                # Use more bins for better resolution
-                bins = np.logspace(np.log10(min(sizes)), np.log10(max(sizes)), 50)
-                ax.hist(sizes, bins=bins, 
-                       label=f'{var_type} (n={len(sizes):,})',
-                       color=colors.get(var_type, '#95a5a6'),
-                       alpha=0.6,
-                       edgecolor='black',
-                       linewidth=0.5)
+            if len(sizes) > 1:  # Need at least 2 points for KDE
+                # Create log-space for x-axis
+                log_sizes = np.log10(sizes)
+                
+                try:
+                    # Use kernel density estimation for smooth curve
+                    kde = gaussian_kde(log_sizes, bw_method='scott')
+                    
+                    # Generate smooth x values in log space
+                    x_min, x_max = np.min(log_sizes), np.max(log_sizes)
+                    x_smooth = np.linspace(x_min - 0.5, x_max + 0.5, 500)
+                    
+                    # Calculate density
+                    density = kde(x_smooth)
+                    
+                    # Convert back to linear space for plotting
+                    x_linear = 10 ** x_smooth
+                    
+                    # Scale density by number of observations for better comparison
+                    density_scaled = density * len(sizes)
+                    
+                    # Plot smooth line
+                    ax.plot(x_linear, density_scaled,
+                           label=f'{var_type} (n={len(sizes):,})',
+                           color=colors.get(var_type, '#95a5a6'),
+                           linewidth=2.5,
+                           alpha=0.8)
+                    
+                    # Add shaded area under curve
+                    ax.fill_between(x_linear, density_scaled, 
+                                   alpha=0.2, 
+                                   color=colors.get(var_type, '#95a5a6'))
+                    
+                except Exception as e:
+                    MSwarning(f"Could not create smooth curve for {var_type}: {e}")
+                    # Fallback to histogram if KDE fails
+                    bins = np.logspace(np.log10(min(sizes)), np.log10(max(sizes)), 30)
+                    ax.hist(sizes, bins=bins, 
+                           label=f'{var_type} (n={len(sizes):,})',
+                           color=colors.get(var_type, '#95a5a6'),
+                           alpha=0.6,
+                           edgecolor='black',
+                           linewidth=0.5)
+            elif len(sizes) == 1:
+                # Single point - show as vertical line
+                ax.axvline(x=sizes[0], 
+                          label=f'{var_type} (n=1)',
+                          color=colors.get(var_type, '#95a5a6'),
+                          linewidth=2,
+                          linestyle='--',
+                          alpha=0.8)
 
         ax.set_xlabel('Variant Size (bp)', fontsize=12)
-        ax.set_ylabel('Count (log scale)', fontsize=12)
+        ax.set_ylabel('Density (scaled by count)', fontsize=12)
         ax.set_xscale('log')
-        ax.set_yscale('log')  # Log scale for count axis as requested
         ax.set_title(f'Variant Size Distribution - {self.sample} Chr{self.chromosome}',
                     fontsize=14, fontweight='bold')
         ax.legend(loc='best', framealpha=0.9)
@@ -332,6 +392,51 @@ class VariantSizeVisualizer:
         plt.savefig(output_path, dpi=300, bbox_inches='tight')
         plt.close()
 
+    def save_cumulative_variants_plot(self, output_path: str):
+        """Create a cumulative plot showing variant accumulation along RELATIVE positions."""
+        MScompute(f"Creating cumulative variants plot for sample {self.sample} chr {self.chromosome}")
+        
+        if not self.variant_positions:
+            MSwarning("No variant data to plot")
+            return
+        
+        plt.style.use('seaborn-v0_8-darkgrid')
+        fig, ax = plt.subplots(figsize=(14, 8))
+        
+        colors = {
+            'SNP': '#e91e63',
+            'INS': '#2ecc71',
+            'DEL': '#e74c3c',
+            'INV': '#3498db',
+            'DUP': '#f39c12',
+            'REPL': '#9b59b6'
+        }
+        
+        # Plot cumulative count for each variant type
+        for var_type in sorted(self.variant_positions.keys()):
+            # Convert to relative positions and sort
+            relative_positions = sorted([self._get_relative_position(pos) 
+                                        for pos, _ in self.variant_positions[var_type]])
+            cumulative_counts = np.arange(1, len(relative_positions) + 1)
+            
+            ax.plot(relative_positions, cumulative_counts, 
+                   color=colors.get(var_type, '#95a5a6'),
+                   label=f'{var_type} (n={len(relative_positions):,})',
+                   linewidth=2, alpha=0.8)
+        
+        ax.set_xlabel('Relative Genomic Position (%)', fontsize=12)
+        ax.set_ylabel('Cumulative Variant Count', fontsize=12)
+        ax.set_title(f'Cumulative Variant Distribution - {self.sample} Chr{self.chromosome}',
+                    fontsize=14, fontweight='bold')
+        ax.legend(loc='upper left', framealpha=0.9)
+        ax.grid(True, alpha=0.3)
+        ax.set_xlim(0, 100)
+        
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        plt.close()
+
+    # Keep other methods unchanged
     def save_shared_variants_heatmap(self, output_path: str):
         """Create a heatmap showing shared variants between lineages."""
         MScompute(f"Creating shared variants heatmap for sample {self.sample} chr {self.chromosome}")
@@ -398,7 +503,7 @@ class VariantSizeVisualizer:
         MScompute(f"Creating variant type proportions plot for sample {self.sample} chr {self.chromosome}")
         
         if not self.variant_positions:
-            MSwarning("No variant data to plot")
+            MSwarning("Warning: No variant data to plot")
             return
         
         plt.style.use('default')
@@ -450,55 +555,11 @@ class VariantSizeVisualizer:
         plt.savefig(output_path, dpi=300, bbox_inches='tight')
         plt.close()
 
-    def save_cumulative_variants_plot(self, output_path: str):
-        """Create a cumulative plot showing variant accumulation along the chromosome."""
-        MScompute(f"Creating cumulative variants plot for sample {self.sample} chr {self.chromosome}")
-        
-        if not self.variant_positions:
-            MSwarning("No variant data to plot")
-            return
-        
-        plt.style.use('seaborn-v0_8-darkgrid')
-        fig, ax = plt.subplots(figsize=(14, 8))
-        
-        colors = {
-            'SNP': '#e91e63',
-            'INS': '#2ecc71',
-            'DEL': '#e74c3c',
-            'INV': '#3498db',
-            'DUP': '#f39c12',
-            'REPL': '#9b59b6'
-        }
-        
-        x_max = max(self.lineage_lengths.values()) if self.lineage_lengths else self.max_position * 1.05
-        
-        # Plot cumulative count for each variant type
-        for var_type in sorted(self.variant_positions.keys()):
-            positions = sorted([pos for pos, _ in self.variant_positions[var_type]])
-            cumulative_counts = np.arange(1, len(positions) + 1)
-            
-            ax.plot(positions, cumulative_counts, 
-                   color=colors.get(var_type, '#95a5a6'),
-                   label=f'{var_type} (n={len(positions):,})',
-                   linewidth=2, alpha=0.8)
-        
-        ax.set_xlabel('Genomic Position', fontsize=12)
-        ax.set_ylabel('Cumulative Variant Count', fontsize=12)
-        ax.set_title(f'Cumulative Variant Distribution - {self.sample} Chr{self.chromosome}',
-                    fontsize=14, fontweight='bold')
-        ax.legend(loc='upper left', framealpha=0.9)
-        ax.grid(True, alpha=0.3)
-        ax.set_xlim(0, x_max)
-        
-        plt.tight_layout()
-        plt.savefig(output_path, dpi=300, bbox_inches='tight')
-        plt.close()
-
     def save_lineage_lengths_plot(self, output_path: str):
         """Original lineage lengths plot - kept as is."""
         MScompute(f"Creating lineage plot for sample {self.sample} chr {self.chromosome}")
         if not self.lineage_lengths:
-            MSwarning("No lineage length data to plot")
+            MSwarning("Warning: No lineage length data to plot")
             return
         
         plt.style.use('seaborn-v0_8-darkgrid')
@@ -549,7 +610,7 @@ class VariantSizeVisualizer:
         plt.tight_layout()
         plt.savefig(output_path, dpi=300, bbox_inches='tight')
         plt.close()
-
+        
 class LintVisualizer:
     def __init__(self):
         self.total_nodes_before = 0
@@ -577,6 +638,6 @@ class LintVisualizer:
                 f.write(f"Orphan nodes removed by linting: {num_removed}\n")
                 f.write(f"Percent removed: {percent_removed:.2f}%\n\n")
             
-            MSsuccess(f"Saved lint stats and removed node list to {output_path}")
+            MScompute(f"Saved lint stats and removed node list to {output_path}")
         except Exception as e:
             MSwarning(f"Could not write lint report: {e}")
