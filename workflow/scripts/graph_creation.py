@@ -124,18 +124,28 @@ class Path:
         Parameters:
         - lineage (int): A unique identifier for the path.
         - path_edges (list[Edge]): A list of Edge objects forming the path.
+        
+        Note: node_count represents the number of EDGES in the path.
+        The actual number of nodes = node_count + 1 (edges + 1)
         """
         self.lineage = lineage
         self.path_edges: list[Edge] = path_edges if path_edges else []
-        self.node_count = len(self.path_edges)
+        self.node_count = len(self.path_edges)  # This is actually edge count!
+
+    @property
+    def num_nodes(self) -> int:
+        """Returns the actual number of nodes in the path."""
+        if not self.path_edges:
+            return 0
+        return self.node_count + 1  # edges + 1 = nodes
 
     def add_edge(self, edge: Edge) -> None:
         """Adds an edge to the path."""
         self.path_edges.append(edge)
-        self.node_count += 1
+        self.node_count += 1  # Increment edge count
 
     def __repr__(self) -> str:
-        """Returns the gfa sting of the path"""
+        """Returns the gfa string of the path"""
         if not self.path_edges:
             return ""  # If there are no edges, return an empty string
 
@@ -159,25 +169,20 @@ class Path:
             path_repr += f"{edge.node2 if not edge.node2_side else edge.node2.reversed}"
 
         return path_repr
-    
-    @property
-    def bandage_path(self):
-        if not self.path_edges:
-            print("")
-            return 
-        path_repr = f"{self.path_edges[0].node1.id},"
 
-        for edge in self.path_edges:
-            path_repr += f"{edge.node2.id},"
-        print(path_repr)
-
-    def __getitem__(self, i: int) -> Node: # Here we have to reimplement the list functions
-        """Returns the node at position i in the path, supporting negative indices."""
+    def __getitem__(self, i: int) -> Node:
+        """Returns the node at position i in the path, supporting negative indices.
+        
+        Important: With edges [AB -> BC -> CD], we have:
+        - 3 edges (node_count = 3)
+        - 4 nodes (A, B, C, D)
+        - Valid indices: 0, 1, 2, 3
+        """
         if not self.path_edges:
             raise MSerror("Path is empty")
 
         if i < 0:
-            i = self.node_count + 1 + i  # Convert negative index to positive (like Python lists)
+            i = self.node_count + 1 + i  # Convert negative index to positive
 
         if i < self.node_count:
             return self.path_edges[i].node1
@@ -189,10 +194,10 @@ class Path:
     def __iadd__(self, other):
         """Allow concatenation of two paths (or an edge to a path)"""
         if isinstance(other, Edge):
-            self.add_edge(other) # If we try to add an edge
+            self.add_edge(other)  # If we try to add an edge
         elif isinstance(other, Path):
             for path_edge in other.path_edges:
-                self.add_edge(path_edge) # If we try to add a path
+                self.add_edge(path_edge)  # If we try to add a path
         else:
             MSerror("cant += this type to a path")
         return self
