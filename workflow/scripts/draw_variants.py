@@ -88,95 +88,165 @@ def augment_type(tree, variant_probabilities):
         return None
 
 def augment_length_and_position(tree, length_files, minimal_sv_length):
-    """Augments mutations in a tree with length and position based on variant types."""
+    """Augments mutations in a tree with length and position based on variant types.
+    
+    Simple boundary protection: just ensure we don't place mutations at obvious
+    boundary positions. The actual validation happens in apply_mutations_to_graphs.
+    """
     fails = 0
+    boundary_fails = 0
+    
     try:
         for node in tree.get("nodes", []):  
-            for mutation in node.get("mutations", []):  # Iterate over mutations of the node
+            for mutation in node.get("mutations", []):
+                
+                interval_start = node["interval"][0]
+                interval_end = node["interval"][1]
+                interval_size = interval_end - interval_start
                 
                 # Check if interval is too small for any mutation
-                interval_size = node["interval"][1] - node["interval"][0]
-                if interval_size < 3:  # Need at least 3 bases for any meaningful mutation
-                    fails+=1
+                if interval_size < 3:
+                    fails += 1
                     mutation["type"] = None
                     mutation["length"] = None
                     mutation["start"] = None
                     continue
 
-                # Select a random position within the node's interval
-                try:
-                    start_pos = Selector.position(node["interval"])
-                except ValueError as e:
-                    MSwarning(f"Cannot select position for node {node['node']} with interval {node['interval']}: {e}")
-                    mutation["type"] = None
-                    mutation["length"] = None
-                    mutation["start"] = None
-                    continue
-
-                # Select the mutation length
                 variant_type = mutation["type"]
-
-                if variant_type == "SNP":  # For SNPs do nothing
-                    length = None 
-
-                elif variant_type == "INS":  # For INSs select a random length (no limit)
+                
+                # For SNPs: Avoid first and last position
+                if variant_type == "SNP":
+                    if interval_size <= 2:  # No valid interior positions
+                        boundary_fails += 1
+                        mutation["type"] = None
+                        mutation["length"] = None
+                        mutation["start"] = None
+                        continue
+                    
+                    # Select position excluding first and last base
+                    start_pos = random.randint(interval_start + 1, interval_end - 2)
+                    length = None
+                    
+                # For INS: Avoid first position only
+                elif variant_type == "INS":
+                    # Can insert anywhere except at position 0
+                    start_pos = random.randint(interval_start + 1, interval_end - 1)
+                    
                     length_df = length_files.get(variant_type)
                     length = Selector.length(length_df, None, minimal_sv_length)
-
+                    
+                    # Update affected node intervals for tracking
                     affected_nodes = node.get("affected_nodes", [])
                     for affected_node_id in affected_nodes:
                         affected_node = next((n for n in tree.get("nodes", []) if n["node"] == affected_node_id), None)
                         if affected_node:
-                            affected_node["interval"][1] += length  # Expand affected node length
+                            affected_node["interval"][1] += length
                     
-                elif variant_type == "DUP":  # For DUPs select a length with the remaining 3' bases 
+                # For DEL: Ensure we don't delete first/last and leave >=3 nodes
+                elif variant_type == "DEL":
+                    # Need room to delete something without affecting boundaries
+                    if interval_size <= 3:
+                        boundary_fails += 1
+                        mutation["type"] = None
+                        mutation["length"] = None
+                        mutation["start"] = None
+                        continue
+                    
+                    # Start after first position, leave room for at least one deletion
+                    max_start = interval_end - 2  # Need at least 1 position to delete
+                    if interval_start + 1 > max_start:
+                        boundary_fails += 1
+                        mutation["type"] = None
+                        mutation["length"] = None
+                        mutation["start"] = None
+                        continue
+                    
+                    start_pos = random.randint(interval_start + 1, max_start)
+                    
+                    # Maximum deletion: don't delete the last position
+                    max_del_length = interval_end - 1 - start_pos
+                    
+                    # Also ensure we keep interval >= 3
+                    max_del_length = min(max_del_length, interval_size - 3)
+                    
+                    if max_del_length < 1:
+                        boundary_fails += 1
+                        mutation["type"] = None
+                        mutation["length"] = None
+                        mutation["start"] = None
+                        continue
+                    
                     length_df = length_files.get(variant_type)
-                    max_size = node["interval"][1] - start_pos - 1
-                    if max_size < minimal_sv_length:
-                        MSwarning(f"Insufficient space for DUP at node {node['node']}, skipping")
-                        length = None
-                    else:
-                        length = Selector.length(length_df, max_size, minimal_sv_length)
+                    length = Selector.length(length_df, max_del_length, 1)
+                    
+                    # Update affected node intervals for tracking
+                    affected_nodes = node.get("affected_nodes", [])
+                    for affected_node_id in affected_nodes:
+                        affected_node = next((n for n in tree.get("nodes", []) if n["node"] == affected_node_id), None)
+                        if affected_node:
+                            affected_node["interval"][1] -= length
+                
+                # For DUP and INV: Don't affect first or last position
+                elif variant_type in ["DUP", "INV"]:
+                    # Need at least 2 positions to duplicate/invert (can't be first or last)
+                    if interval_size <= 3:
+                        boundary_fails += 1
+                        mutation["type"] = None
+                        mutation["length"] = None
+                        mutation["start"] = None
+                        continue
+                    
+                    # Start after first, need room for at least minimal_sv_length
+                    max_start = interval_end - 1 - minimal_sv_length
+                    
+                    if interval_start + 1 > max_start:
+                        boundary_fails += 1
+                        mutation["type"] = None
+                        mutation["length"] = None
+                        mutation["start"] = None
+                        continue
+                    
+                    start_pos = random.randint(interval_start + 1, max_start)
+                    
+                    # Maximum length: don't include the last position
+                    max_length = interval_end - 1 - start_pos
+                    
+                    if max_length < minimal_sv_length:
+                        boundary_fails += 1
+                        mutation["type"] = None
+                        mutation["length"] = None
+                        mutation["start"] = None
+                        continue
+                    
+                    length_df = length_files.get(variant_type)
+                    length = Selector.length(length_df, max_length, minimal_sv_length)
+                    
+                    # For DUP, update affected node intervals for tracking
+                    if variant_type == "DUP":
                         affected_nodes = node.get("affected_nodes", [])
                         for affected_node_id in affected_nodes:
                             affected_node = next((n for n in tree.get("nodes", []) if n["node"] == affected_node_id), None)
                             if affected_node:
                                 affected_node["interval"][1] += length
                 
-                elif variant_type == "DEL":
-                    current_size = node["interval"][1] - node["interval"][0]
-                    
-                    if current_size > 3:  # Ensure the sequence is never less than 2 bases
-                        length_df = length_files.get(variant_type)
-                        max_size = node["interval"][1] - start_pos - 1
-                        length = Selector.length(length_df, max_size, 0)
-
-                        if current_size - length >= 2:  # Ensure deletion does not reduce size below 2
-                            affected_nodes = node.get("affected_nodes", [])
-                            for affected_node_id in affected_nodes:
-                                affected_node = next((n for n in tree.get("nodes", []) if n["node"] == affected_node_id), None)
-                                if affected_node:
-                                    affected_node["interval"][1] -= length  # Subtract for DELs
-                        else:
-                            length = None  # Skip deletion if it would make sequence < 2
-                    else:
-                        length = None  # Skip deletion if there are only 2 bases
-                        
-                elif variant_type == "INV": #For the INVs we don't change the total size
-                    length_df = length_files.get(variant_type)
-                    max_size = node["interval"][1] - start_pos - 1
-                    if max_size < minimal_sv_length:
-                        MSwarning(f"Insufficient space for INV at node {node['node']}, skipping")
-                        length = None
-                    else:
-                        length = Selector.length(length_df, max_size, minimal_sv_length)
-
+                else:
+                    # Unknown variant type
+                    mutation["type"] = None
+                    mutation["length"] = None
+                    mutation["start"] = None
+                    continue
+                
+                # Assign the calculated values
                 mutation["length"] = length
                 mutation["start"] = start_pos
 
-        if fails != 0 : 
-            MSwarning(f"{fails} mutation skip, consider decreasing recombination rate.")
+        if fails != 0:
+            MSwarning(f"{fails} mutations skipped due to intervals < 3 bases")
+        if boundary_fails != 0:
+            MSwarning(f"{boundary_fails} mutations rejected due to boundary constraints")
+        
         return tree
+        
     except Exception as e:
         raise MSerror(f"Error augmenting mutations with length and position: {e}")
 
