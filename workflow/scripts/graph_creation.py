@@ -1329,7 +1329,15 @@ def apply_mutations_to_graphs(graphs, traversal, recap: MutationRecap, visualize
                 visualizer.add_variant(mut_type, start, length, success, affected_lineages)
         
         i += 1
-
+        
+def step(graphs, output_file):
+    """Test function for graph saving"""
+    ensemble = GraphEnsemble(name=f"step", graph_list=graphs)
+    ensemble.concatenate
+    if ensemble.graphs:  
+        final_graph = ensemble.graphs[0]
+    ensemble.lint(ignore_ancestral=False)
+    ensemble.save_to_gfav1_1_hybrid(output_file, ignore_ancestral=False, max_workers=4)
 
 def main(splited_fasta: str, augmented_traversal: str, output_file: str, 
          sample: str, chromosome: str, fasta_folder: str, recap_file: str = None, 
