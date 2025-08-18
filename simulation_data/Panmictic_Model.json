@@ -1,7 +1,7 @@
 {
   "name": "Panmictic_Model",
-  "mutation_rate": 1e-6,
-  "recombination_rate": 0.5e-7,
+  "mutation_rate": 1e-7,
+  "recombination_rate": 1e-8,
   "generation_time": 25,
   "populations": [
     {
@@ -12,7 +12,7 @@
   "samples": [
     {
       "population": "pop1",
-      "sample_size": 5
+      "sample_size": 3
     }
   ]
 }

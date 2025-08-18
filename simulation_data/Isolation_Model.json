@@ -1,7 +1,7 @@
 {
   "name": "Simple_AB_Split_Model",
   "description": "Large POP_A and small isolated POP_B with common ancestor",
-  "mutation_rate": 1e-7,
+  "mutation_rate": 5e-8,
   "recombination_rate": 1e-8,
   "generation_time": 25,
   "populations": [
@@ -16,7 +16,7 @@
   "demographic_events": [
     {
       "type": "mass_migration",
-      "time": 1000,
+      "time": 3000,
       "source": "POP_2",
       "dest": "POP_1",
       "proportion": 1.0,
