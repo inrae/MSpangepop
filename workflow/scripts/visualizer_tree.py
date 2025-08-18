@@ -51,12 +51,12 @@ class TreeVisualizer:
         
         # Mutated tree sequence
         with open(os.path.join(self.output_dir, "mutated_global.svg"), "w") as f:
-            f.write(self.mutated_ts.draw_svg(time_scale="rank", style=self.base_style))
+            f.write(self.mutated_ts.draw_svg(style=self.base_style))
         self.progress.update_subtask()
         
         # Ancestry tree sequence
         with open(os.path.join(self.output_dir, "ancestry_global.svg"), "w") as f:
-            f.write(self.ancestry_ts.draw_svg(time_scale="rank", style=self.base_style))
+            f.write(self.ancestry_ts.draw_svg(style=self.base_style))
         self.progress.update_subtask()
     
     def save_individual_trees(self, chromosome_name="chr1"):
