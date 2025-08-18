@@ -963,7 +963,6 @@ class GraphEnsemble:
         total_nodes = len(graph.nodes)
         total_paths = sum(1 for lineage in graph.paths.keys() 
                         if not (ignore_ancestral and lineage == "Ancestral"))
-        print()
         MScompute(f"Starting GFA export: {total_nodes} nodes, {total_paths} paths to process")
         
         def process_nodes_parallel():
@@ -1033,7 +1032,6 @@ class GraphEnsemble:
                 
                 processed_paths += 1
             
-            MScompute("Converting edges to GFA format...")
             
             # Convert edges to strings
             edges_buffer = StringIO()
@@ -1052,7 +1050,7 @@ class GraphEnsemble:
             return paths_buffer.getvalue(), edges_buffer.getvalue()
         
         # Execute both tasks in parallel
-        MScompute("Starting parallel processing of nodes and paths...")
+        MScompute(f"Starting to create buffer with {max_workers} threads")
         
         with ThreadPoolExecutor(max_workers=2) as executor:
             nodes_future = executor.submit(process_nodes_parallel)
@@ -1067,10 +1065,10 @@ class GraphEnsemble:
         paths_size = len(paths_str)
         total_size = nodes_size + edges_size + paths_size
         
-        MScompute(f"Data prepared: {total_size:,} characters ({nodes_size:,} nodes, {edges_size:,} edges, {paths_size:,} paths)")
+        MScompute(f"Buffer ready : {total_size:,} characters to save. ({nodes_size:,} N, {edges_size:,} E, {paths_size:,} P)")
         
         # Write to file
-        MScompute(f"Writing GFA file to {file_path}...")
+        MScompute(f"Writing GFA file...")
         write_start = time.time()
         
         with open(file_path, 'w') as f:
@@ -1080,7 +1078,7 @@ class GraphEnsemble:
             print("\t\tWriting edges...")
             f.write(edges_str)
             
-            print("\t\tWriting paths...")
+            ("\t\tWriting paths...")
             f.write(paths_str)
         
         write_time = time.time() - write_start
@@ -1089,8 +1087,7 @@ class GraphEnsemble:
         # Final statistics
         file_size_mb = total_size / (1024 * 1024)
         write_speed_mb_s = file_size_mb / write_time if write_time > 0 else 0
-        print()
-        MScompute(f"GFA export completed successfully!")
+        print(f"\t\tGFA export completed successfully!")
         print(f"\t\tSize: {file_size_mb:.2f} MB")
         print(f"\t\tWrite speed: {write_speed_mb_s:.2f} MB/s")
         print()
@@ -1377,15 +1374,10 @@ def main(splited_fasta: str, augmented_traversal: str, output_file: str,
             graphs.append(new_graph)
             y += 1
         
-        MScompute(f"Initialized {len(graphs)} graphs for chromosome {chromosome}")
-        
-        # Apply mutations with tracking
-
-        MScompute(f"Starting to integrate mutation to all graphs")
         apply_mutations_to_graphs(graphs, traversal, recap, var_visualizer, chromosome)
         ensemble = GraphEnsemble(name=f"{sample}_chr_{chromosome}", graph_list=graphs)
 
-        MScompute(f"Concatenating all graphs")
+        MScompute(f"Concatenating and linting graphs")
         ensemble.concatenate
         if ensemble.graphs:  # Should have exactly one graph after concatenation
             final_graph = ensemble.graphs[0]
@@ -1395,7 +1387,6 @@ def main(splited_fasta: str, augmented_traversal: str, output_file: str,
                 lineage_lengths[lineage] = path.node_count + 1  # edges + 1 = nodes
             var_visualizer.set_lineage_lengths(lineage_lengths)
 
-        MScompute(f"Removing nodes orphaned by the mutations on {chromosome}")
         ensemble.lint(ignore_ancestral=True, visualizer=lint_visualizer)
 
         ensemble.save_to_gfav1_1_hybrid(output_file, ignore_ancestral=True, max_workers=threads)
@@ -1416,7 +1407,7 @@ def main(splited_fasta: str, augmented_traversal: str, output_file: str,
         # Save recap
         if recap_file:
             recap.save_recap(recap_file)
-            MScompute(f"Recap saved to {recap_file}")
+            MScompute(f"Saving recap [1/2]")
         
         if variant_plot_dir:
             
