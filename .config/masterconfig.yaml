@@ -1,29 +1,47 @@
 # MSpangepop configuration file
 # 
 # Each sample is defined by a unique name and associated parameters.
-# WARNING: please do a test run with small population sizes first.
+# WARNING: please do a test run with small population / mutation rate first (inside the demographic_file)
 
-
-# Individual samples: Manually defined samples with fixed parameters
+# Example with basic configuration parameters
 samples:
-  Test_A:
-    fasta_gz: "small_test_genome.fa.gz"
+  Chain_Migration_Model:
+    fasta_gz: small_test_genome.fa.gz
     chr_n: 1
-    demographic_file: "simulation_data/Panmictic_Model.json"
-    sv_distribution: {SNP: 50, DEL: 20, INS: 20, INV: 10, DUP: 0} 
+    demographic_file: simulation_data/Chain_Migration_Model.json
+    sv_distribution: {SNP: 30, DEL: 20, INS: 15, INV: 20, DUP: 15}
+    seed: Pangenome
+  Island_Model:
+    fasta_gz: small_test_genome.fa.gz
+    chr_n: 1
+    demographic_file: simulation_data/Island_Model.json
+    sv_distribution: {SNP: 30, DEL: 20, INS: 15, INV: 20, DUP: 15}
+    seed: Pangenome
+  Isolation_Model:
+    fasta_gz: small_test_genome.fa.gz
+    chr_n: 1
+    demographic_file: simulation_data/Isolation_Model.json
+    sv_distribution: {SNP: 30, DEL: 20, INS: 15, INV: 20, DUP: 15}
+    seed: Pangenome
+  Panmictic_Model:
+    fasta_gz: small_test_genome.fa.gz
+    chr_n: 1
+    demographic_file: simulation_data/Panmictic_Model.json
+    sv_distribution: {SNP: 30, DEL: 20, INS: 15, INV: 20, DUP: 15}
     seed: Pangenome
 
-# Parameter sweeps: Automatically generate multiple samples with parameter combinations
+# Example with seep parameter (will explore all possible combinations)
 sweep_samples:
-  Test_B:
+  Sweep_Panmictic:
     base_demographic_file: "simulation_data/Panmictic_Model.json"
     fasta_gz: "small_test_genome.fa.gz"
     chr_n: 1
     sweep_params:
-      mutation_rate: [1e-6, 1e-7]
+      mutation_rate: [5e-6, 1e-7]
     sv_sweep:
-      - {SNP: 50, DEL: 20, INS: 20, INV: 10, DUP: 0} 
-    replicates: 1
+      - {SNP: 30, DEL: 20, INS: 15, INV: 20, DUP: 15} 
+      - {SNP: 0, DEL: 30, INS: 30, INV: 30, DUP: 10}
+    replicates: 2
 
 # CONFIGURATION REFERENCE:
 #
