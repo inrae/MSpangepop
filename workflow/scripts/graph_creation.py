@@ -288,12 +288,36 @@ class Path:
             # Edges that traverse the nodes [0, end]
             edges_to_duplicate = self.path_edges[start:end]
             
-            # Create the "loop back" edge from node[end] to node[0]
+            # Determine proper orientations for the loop-back edge
+            # We need to exit from node[end] the opposite way we enter it
+            # and enter node[start] the opposite way we exit it
+            if end > 0 and end <= self.node_count:
+                # Get how we enter the end node (from the edge coming into it)
+                if end > 0 and end - 1 < len(self.path_edges):
+                    end_entry_side = self.path_edges[end-1].node2_side
+                    # Exit the opposite way
+                    end_exit_side = not end_entry_side
+                else:
+                    end_exit_side = True  # Default if we can't determine
+                
+                # Get how we exit the start node
+                if len(self.path_edges) > 0:
+                    start_exit_side = self.path_edges[0].node1_side
+                    # Enter the opposite way
+                    start_entry_side = not start_exit_side
+                else:
+                    start_entry_side = False  # Default if we can't determine
+            else:
+                # Use defaults if indices are at boundaries
+                end_exit_side = True
+                start_entry_side = False
+            
+            # Create the "loop back" edge with proper orientations
             loop_back_edge = Edge(
-                self[end],      # From end node
-                True,           # Standard exit orientation
-                self[start],    # To start node (node 0)
-                False           # Standard entry orientation
+                self[end],          # From end node
+                end_exit_side,      # Exit orientation based on how we entered
+                self[start],        # To start node (node 0)
+                start_entry_side    # Entry orientation based on how we exit
             )
             
             # Create copies of the original edges for the second traversal
@@ -312,19 +336,34 @@ class Path:
             self.path_edges[end:end] = complete_loop
             
         else:
-            # FIXED: Normal case now creates proper connectivity
-            # We need to duplicate the INTERNAL edges of the section [start, end]
-            # and add a loop-back edge from end to start
-            
+            # Normal case: determine orientations based on existing edges
             # Internal edges within the duplicated section
-            edges_to_duplicate = self.path_edges[start:end]  # FIXED: was start-1:end
+            edges_to_duplicate = self.path_edges[start:end]
             
-            # Create the "loop back" edge from node[end] to node[start]
+            # Determine proper orientations for the loop-back edge
+            # based on how we're traversing these nodes in the path
+            if end > 0 and end - 1 < len(self.path_edges):
+                # How we enter the end node
+                end_entry_side = self.path_edges[end-1].node2_side
+                # Exit the opposite way for the loop-back
+                end_exit_side = not end_entry_side
+            else:
+                end_exit_side = True  # Default
+            
+            if start > 0 and start < len(self.path_edges):
+                # How we exit the start node  
+                start_exit_side = self.path_edges[start].node1_side
+                # Enter the opposite way for the loop-back
+                start_entry_side = not start_exit_side
+            else:
+                start_entry_side = False  # Default
+            
+            # Create the "loop back" edge with proper orientations
             loop_back_edge = Edge(
-                self[end],      # From end node
-                True,           # Standard exit orientation  
-                self[start],    # To start node
-                False           # Standard entry orientation
+                self[end],          # From end node
+                end_exit_side,      # Proper exit orientation
+                self[start],        # To start node
+                start_entry_side    # Proper entry orientation
             )
             
             # Create copies of the internal edges
