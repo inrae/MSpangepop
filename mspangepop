@@ -66,7 +66,7 @@ run_snakemake() {
             snakemake -c $(nproc) --touch $extra_args
             ;;
         dag)
-            snakemake -c $(nproc) --dag $extra_args > dag.dot 
+            snakemake -c "$(nproc)" --dag $extra_args | sed -n '/^digraph snakemake_dag {$/,$p' > dag.dot
             if [ $? -eq 0 ]; then
                 echo "✅ MSpangepop -> DAG has been successfully generated as dag.dot"
             else
@@ -75,7 +75,7 @@ run_snakemake() {
             fi
             ;;
         rulegraph)
-            snakemake -c $(nproc) --rulegraph $extra_args > rulegraph.dot 
+            snakemake -c $(nproc) --rulegraph $extra_args | sed -n '/^digraph snakemake_dag {$/,$p' > rulegraph.dot
             if [ $? -eq 0 ]; then
                 echo "✅ MSpangepop -> Rulegraph has been successfully generated as rulegraph.dot"
             else
@@ -98,7 +98,7 @@ run_snakemake() {
         local-run)
             SNG_BIND=$(pwd)
             echo "🔹 MSpangepop -> Using $MEM_MB Mb of memory"
-            snakemake --use-singularity --singularity-args "-B $SNG_BIND" -j $(nproc) --rerun-incomplete --resources mem_mb=$MEM_MB $extra_args -k -q rules
+            snakemake --use-singularity --singularity-args "-B $SNG_BIND" -c $(nproc) --rerun-incomplete --resources mem_mb=$MEM_MB $extra_args -k -q rules
             ;;
         *)
             echo "Invalid option: $option"
