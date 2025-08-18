@@ -1104,7 +1104,7 @@ class GraphEnsemble:
         paths_size = len(paths_str)
         total_size = nodes_size + edges_size + paths_size
         
-        MScompute(f"Buffer ready : {total_size:,} characters to save. ({nodes_size:,} N, {edges_size:,} E, {paths_size:,} P)")
+        MScompute(f"Buffer ready : {total_size:,} characters to save. ({nodes_size:,} S, {edges_size:,} L, {paths_size:,} P)")
         
         # Write to file
         MScompute(f"Writing GFA file...")
