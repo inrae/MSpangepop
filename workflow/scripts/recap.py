@@ -78,7 +78,7 @@ def main():
         f.write(f"Output Directory    : {args.output_dir}\n")
         f.write(f"Memory Multiplier   : {config.get('memory_multiplier', 'N/A')}\n")
 
-    MSsuccess(f"Created global simulation recap")
+    MScompute(f"Created global simulation recap")
 
 
 if __name__ == "__main__":

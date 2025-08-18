@@ -230,8 +230,6 @@ def get_chromosome_length(fai_file, chromosome_name):
     Retrieves the length of a specified chromosome from a FASTA index (.fai) file.
     """
 
-    MScompute(f"Gathering length for chromosome {chromosome_name}")
-
     chrom_lengths = MSpangepopDataHandler.read_fai(fai_file)
 
     if not chromosome_name.isdigit() or int(chromosome_name) - 1 >= len(chrom_lengths):
@@ -260,18 +258,16 @@ def simulate_chromosome_evolution(
     """
     pseed = process_seed(seed)
     try:
+        MScompute(f"Chr {chromosome_name}, starting MSprime simulation...")
         start_time = time.time()
 
         # Fetch chromosome length
         chrom_length = get_chromosome_length(fai_file, chromosome_name)
-        MScompute(f"Chr {chromosome_name}, starting MSprime simulation...")
-
+        
         # Load demographic model
         demography, samples, sample_size, mutation_rate, recombination_rate, demo_data = load_demographic_model(demographic_file)
         plot_demographic(demographic_file, recap.replace('.txt', '_plot.png'))
-        MScompute(f"Using mutation rate: {mutation_rate}")
-        MScompute(f"Using recombination rate: {recombination_rate}")
-        MScompute(f"Total sample size: {sample_size}")
+        MScompute(f"Using mutation rate: {mutation_rate}, recombination rate: {recombination_rate}")
 
         # Create recombination map
         recombination_map = create_recombination_map(chrom_length, recombination_rate)
@@ -296,7 +292,7 @@ def simulate_chromosome_evolution(
         mutated_ts = mutated_ts.simplify()
 
         simulation_time = time.time() - start_time  # Time taken for simulation
-
+        MScompute(f"Simulated: {mutated_ts.num_trees} trees, {mutated_ts.num_mutations} mutations")
         # Save mutation visualization
         MScompute(f"Saving output for chromosome {chromosome_name}")
 

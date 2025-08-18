@@ -249,7 +249,7 @@ class VariantSizeVisualizer:
 
     def save_variant_density_plot(self, output_path: str):
         """Create a density plot showing variant counts by RELATIVE position for each type."""
-        MScompute(f"Creating variant density plot for sample {self.sample} chr {self.chromosome}")
+        MScompute(f"Creating variant density plot [2/6]")
         if not self.variant_positions:
             MSwarning("Warning: No variant data to plot")
             return
@@ -305,7 +305,7 @@ class VariantSizeVisualizer:
 
     def save_size_distribution_plot(self, output_path: str):
         """Size distribution with SMOOTH DENSITY LINES instead of histograms."""
-        MScompute(f"Creating variant size distribution for sample {self.sample} chr {self.chromosome}")
+        MScompute(f"Creating variant size distribution [1/6]")
         
         # Filter out SNPs for the size distribution plot
         variant_sizes_no_snp = {k: v for k, v in self.variant_sizes.items() if k != 'SNP'}
@@ -394,7 +394,7 @@ class VariantSizeVisualizer:
 
     def save_cumulative_variants_plot(self, output_path: str):
         """Create a cumulative plot showing variant accumulation along RELATIVE positions."""
-        MScompute(f"Creating cumulative variants plot for sample {self.sample} chr {self.chromosome}")
+        MScompute(f"Creating cumulative variants plot [5/6]")
         
         if not self.variant_positions:
             MSwarning("No variant data to plot")
@@ -439,7 +439,7 @@ class VariantSizeVisualizer:
     # Keep other methods unchanged
     def save_shared_variants_heatmap(self, output_path: str):
         """Create a heatmap showing shared variants between lineages."""
-        MScompute(f"Creating shared variants heatmap for sample {self.sample} chr {self.chromosome}")
+        MScompute(f"Creating shared variants heatmap [3/6]")
         
         if not self.variants_by_lineage:
             MSwarning("No variant data for lineage analysis")
@@ -500,7 +500,7 @@ class VariantSizeVisualizer:
 
     def save_variant_type_proportions_plot(self, output_path: str):
         """Create a pie chart showing proportions of each variant type."""
-        MScompute(f"Creating variant type proportions plot for sample {self.sample} chr {self.chromosome}")
+        MScompute(f"Creating variant type proportions plot [4/6]")
         
         if not self.variant_positions:
             MSwarning("Warning: No variant data to plot")
@@ -557,7 +557,7 @@ class VariantSizeVisualizer:
 
     def save_lineage_lengths_plot(self, output_path: str):
         """Original lineage lengths plot - kept as is."""
-        MScompute(f"Creating lineage plot for sample {self.sample} chr {self.chromosome}")
+        MScompute(f"Creating lineage plot [6/6]")
         if not self.lineage_lengths:
             MSwarning("Warning: No lineage length data to plot")
             return
@@ -638,6 +638,6 @@ class LintVisualizer:
                 f.write(f"Orphan nodes removed by linting: {num_removed}\n")
                 f.write(f"Percent removed: {percent_removed:.2f}%\n\n")
             
-            MScompute(f"Saved lint stats and removed node list to {output_path}")
+            MSsuccess(f"Saved recap [2/2]")
         except Exception as e:
             MSwarning(f"Could not write lint report: {e}")

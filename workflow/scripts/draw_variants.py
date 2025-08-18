@@ -359,7 +359,7 @@ def main(json_file, output_json_file, sv_distribution, chromosome, num_threads, 
         
         MScompute(f"Total mutations: {total_mutations}")
         MScompute(f"Mutation breakdown: {', '.join([f'{k}:{v}' for k, v in mutation_counts.items()])}")
-        MScompute(f"Processing time: {elapsed_time:.2f} seconds")
+        MSsuccess(f"Processing time: {elapsed_time:.2f} seconds")
         
 
     except Exception as e:
