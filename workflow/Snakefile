@@ -306,17 +306,17 @@ rule gfa_merge:
     priority: 7
     shell:
         """
-        echo "   [gfa_merge] Starting to clean the GFA file using odgi"
-        echo "   [gfa_merge] Importing..."
+        echo "[gfa_merge] Starting to clean the GFA file using odgi"
+        echo "[gfa_merge] Importing..."
         odgi build -g {input.initial_gfa} -o {output.og_raw} -O -t {threads} -P
-        echo "\n   [gfa_merge] Initial GFA state :"
-        odgi stats -i {output.og_raw} -S -L -b -t {threads} -P
-        echo "\n   [gfa_merge] Starting to unchop"
+        echo "\n[gfa_merge] Initial GFA state :" > {output.polished_gfa_stats}
+        odgi stats -i {output.og_raw} -S -L -b -t {threads} -P >> {output.polished_gfa_stats}
+        echo "[gfa_merge] Starting to unchop"
         odgi unchop -i {output.og_raw} -o {output.og_unchoped} -t {threads} -P
-        echo "\n   [gfa_merge] Final state"
-        odgi stats -i {output.og_unchoped} -S -S -L -b -t {threads} -P > {output.polished_gfa_stats}
+        echo "\n[gfa_merge] Final state" : >> {output.polished_gfa_stats}
+        odgi stats -i {output.og_unchoped} -S -S -L -b -t {threads} -P >> {output.polished_gfa_stats}
         cat {output.polished_gfa_stats}
-        echo "\n   [gfa_merge] Saving final GFA"
+        echo "\n[gfa_merge] Saving final GFA"
         odgi view -i {output.og_unchoped} -t {threads} -g > {output.polished_gfa}
         echo "✅ Final GFA @ {output.polished_gfa}"
         """
