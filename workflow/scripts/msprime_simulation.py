@@ -44,8 +44,31 @@ def load_demographic_model(demographic_file: str, verbose = True):
         if verbose == True : 
             MScompute(f"Loading demographic model: {demo_data.get('name', 'Unknown')}")
 
-        # Validate required fields
-        required_fields = ['populations', 'samples', 'mutation_rate', 'recombination_rate']
+        if 'evolutionary_params' in demo_data:
+            evolutionary_params = demo_data['evolutionary_params']
+            mutation_rate = evolutionary_params.get('mutation_rate')
+            recombination_rate = evolutionary_params.get('recombination_rate')
+            generation_time = evolutionary_params.get('generation_time', 25)
+            
+            if mutation_rate is None:
+                raise MSerror("Missing 'mutation_rate' in evolutionary_params")
+            if recombination_rate is None:
+                raise MSerror("Missing 'recombination_rate' in evolutionary_params")
+                
+        else:
+            mutation_rate = demo_data.get('mutation_rate')
+            recombination_rate = demo_data.get('recombination_rate')
+            generation_time = demo_data.get('generation_time', 25)
+            
+            if mutation_rate is None:
+                raise MSerror("Missing 'mutation_rate' in demographic JSON file. "
+                            "It should be either at top level or in 'evolutionary_params'")
+            if recombination_rate is None:
+                raise MSerror("Missing 'recombination_rate' in demographic JSON file. "
+                            "It should be either at top level or in 'evolutionary_params'")
+
+        # Validate other required fields
+        required_fields = ['populations', 'samples']
         for field in required_fields:
             if field not in demo_data:
                 raise MSerror(f"Missing required field '{field}' in demographic JSON file")
@@ -82,12 +105,21 @@ def load_demographic_model(demographic_file: str, verbose = True):
                     proportion=event['proportion']
                 )
 
-            elif event_type == 'population_split':
-                demography.add_population_split(
-                    time=time,
-                    derived=event['derived'],
-                    ancestral=event['ancestral']
-                )
+            elif event_type == 'population_split' or event_type == 'split':
+                # Handle both 'population_split' and 'split' for compatibility
+                if 'derived' in event:
+                    demography.add_population_split(
+                        time=time,
+                        derived=event['derived'],
+                        ancestral=event.get('ancestral', event.get('source'))
+                    )
+                else:
+                    # Old format with single derived population
+                    demography.add_population_split(
+                        time=time,
+                        derived=[event.get('population', event.get('derived_population'))],
+                        ancestral=event.get('ancestral', event.get('source'))
+                    )
 
             elif event_type == 'add_migration_rate_change':
                 demography.add_migration_rate_change(
@@ -116,15 +148,16 @@ def load_demographic_model(demographic_file: str, verbose = True):
             samples.append(msprime.SampleSet(sample_size, population=pop_name))
             total_sample_size += sample_size
 
-        mutation_rate = demo_data['mutation_rate']
-        recombination_rate = demo_data['recombination_rate']
-
         if mutation_rate < 0:
             raise MSerror("Mutation rate must be non-negative.")
         if recombination_rate < 0:
             raise MSerror("Recombination rate must be non-negative.")
 
         demography.sort_events()
+
+        # Store generation_time in demo_data if it's not there (for recap file)
+        if 'generation_time' not in demo_data:
+            demo_data['generation_time'] = generation_time
 
         return demography, samples, total_sample_size, mutation_rate, recombination_rate, demo_data
 
@@ -146,22 +179,24 @@ def plot_demographic(demographic_file: str, output_file: str, log_time: bool = T
         output_file: Path to save the output plot
         log_time: Whether to use log scale for time axis
     """
+    try:
+        # Load the demographic model
+        demography, _, _, _, _, demo_data = load_demographic_model(demographic_file, verbose = False)
         
-    # Load the demographic model
-    demography, _, _, _, _, demo_data = load_demographic_model(demographic_file, verbose = False)
-    
-    # Create figure and plot
-    fig, ax = plt.subplots(figsize=(10, 8))
-    
-    # Convert to demes and draw
-    graph = demography.to_demes()
-    demesdraw.tubes(graph, ax=ax, log_time=log_time)
-    ax.set_title(f"{demo_data.get('name', 'Demographic Model')}\n{demo_data.get('description', '')}")
-    
-    # Save
-    plt.tight_layout()
-    plt.savefig(output_file, dpi=300, bbox_inches='tight')
-    plt.close()
+        # Create figure and plot
+        fig, ax = plt.subplots(figsize=(10, 8))
+        
+        # Convert to demes and draw
+        graph = demography.to_demes()
+        demesdraw.tubes(graph, ax=ax, log_time=log_time)
+        ax.set_title(f"{demo_data.get('name', 'Demographic Model')}\n{demo_data.get('description', '')}")
+        
+        # Save
+        plt.tight_layout()
+        plt.savefig(output_file, dpi=300, bbox_inches='tight')
+        plt.close()
+    except Exception as e:
+        MScompute(f"Warning: Could not generate demographic plot: {e}")
     
 
 def save_output(mutated_ts, chromosome_name: str, json_file: str, readable_json: bool):
@@ -303,6 +338,12 @@ def simulate_chromosome_evolution(
 
         save_tree_sequences(mutated_ts, ancestry_ts, full_ancestry_ts, mutated_ts_file, ancestry_ts_file, full_ancestry_ts_file)
 
+        # Extract generation_time from the appropriate location
+        if 'evolutionary_params' in demo_data:
+            generation_time = demo_data['evolutionary_params'].get('generation_time', 25)
+        else:
+            generation_time = demo_data.get('generation_time', 25)
+
         # Write recap file
         recap_file_path = recap
         with open(recap_file_path, "w") as recap_file:
@@ -315,6 +356,7 @@ def simulate_chromosome_evolution(
             recap_file.write(f"Chromosome Length: {chrom_length} bp\n")
             recap_file.write(f"Mutation Rate: {mutation_rate} per bp\n")
             recap_file.write(f"Recombination Rate: {recombination_rate} per bp\n")
+            recap_file.write(f"Generation Time: {generation_time} years\n")
             recap_file.write(f"Sample Size: {sample_size} individuals\n")
             recap_file.write(f"Mutation Model: {model}\n")
             recap_file.write(f"Total Trees: {mutated_ts.num_trees}\n")
@@ -331,6 +373,16 @@ def simulate_chromosome_evolution(
             recap_file.write("\nSample Distribution:\n")
             for sample in demo_data['samples']:
                 recap_file.write(f"  - {sample['population']}: {sample['sample_size']} samples\n")
+            
+            # Add demographic events summary if present
+            if 'demographic_events' in demo_data and demo_data['demographic_events']:
+                recap_file.write("\nDemographic Events:\n")
+                event_types = {}
+                for event in demo_data['demographic_events']:
+                    event_type = event.get('type', 'unknown')
+                    event_types[event_type] = event_types.get(event_type, 0) + 1
+                for event_type, count in event_types.items():
+                    recap_file.write(f"  - {event_type}: {count} events\n")
             
             recap_file.write(f"\nTime Taken for Simulation: {simulation_time:.2f} seconds\n")
             recap_file.write(f"Time Taken for Saving Output: {save_time:.2f} seconds\n")
