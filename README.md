@@ -5,8 +5,8 @@ MSpangepop is a workflow for simulating variation graphs from coalescent simulat
 ## Documentation Structure
 
 - **[Input Files](doc/input_file.md)** - Requirements and specifications for input data
-- **[Master Configuration](doc/configuration.md)** - How to set up configuration files and parameters
-- **[Demographic model configuration](doc/create_your_model.md)** - Adapt or create a model
+- **[Master Configuration](doc/configuration_master.md)** - How to set up configuration files and parameters
+- **[Demographic model configuration](doc/configuration_model.md)** - Adapt or create a model
 - **[Output Files](doc/output_files.md)** - Description of generated results and outputs
 - **[Visualizations](doc/visualisations.md)** - Understanding the generated plots and charts
 - **[Advanced Topics](doc/go_even_deeper.md)** - In-depth information for power users
@@ -29,31 +29,25 @@ conda env create -n wf_env -f dependencies/wf_env.yaml
 ### 2. Configure the pipeline for your data
 
 Two elements are needed to run the simulation : 
-- The `masterconfig` -> **[Master Configuration](doc/configuration.md)**
-- The `demographic_file`  -> **[Demographic model configuration](doc/configuration.md)**
+- The `masterconfig` -> **[Master Configuration](doc/configuration_master.md)**
+- The `demographic_file`  -> **[Demographic model configuration](doc/configuration_model.md)**
 
 #### To do a quick test : 
 
-Edit the `masterconfig` file in the `.config/` directory with your sample information. -> **[Master Configuration](doc/configuration.md)**
+Edit the `masterconfig` file in the `.config/` directory with your sample information. -> **[Master Configuration](doc/configuration_master.md)**
 
 ```bash
 nano .config/masterconfig.yaml
 ```
 
-Example config with minimal parameters:
+Example config:
 ```yaml
 samples:
-  my_first_run:
-    fasta_gz: "small_test_genome.fa.gz"
-    chr_n: 1
-    demographic_file: "simulation_data/Panmictic_Model.json"
-    sv_distribution: {SNP: 50, DEL: 20, INS: 20, INV: 10, DUP: 0}
+  test_run:
+    model: "simulation_data/Panmictic_Model.json"
+    replicates: 1
 ```
-- `fasta_gz` is the input fasta file
-- `chr_n` is the number of chromosomes in that file
-- `demographic_file` is the demographic scenario the simulation will run on. You can create your own or tailor the ones in `./simulation_data` -> **[Demographic model configuration](doc/configuration.md)**
-- `sv_distribution` percentage of each variant type (must sum to 100)
-
+- `model` is the demographic scenario the simulation will run on. You can create your own or tailor the ones in `./simulation_data` -> **[Demographic model configuration](doc/configuration_model.md)**
 
 
 ### 3. Run the workflow 
