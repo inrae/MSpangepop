@@ -1,14 +1,33 @@
 {
   "name": "Panmictic_Model",
-  "mutation_rate": 1e-7,
-  "recombination_rate": 1e-8,
-  "generation_time": 25,
+  "description": "Single panmictic population model with parameter ranges",
+  
+  "simulation_params": {
+    "fasta_gz": "small_test_genome.fa.gz",
+    "chr_n": 2,
+    "sv_distribution": {
+      "SNP": 30,
+      "DEL": 20,
+      "INS": 20,
+      "INV": 20,
+      "DUP": 10
+    },
+    "seed": "Pangenome"
+  },
+  
+  "evolutionary_params": {
+    "mutation_rate": {"min": 1e-7, "max": 1e-6, "distribution": "uniform, normal, gaussian... "},
+    "recombination_rate": 1e-8,
+    "generation_time": 25
+  },
+  
   "populations": [
     {
       "id": "pop1",
       "initial_size": 5000
     }
   ],
+  
   "samples": [
     {
       "population": "pop1",
@@ -16,4 +35,3 @@
     }
   ]
 }
- 

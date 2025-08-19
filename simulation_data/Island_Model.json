@@ -1,16 +1,34 @@
 {
   "name": "Island_Model",
-  "description": "Model made for 5 islands",
-  "mutation_rate": 1e-7,
-  "recombination_rate": 0.5e-8,
-  "generation_time": 25,
+  "description": "Island model with both fixed and range parameters",
+  
+  "simulation_params": {
+    "fasta_gz": "small_test_genome.fa.gz",
+    "chr_n": 1,
+    "sv_distribution": {
+      "SNP": 30,
+      "DEL": 20,
+      "INS": 15,
+      "INV": 20,
+      "DUP": 15
+    },
+    "seed": "Pangenome"
+  },
+  
+  "evolutionary_params": {
+    "mutation_rate": {"min": 5e-8, "max": 2e-7},
+    "recombination_rate": 0.5e-8,
+    "generation_time": 25
+  },
+  
   "populations": [
     { "id": "ISLAND_1", "initial_size": 1000 },
-    { "id": "ISLAND_2", "initial_size": 1000 },
-    { "id": "ISLAND_3", "initial_size": 1000 },
+    { "id": "ISLAND_2", "initial_size": {"min": 800, "max": 1200} },
+    { "id": "ISLAND_3", "initial_size": {"min": 800, "max": 1200} },
     { "id": "ISLAND_4", "initial_size": 1000 },
-    { "id": "ISLAND_5", "initial_size": 1000 }
+    { "id": "ISLAND_5", "initial_size": {"min": 1500, "max": 2000} }
   ],
+  
   "samples": [
     { "population": "ISLAND_1", "sample_size": 5 },
     { "population": "ISLAND_2", "sample_size": 5 },
@@ -18,9 +36,10 @@
     { "population": "ISLAND_4", "sample_size": 5 },
     { "population": "ISLAND_5", "sample_size": 5 }
   ],
+  
   "demographic_events": [
-    { "type": "add_migration_rate_change", "time": 1000, "source": "ISLAND_1", "dest": "ISLAND_2", "rate": 1e-4 },
-    { "type": "add_migration_rate_change", "time": 1000, "source": "ISLAND_2", "dest": "ISLAND_1", "rate": 1e-4 },
+    { "type": "add_migration_rate_change", "time": 1000, "source": "ISLAND_1", "dest": "ISLAND_2", "rate": {"min": 5e-5, "max": 2e-4} },
+    { "type": "add_migration_rate_change", "time": 1000, "source": "ISLAND_2", "dest": "ISLAND_1", "rate": {"min": 5e-5, "max": 2e-4} },
     { "type": "add_migration_rate_change", "time": 1000, "source": "ISLAND_2", "dest": "ISLAND_3", "rate": 1e-4 },
     { "type": "add_migration_rate_change", "time": 1000, "source": "ISLAND_3", "dest": "ISLAND_2", "rate": 1e-4 },
     { "type": "add_migration_rate_change", "time": 1000, "source": "ISLAND_3", "dest": "ISLAND_4", "rate": 1e-4 },
