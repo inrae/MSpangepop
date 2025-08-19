@@ -10,17 +10,17 @@ import subprocess
 import sys
 import json
 
-# Check if we should expand sweeps (can be controlled by an environment variable)
-EXPAND_SWEEPS = os.environ.get("EXPAND_SWEEPS", "true").lower() == "true"
+# Check if we should expand ranges (can be controlled by an environment variable)
+EXPAND_RANGES = os.environ.get("EXPAND_RANGES", "true").lower() == "true"
 
-if EXPAND_SWEEPS:
-    # First, expand any parameter sweeps in the config
-    result = subprocess.run([sys.executable, "workflow/scripts/expand_sweeps.py", 
+if EXPAND_RANGES:
+    # First, sample from any parameter ranges in the config
+    result = subprocess.run([sys.executable, "workflow/scripts/sample_ranges.py", 
                             ".config/masterconfig.yaml"], 
                            capture_output=True, text=True)
     print(result.stdout)
     if result.returncode != 0:
-        print(f"❌ Error expanding sweeps: {result.stderr}", file=sys.stderr)
+        print(f"❌ Error sampling ranges: {result.stderr}", file=sys.stderr)
         sys.exit(1)
     
     # Use the expanded config if it exists
@@ -60,7 +60,7 @@ rule all:
 # This rule is used to create a recap file for the workflow
 rule setup:
     input:
-        configfile= ".config/masterconfig.yaml",
+        configfile= ".config/expanded_config.yaml" if EXPAND_RANGES and os.path.exists(".config/expanded_config.yaml") else ".config/masterconfig.yaml",
         fasta=lambda wildcards: config["samples"][wildcards.sample]["fasta_gz"]
     output:
         recap_file=os.path.join(output_dir, "{sample}", simulation_data, "{sample}_global_recap.txt"),
@@ -248,7 +248,7 @@ rule draw_variants:
             --seed {params.seed} 
         """
 
-# Create the graph from the augmented traversal (headache inducing script)
+# Create the graph from the augmented traversal
 rule graph_creation:
     input:
         split_fasta=rules.split_recombination.output.split_fasta,
