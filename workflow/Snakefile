@@ -101,7 +101,7 @@ rule msprime_simulation:
         readable_json=lambda wildcards: config["samples"][wildcards.sample].get("readable_json", False), 
         seed=lambda wildcards: config["samples"][wildcards.sample].get("seed", None)
     resources:
-        mem_mb=lambda wildcards: int(200000 * memory_multiplier),
+        mem_mb=lambda wildcards: int(10000 * memory_multiplier),
         time="60:00:00"
     threads: 1
     benchmark:
@@ -174,11 +174,10 @@ rule coalescent_traversal:
     params:
         readable_json=lambda wildcards: config["samples"][wildcards.sample].get("readable_json", False) 
     resources:
-        mem_mb=lambda wildcards: int(50000 * memory_multiplier),
+        mem_mb=lambda wildcards: int(10000 * memory_multiplier),
         time="10:00:00"
-    threads: 10
+    threads: 5
     priority: 9
-    group: "traversal_pipeline"
     benchmark:
         os.path.join(output_dir, "{sample}", "benchmark", "chr_{chromosome}", "coalescent_traversal_benchmark.txt")
     container:
@@ -227,8 +226,7 @@ rule draw_variants:
         minimal_sv_length = lambda wildcards: config["samples"][wildcards.sample].get("minimal_sv_length", 1),
         readable_json = lambda wildcards: config["samples"][wildcards.sample].get("readable_json", False), 
         seed=lambda wildcards: config["samples"][wildcards.sample].get("seed", None)
-    threads: 10
-    group: "traversal_pipeline"
+    threads: 5
     priority: 8
     resources:
         mem_mb=lambda wildcards: int(10000 * memory_multiplier),
@@ -269,7 +267,6 @@ rule graph_creation:
     container:
         "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
     threads: 20
-    group: "graph_creation_pipeline"
     priority: 7
     shell:
         """
@@ -301,8 +298,7 @@ rule gfa_merge:
         os.path.join(output_dir, "{sample}", "benchmark", "chr_{chromosome}", "gfa_merge_benchmark.txt")
     container:
         "docker://registry.forge.inrae.fr/pangepop/mspangepop/odgi:v0.9.2"
-    threads: 20
-    group: "graph_creation_pipeline"
+    threads: 25
     priority: 7
     shell:
         """
