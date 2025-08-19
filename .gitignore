@@ -16,9 +16,8 @@
 !/simulation_data/**
 !small_test_genome.fa.gz
 !**setting.json
-!slurm_logs/
 !.config/**
-!dependencies/*.def
+!dependencies/*
 results
 **__pycache__
 .snakemake

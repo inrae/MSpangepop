@@ -21,7 +21,7 @@ git clone https://forge.inrae.fr/pangepop/MSpangepop
 
 - Create an environement for snakemake (from the provided envfile): 
 ```bash
-conda env create -n wf_env -f .config/wf_env.yaml
+conda env create -n wf_env -f dependencies/wf_env.yaml
 ```  
 > Use Miniforge with the conda-forge channel, see why [here](https://science-ouverte.inrae.fr/fr/offre-service/fiches-pratiques-et-recommandations/quelles-alternatives-aux-fonctionnalites-payantes-danaconda) (french)
 
