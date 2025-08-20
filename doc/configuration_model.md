@@ -1,14 +1,13 @@
-# Creating a Demographic Model JSON for MSpangepop
-
+#  Creating a Demographic Model JSON for MSpangepop
 
 ## 📝 1. File Structure Overview
 
-A complete demographic model contains:
+A complete demographic model now contains:
 - **Simulation parameters** (genome file, chromosomes, SV distribution)
 - **Evolutionary parameters** (mutation rate, recombination rate)
 - **Population structure** (populations, samples, events)
 
-### Basic Template
+###  Basic Template
 
 ```json
 {
@@ -58,45 +57,105 @@ Any numeric parameter can be either fixed or specified as a range. When using ra
 {
   "evolutionary_params": {
     "mutation_rate": 1e-7,                        // Fixed value
-    "recombination_rate": {"min": 1e-9, "max": 1e-7},  // Range
+    "recombination_rate": {"min": 1e-9, "max": 1e-7},  // Range with auto distribution
     "generation_time": 25                         // Fixed value
   }
 }
 ```
 
-### Range Syntax
+### Range Syntax with Distribution Control
 
-Use `{"min": value, "max": value}` for any numeric parameter:
+Use `{"min": value, "max": value, "distribution": "type"}` to specify both range and distribution:
 
 ```json
 {
+  "evolutionary_params": {
+    "mutation_rate": {
+      "min": 1e-8,
+      "max": 1e-6,
+      "distribution": "log_uniform"  // Explicitly use log-uniform
+    },
+    "recombination_rate": {
+      "min": 1e-9,
+      "max": 1e-7,
+      "distribution": "normal"  // Sample from truncated normal
+    }
+  },
+  
   "populations": [
     {
       "id": "pop1",
-      "initial_size": {"min": 1000, "max": 10000}  // Population size range
-    }
-  ],
-  
-  "demographic_events": [
-    {
-      "type": "add_migration_rate_change",
-      "time": 1000,
-      "source": "pop1",
-      "dest": "pop2",
-      "rate": {"min": 1e-5, "max": 1e-3}  // Migration rate range
+      "initial_size": {
+        "min": 1000,
+        "max": 10000,
+        "distribution": "truncated_normal",  // Exponential distribution
+        "mean": 2000,  // Optional parameter
+        "std": 200
+      }
     }
   ]
 }
 ```
 
+### Available Distributions
+
+| Distribution | Keywords | Description | Extra Parameters |
+|-------------|----------|-------------|------------------|
+| **Uniform** | `"uniform"`, `"unif"` | Equal probability across range | None |
+| **Log-uniform** | `"log_uniform"`, `"loguniform"`, `"log"` | Uniform in log space (good for rates) | None |
+| **Normal** | `"normal"`, `"gaussian"`, `"norm"` | Bell curve, truncated to range | None |
+| **Truncated Normal** | `"truncated_normal"`, `"truncnorm"` | Normal with custom mean/std | `mean`, `std` |
+| **Auto** | `"auto"` or omitted | Auto-selects based on parameter type | None |
+
+### Distribution Examples
+
+#### Log-uniform for mutation rates (spans orders of magnitude)
+```json
+"mutation_rate": {
+  "min": 1e-9,
+  "max": 1e-6,
+  "distribution": "log_uniform"
+}
+```
+
+#### Normal distribution for population sizes
+```json
+"initial_size": {
+  "min": 1000,
+  "max": 10000,
+  "distribution": "normal"  // Mean=(min+max)/2, truncated to range
+}
+```
+
+#### Custom truncated normal
+```json
+"initial_size": {
+  "min": 1000,
+  "max": 10000,
+  "distribution": "truncated_normal",
+  "mean": 3000,  // Custom mean (closer to min)
+  "std": 1500    // Custom standard deviation
+}
+```
+
+### Auto Distribution Selection
+
+When `"distribution"` is omitted or set to `"auto"`:
+- **Mutation/recombination rates** (< 0.01): Uses `log_uniform`
+- **All other parameters**: Uses `uniform`
+
 ### SV Distribution Ranges
 
-Each SV type can have a range. The distribution is normalized to 100% after sampling:
+Each SV type can have a range with distribution. The values are normalized to 100% after sampling:
 
 ```json
 "sv_distribution": {
-  "SNP": {"min": 30, "max": 50},
-  "DEL": {"min": 15, "max": 25},
+  "SNP": {
+    "min": 30,
+    "max": 50,
+    "distribution": "normal"  // More likely to be near 40
+  },
+  "DEL": {"min": 15, "max": 25},  // Auto = uniform
   "INS": {"min": 10, "max": 20},
   "INV": {"min": 10, "max": 20},
   "DUP": {"min": 5, "max": 15}
@@ -105,7 +164,7 @@ Each SV type can have a range. The distribution is normalized to 100% after samp
 
 ---
 
-## 3. Parameter Sections
+## 📦 3. Parameter Sections
 
 ### Simulation Parameters
 
@@ -183,14 +242,14 @@ Located in `"evolutionary_params"`:
 
 ---
 
-## 5. Complete Examples
+## 📋 5. Complete Examples
 
-### Example 1: Simple Fixed Parameters
+### Example 1: Simple Model with Distribution Control
 
 ```json
 {
-  "name": "Fixed_Baseline",
-  "description": "Baseline with all fixed parameters",
+  "name": "Simple_Distribution_Example",
+  "description": "Basic model showing distribution specifications",
   
   "simulation_params": {
     "fasta_gz": "small_test_genome.fa.gz",
@@ -202,13 +261,24 @@ Located in `"evolutionary_params"`:
   },
   
   "evolutionary_params": {
-    "mutation_rate": 1e-7,
-    "recombination_rate": 1e-8,
+    "mutation_rate": {
+      "min": 1e-8,
+      "max": 1e-6,
+      "distribution": "log_uniform"  // Good for rates
+    },
+    "recombination_rate": 1e-8,  // Fixed
     "generation_time": 25
   },
   
   "populations": [
-    {"id": "pop1", "initial_size": 5000}
+    {
+      "id": "pop1",
+      "initial_size": {
+        "min": 3000,
+        "max": 7000,
+        "distribution": "normal"  // Bell curve around 5000
+      }
+    }
   ],
   
   "samples": [
@@ -217,37 +287,83 @@ Located in `"evolutionary_params"`:
 }
 ```
 
-### Example 2: Parameter Uncertainty
+### Example 2: Parameter Uncertainty with Custom Distributions
 
 ```json
 {
-  "name": "Uncertainty_Model",
-  "description": "Model with parameter uncertainty",
+  "name": "Advanced_Uncertainty_Model",
+  "description": "Model demonstrating different distribution types",
   
   "simulation_params": {
     "fasta_gz": "genome.fa.gz",
     "chr_n": 2,
     "sv_distribution": {
-      "SNP": {"min": 40, "max": 60},
-      "DEL": {"min": 15, "max": 25},
+      "SNP": {
+        "min": 40,
+        "max": 60,
+        "distribution": "normal"  // Peak around 50%
+      },
+      "DEL": {"min": 15, "max": 25},  // Uniform (default)
       "INS": {"min": 10, "max": 20},
-      "INV": {"min": 5, "max": 15},
+      "INV": {
+        "min": 5,
+        "max": 15,
+        "distribution": "normal"
+      },
       "DUP": {"min": 0, "max": 10}
     }
   },
   
   "evolutionary_params": {
-    "mutation_rate": {"min": 5e-8, "max": 2e-7},
-    "recombination_rate": {"min": 1e-9, "max": 1e-7},
-    "generation_time": 25
+    "mutation_rate": {
+      "min": 1e-9,
+      "max": 1e-6,
+      "distribution": "log_uniform"  
+    },
+    "recombination_rate": {
+      "min": 1e-9,
+      "max": 1e-7,
+      "distribution": "truncated_normal",
+      "mean": 5e-8,  // Peak around this value
+      "std": 2e-8
+    },
+    "generation_time": 25  // Fixed
   },
   
   "populations": [
-    {"id": "pop1", "initial_size": {"min": 3000, "max": 8000}}
+    {
+      "id": "pop1",
+      "initial_size": {
+        "min": 1000,
+        "max": 10000
+      }
+    },
+    {
+      "id": "pop2",
+      "initial_size": {
+        "min": 500,
+        "max": 5000,
+        "distribution": "normal"
+      }
+    }
   ],
   
   "samples": [
-    {"population": "pop1", "sample_size": 20}
+    {"population": "pop1", "sample_size": 10},
+    {"population": "pop2", "sample_size": 10}
+  ],
+  
+  "demographic_events": [
+    {
+      "type": "mass_migration",
+      "time": 1000,
+      "source": "pop2",
+      "dest": "pop1",
+      "proportion": {
+        "min": 0.1,
+        "max": 0.5
+      }
+    }
   ]
 }
 ```
@@ -301,18 +417,20 @@ Located in `"evolutionary_params"`:
 }
 ```
 
----
-
-## 6. Sampling Behavior
-
-### Log-Uniform Sampling
-Very small parameters (mutation/recombination rates < 0.01) use log-uniform sampling for better coverage across orders of magnitude.
-
-### Uniform Sampling
-Most parameters use standard uniform sampling between min and max.
-
 ### SV Distribution Normalization
-After sampling, SV percentages are automatically normalized to sum to 100%.
+After sampling all SV types, percentages are automatically normalized to sum to 100%:
+
+1. Sample each type according to its distribution
+2. Sum all sampled values
+3. Scale each value by (100 / sum)
+
+Example:
+- SNP samples 45 (from normal distribution)
+- DEL samples 22 (from uniform)
+- INS samples 18 (from uniform)
+- INV samples 20 (from uniform)
+- DUP samples 10 (from uniform)
+- Total: 115 → Each scaled by 100/115
 
 ---
 
@@ -327,4 +445,3 @@ Before using your model:
 - ✔ SV distributions sum to approximately 100% (will be normalized)
 - ✔ All ranges have `min` < `max`
 - ✔ Event times are non-negative
-
