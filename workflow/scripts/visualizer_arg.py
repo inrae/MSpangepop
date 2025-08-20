@@ -107,7 +107,7 @@ def create_local_trees_plot(ts, output_dir, basename):
     with open(os.path.join(output_dir, f"{basename}_local_trees.svg"), 'w') as f:
         f.write(svg_str)
 
-def create_networkx_plot(ts, output_dir, basename):
+def create_networkx_plot(ts, output_dir, basename, sample):
     """Create NetworkX graph visualization."""
     MScompute("Creating arg NetworkX graph visualization...")
     
@@ -153,16 +153,16 @@ def create_networkx_plot(ts, output_dir, basename):
     # Draw labels
     nx.draw_networkx_labels(G, pos, font_size=8)
     
-    plt.title(f"ARG Network Graph: {basename}", fontsize=16, fontweight='bold', pad=20)
+    plt.title(f"ARG Network Graph: {sample} {basename}", fontsize=16, fontweight='bold', pad=20)
     plt.legend(loc='upper right')
     plt.axis('off')
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, f"{basename}_networkx.png"), 
-                dpi=300, bbox_inches='tight')
+                dpi=200, bbox_inches='tight')
     plt.close()
 
 
-def create_tree_height_plot(ts, output_dir, basename):
+def create_tree_height_plot(ts, output_dir, basename, sample):
     """Create tree height along genome plot."""
     MScompute("Creating tree height plot...")
     
@@ -195,7 +195,7 @@ def create_tree_height_plot(ts, output_dir, basename):
             plt.axvline(x=pos, color='red', linestyle='--', alpha=0.7, linewidth=2)
         plt.plot([], [], 'r--', label='Recombination events', linewidth=2)
     
-    plt.title(f'Tree Height Along Genome: {basename}', fontsize=16, fontweight='bold')
+    plt.title(f'Tree Height Along Genome: {sample} {basename}', fontsize=16, fontweight='bold')
     plt.xlabel('Genomic Position (bp)', fontsize=14)
     plt.ylabel('Height (generations)', fontsize=14)
     plt.legend()
@@ -246,7 +246,7 @@ def compute_STEAC_matrix(ts):
 
     return coalescence_times, samples
 
-def create_hierarchical_clustering_plot(ts, output_dir, basename):
+def create_hierarchical_clustering_plot(ts, output_dir, basename, sample_name):
     """
     Create horizontal hierarchical clustering plot using STEAC with population-based coloring.
     Each branch is colored by the population of its descendants if all are the same.
@@ -297,7 +297,7 @@ def create_hierarchical_clustering_plot(ts, output_dir, basename):
         for s in samples:
             pop_id = sample_populations[s]
             pop_name = population_names.get(pop_id, f'Pop_{pop_id}')
-            labels.append(f"L{s} ({pop_name})")
+            labels.append(f"L{s}")
             label_colors.append(pop_colors[pop_id])
             sample_to_pop.append(pop_id)
         
@@ -410,15 +410,15 @@ def create_hierarchical_clustering_plot(ts, output_dir, basename):
             # Draw the three segments
             # Left vertical branch (leads to left child)
             ax.plot([x_coords[0], x_coords[1]], [y_coords[0], y_coords[1]], 
-                   color=left_color, lw=2)
+                   color=left_color, lw=3)
             
             # Horizontal connector (represents the parent cluster)
             ax.plot([x_coords[1], x_coords[2]], [y_coords[1], y_coords[2]], 
-                   color=parent_color, lw=2)
+                   color=parent_color, lw=3)
             
             # Right vertical branch (leads to right child)
             ax.plot([x_coords[2], x_coords[3]], [y_coords[2], y_coords[3]], 
-                   color=right_color, lw=2)
+                   color=right_color, lw=3)
         
         # Handle the root extension if there is one
         # Sometimes there's an additional vertical line extending from the root
@@ -450,7 +450,7 @@ def create_hierarchical_clustering_plot(ts, output_dir, basename):
                     if dcoord[i][0] == max_x and dcoord[i][1] == max_x:
                         # Left side extension
                         ax.plot([dcoord[i][0], dcoord[i][1]], [icoord[i][0], icoord[i][1]], 
-                               color=segment_color, lw=2)
+                               color=segment_color, lw=3)
         
         # Color the labels
         ylabels = ax.get_yticklabels()
@@ -473,7 +473,7 @@ def create_hierarchical_clustering_plot(ts, output_dir, basename):
         
         # --- Set titles and labels ---
         ax.set_title(
-            f"STEAC Hierarchical Clustering\n(Species Tree Estimation using Average Coalescence times): {basename}",
+            f"STEAC Hierarchical Clustering\n(Species Tree Estimation using Average Coalescence times): {sample_name} {basename}",
             fontsize=14,
             fontweight='bold',
             pad=20
@@ -487,19 +487,19 @@ def create_hierarchical_clustering_plot(ts, output_dir, basename):
         # Adjust layout
         plt.tight_layout()
         plt.savefig(os.path.join(output_dir, f"{basename}_STEAC_hierarchical_clustering.png"),
-                    dpi=300, bbox_inches='tight')
+                    dpi=1000, bbox_inches='tight')
         plt.close()
         
     else:
         plt.figure(figsize=(6, 4))
         plt.text(0.5, 0.5, 'Need more than 2 samples for clustering',
                  transform=plt.gca().transAxes, ha='center', va='center', fontsize=14)
-        plt.title(f'STEAC Hierarchical Clustering: {basename}', fontsize=16, fontweight='bold')
+        plt.title(f'STEAC Hierarchical Clustering: {sample_name} {basename}', fontsize=16, fontweight='bold')
         plt.savefig(os.path.join(output_dir, f"{basename}_STEAC_hierarchical_clustering.png"),
-                    dpi=300, bbox_inches='tight')
+                    dpi=1000, bbox_inches='tight')
         plt.close()
         
-def create_clustermap_with_dendrogram(ts, output_dir, basename):
+def create_clustermap_with_dendrogram(ts, output_dir, basename, sample_name):
     """
     Create a clustered heatmap (clustermap) using STEAC coalescence times.
     Only shows left-side dendrogram; annotations are rounded to integers.
@@ -544,10 +544,10 @@ def create_clustermap_with_dendrogram(ts, output_dir, basename):
 
         g.cax.set_visible(False)  # Hide colorbar
 
-        plt.suptitle(f"STEAC Clustering (Left Tree Only): {basename}", fontsize=16, y=0.98)
+        plt.suptitle(f"STEAC Clustering (Left Tree Only): {sample_name} {basename}", fontsize=16, y=0.98)
         g.figure.subplots_adjust(top=0.93)
         g.savefig(os.path.join(output_dir, f"{basename}_STEAC_clustermap.png"),
-                  dpi=300, bbox_inches='tight')
+                  dpi=1000, bbox_inches='tight')
         plt.close()
     else:
         MSwarning("Not enough samples for clustering heatmap")
@@ -558,8 +558,9 @@ def main():
     parser.add_argument("input_file", help="Input .trees file")
     parser.add_argument("output_dir", help="Output directory for visualizations")
     parser.add_argument("chromosome")
+    parser.add_argument("sample")
     args = parser.parse_args()
-    
+    sample = args.sample
     # Validate input file
     if not os.path.exists(args.input_file):
         MSerror(f"Input file {args.input_file} not found")
@@ -579,16 +580,13 @@ def main():
     
     try:
         create_local_trees_plot(ts, args.output_dir, basename)
-        create_networkx_plot(ts, args.output_dir, basename)
-        create_tree_height_plot(ts, args.output_dir, basename)
+        create_networkx_plot(ts, args.output_dir, basename, sample)
+        create_tree_height_plot(ts, args.output_dir, basename, sample)
         
         # STEAC method - hierarchical clustering based on average coalescence times
-        create_hierarchical_clustering_plot(ts, args.output_dir, basename)
-        create_clustermap_with_dendrogram(ts, args.output_dir, basename)
+        create_hierarchical_clustering_plot(ts, args.output_dir, basename, sample)
+        create_clustermap_with_dendrogram(ts, args.output_dir, basename, sample)
         
-        # Majority-rule consensus tree method
-        #create_majority_rule_consensus_plot(ts, args.output_dir, basename)
-
         expected_files = [
             f"{basename}_local_trees.svg",
             f"{basename}_networkx.png",
