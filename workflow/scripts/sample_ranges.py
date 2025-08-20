@@ -19,6 +19,7 @@ import os
 import sys
 import copy
 import random
+import numpy as np
 from pathlib import Path
 from typing import Any, Dict, List, Union
 
@@ -36,33 +37,85 @@ def is_range(value: Any) -> bool:
     """
     return isinstance(value, dict) and 'min' in value and 'max' in value
 
-def sample_from_range(range_spec: Dict[str, float], param_name: str = "") -> float:
+def sample_from_range(range_spec: Dict[str, Any], param_name: str = "") -> float:
     """
-    Sample a random value from a range specification.
+    Sample a random value from a range specification with support for different distributions.
     
     Args:
-        range_spec: Dictionary with 'min' and 'max' keys
+        range_spec: Dictionary with 'min', 'max', and optional 'distribution' keys
         param_name: Name of the parameter (for logging)
     
     Returns:
-        Random value between min and max
+        Random value sampled according to specified distribution
     """
+    import math
+    
     min_val = range_spec['min']
     max_val = range_spec['max']
     
     if min_val > max_val:
         raise ValueError(f"Invalid range for {param_name}: min ({min_val}) > max ({max_val})")
     
-    # Use log-uniform distribution for very small values (like mutation rates)
-    if param_name in ['mutation_rate', 'recombination_rate'] and max_val < 0.01:
-        # Log-uniform sampling for rates
-        import math
+    # Get distribution type (default based on parameter type)
+    distribution = range_spec.get('distribution', 'auto').lower()
+    
+    # Auto-detect best distribution if not specified
+    if distribution == 'auto':
+        if param_name in ['mutation_rate', 'recombination_rate'] and max_val < 0.01:
+            distribution = 'log_uniform'
+        else:
+            distribution = 'uniform'
+    
+    # Sample based on distribution type
+    if distribution in ['uniform', 'unif']:
+        # Uniform distribution
+        return random.uniform(min_val, max_val)
+    
+    elif distribution in ['log_uniform', 'loguniform', 'log']:
+        # Log-uniform distribution (good for rates spanning orders of magnitude)
+        if min_val <= 0:
+            raise ValueError(f"Log-uniform requires positive values for {param_name}")
         log_min = math.log10(min_val)
         log_max = math.log10(max_val)
         log_sample = random.uniform(log_min, log_max)
         return 10 ** log_sample
+    
+    elif distribution in ['normal', 'gaussian', 'norm']:
+        # Normal distribution (truncated to range)
+        # Use min/max as roughly 3 sigma bounds
+        mean = (min_val + max_val) / 2
+        std = (max_val - min_val) / 6  # 99.7% within bounds
+        
+        # Sample until we get a value within bounds (truncated normal)
+        for _ in range(1000):  # Max attempts to avoid infinite loop
+            sample = np.random.normal(mean, std)
+            if min_val <= sample <= max_val:
+                return float(sample)
+        # Fallback to uniform if we can't get a valid sample
+        MSwarning(f"Could not sample from truncated normal for {param_name}, using uniform")
+        return random.uniform(min_val, max_val)
+    
+    elif distribution in ['truncated_normal', 'truncnorm']:
+        # Truncated normal with custom mean and std
+        mean = range_spec.get('mean', (min_val + max_val) / 2)
+        std = range_spec.get('std', (max_val - min_val) / 4)
+        
+        # Use scipy if available, otherwise fallback
+        try:
+            from scipy import stats
+            a = (min_val - mean) / std
+            b = (max_val - mean) / std
+            return float(stats.truncnorm.rvs(a, b, loc=mean, scale=std))
+        except ImportError:
+            # Fallback without scipy
+            for _ in range(1000):
+                sample = np.random.normal(mean, std)
+                if min_val <= sample <= max_val:
+                    return float(sample)
+            return random.uniform(min_val, max_val)
+    
     else:
-        # Uniform sampling for other parameters
+        MSwarning(f"Unknown distribution '{distribution}' for {param_name}, using uniform")
         return random.uniform(min_val, max_val)
 
 def sample_sv_distribution(sv_ranges: Dict[str, Union[float, Dict]]) -> Dict[str, float]:
@@ -117,21 +170,29 @@ def process_demographic_ranges(demo_data: Dict, sample_name: str) -> Dict:
             if is_range(value):
                 sampled_value = sample_from_range(value, param_name)
                 params[param_name] = sampled_value
-
+                dist = value.get('distribution', 'auto')
+                # Determine actual distribution used if auto
+                if dist == 'auto':
+                    if param_name in ['mutation_rate', 'recombination_rate'] and value['max'] < 0.01:
+                        dist = 'log_uniform'
+                    else:
+                        dist = 'uniform'
     
     # Process population parameters
     if 'populations' in sampled_demo:
         for pop in sampled_demo['populations']:
             if 'initial_size' in pop and is_range(pop['initial_size']):
                 sampled_size = int(sample_from_range(pop['initial_size'], f"pop_{pop['id']}_size"))
+                dist = pop['initial_size'].get('distribution', 'uniform')
                 pop['initial_size'] = sampled_size
     
     # Process demographic events
     if 'demographic_events' in sampled_demo:
-        for event in sampled_demo['demographic_events']:
+        for i, event in enumerate(sampled_demo['demographic_events']):
             for key in ['time', 'size', 'growth_rate', 'proportion', 'rate']:
                 if key in event and is_range(event[key]):
-                    sampled_value = sample_from_range(event[key], f"event_{key}")
+                    sampled_value = sample_from_range(event[key], f"event_{i}_{key}")
+                    dist = event[key].get('distribution', 'uniform')
                     event[key] = sampled_value
     
     # Process migration matrix
@@ -139,6 +200,7 @@ def process_demographic_ranges(demo_data: Dict, sample_name: str) -> Dict:
         for migration in sampled_demo['migration_matrix']:
             if 'rate' in migration and is_range(migration['rate']):
                 sampled_rate = sample_from_range(migration['rate'], "migration_rate")
+                dist = migration['rate'].get('distribution', 'uniform')
                 migration['rate'] = sampled_rate
     
     return sampled_demo
@@ -174,7 +236,6 @@ def expand_simulations(config: Dict) -> Dict:
     expanded_dir = Path(".config/expanded_demographics")
     expanded_dir.mkdir(parents=True, exist_ok=True)
     
-
     for sample_base_name, sample_config in config['samples'].items():
         model_path = sample_config['model']
         replicates = sample_config.get('replicates', 1)
