@@ -7,7 +7,7 @@
 samples:
   test_panmictic:
     model: "simulation_data/Panmictic_Model.json"
-    replicates: 2    # Each replicate will sample different values from the ranges
+    replicates: 1    # Each replicate will sample different values from the ranges
     
 # Global settings
 output_dir: "results/"              # Base directory for all simulation outputs
