@@ -35,6 +35,7 @@ def create_recombination_map(chrom_length:int, recombination_rate:float)-> mspri
 def load_demographic_model(demographic_file: str, verbose = True):
     """
     Load demographic model from JSON file and create msprime demography object.
+    Supports both old format (top-level parameters) and new format (nested in evolutionary_params).
     Returns demography object, sample configuration, mutation rate, and recombination rate.
     """
     try:
@@ -44,7 +45,9 @@ def load_demographic_model(demographic_file: str, verbose = True):
         if verbose == True : 
             MScompute(f"Loading demographic model: {demo_data.get('name', 'Unknown')}")
 
+        # Handle new format with evolutionary_params
         if 'evolutionary_params' in demo_data:
+            # New format: parameters are nested
             evolutionary_params = demo_data['evolutionary_params']
             mutation_rate = evolutionary_params.get('mutation_rate')
             recombination_rate = evolutionary_params.get('recombination_rate')
@@ -56,6 +59,7 @@ def load_demographic_model(demographic_file: str, verbose = True):
                 raise MSerror("Missing 'recombination_rate' in evolutionary_params")
                 
         else:
+            # Old format: parameters at top level (backward compatibility)
             mutation_rate = demo_data.get('mutation_rate')
             recombination_rate = demo_data.get('recombination_rate')
             generation_time = demo_data.get('generation_time', 25)
@@ -348,45 +352,98 @@ def simulate_chromosome_evolution(
         recap_file_path = recap
         with open(recap_file_path, "w") as recap_file:
             recap_file.write("🔹 MSpangepop MSprime Simulation Recap \n")
+            recap_file.write("=" * 60 + "\n\n")
+            
+            # Basic information
+            recap_file.write("SIMULATION SUMMARY\n")
             recap_file.write("-" * 40 + "\n")
             recap_file.write(f"Demographic Model: {demo_data.get('name', 'Unknown')}\n")
+            recap_file.write(f"Description: {demo_data.get('description', 'No description')}\n")
             recap_file.write(f"Demographic File: {demographic_file}\n")
             recap_file.write(f"Seed specified: {seed}\n")
-            recap_file.write(f"Chromosome indice (from fai): {chromosome_name}\n")
-            recap_file.write(f"Chromosome Length: {chrom_length} bp\n")
-            recap_file.write(f"Mutation Rate: {mutation_rate} per bp\n")
-            recap_file.write(f"Recombination Rate: {recombination_rate} per bp\n")
-            recap_file.write(f"Generation Time: {generation_time} years\n")
-            recap_file.write(f"Sample Size: {sample_size} individuals\n")
-            recap_file.write(f"Mutation Model: {model}\n")
-            recap_file.write(f"Total Trees: {mutated_ts.num_trees}\n")
-            recap_file.write(f"Total Nodes: {mutated_ts.num_nodes} (can be shared between Trees)\n")
-            recap_file.write(f"Total Mutations: {mutated_ts.num_mutations}\n")
-            recap_file.write(f"Total Edges: {mutated_ts.num_edges}\n\n")
+            recap_file.write(f"Chromosome index (from fai): {chromosome_name}\n")
+            recap_file.write(f"Chromosome Length: {chrom_length:,} bp\n\n")
+            
+            # Evolutionary parameters
+            recap_file.write("EVOLUTIONARY PARAMETERS\n")
+            recap_file.write("-" * 40 + "\n")
+            recap_file.write(f"Mutation Rate: {mutation_rate:.2e} per bp\n")
+            recap_file.write(f"Recombination Rate: {recombination_rate:.2e} per bp\n")
+            recap_file.write(f"Generation Time: {generation_time} years\n\n")
+            
+            # Simulation parameters (if present)
+            if 'simulation_params' in demo_data:
+                recap_file.write("SIMULATION PARAMETERS\n")
+                recap_file.write("-" * 40 + "\n")
+                sim_params = demo_data['simulation_params']
+                recap_file.write(f"Reference genome: {sim_params.get('fasta_gz', 'Not specified')}\n")
+                recap_file.write(f"Chromosomes: {sim_params.get('chr_n', 'Not specified')}\n")
+                recap_file.write(f"Mutation model: {sim_params.get('model', model)}\n")
+                recap_file.write(f"Min SV length: {sim_params.get('minimal_sv_length', 1)} bp\n")
+                
+                # SV distribution
+                if 'sv_distribution' in sim_params:
+                    recap_file.write("\nStructural Variant Distribution:\n")
+                    sv_dist = sim_params['sv_distribution']
+                    for sv_type in ['SNP', 'DEL', 'INS', 'INV', 'DUP']:
+                        if sv_type in sv_dist:
+                            value = sv_dist[sv_type]
+                            # Handle both fixed values and sampled values
+                            if isinstance(value, dict):
+                                recap_file.write(f"  {sv_type}: sampled from range\n")
+                            else:
+                                recap_file.write(f"  {sv_type}: {value}%\n")
+                recap_file.write("\n")
             
             # Population details
-            recap_file.write("Population Configuration:\n")
+            recap_file.write("POPULATION CONFIGURATION\n")
+            recap_file.write("-" * 40 + "\n")
             for pop in demo_data['populations']:
-                recap_file.write(f"  - {pop['id']}: {pop.get('description', 'No description')}\n")
-                recap_file.write(f"    Initial size: {pop['initial_size']}\n")
+                recap_file.write(f"- {pop['id']}: {pop.get('description', 'No description')}\n")
+                recap_file.write(f"  Initial size: {pop['initial_size']:,}\n")
             
-            recap_file.write("\nSample Distribution:\n")
+            recap_file.write("\nSAMPLE DISTRIBUTION\n")
+            recap_file.write("-" * 40 + "\n")
+            total_samples = 0
             for sample in demo_data['samples']:
-                recap_file.write(f"  - {sample['population']}: {sample['sample_size']} samples\n")
+                sample_size = sample['sample_size']
+                total_samples += sample_size
+                recap_file.write(f"- {sample['population']}: {sample_size} samples\n")
+            recap_file.write(f"Total samples: {total_samples}\n\n")
             
-            # Add demographic events summary if present
+            # Demographic events summary if present
             if 'demographic_events' in demo_data and demo_data['demographic_events']:
-                recap_file.write("\nDemographic Events:\n")
+                recap_file.write("DEMOGRAPHIC EVENTS\n")
+                recap_file.write("-" * 40 + "\n")
                 event_types = {}
                 for event in demo_data['demographic_events']:
                     event_type = event.get('type', 'unknown')
                     event_types[event_type] = event_types.get(event_type, 0) + 1
                 for event_type, count in event_types.items():
-                    recap_file.write(f"  - {event_type}: {count} events\n")
+                    recap_file.write(f"- {event_type}: {count} events\n")
+                recap_file.write("\n")
             
-            recap_file.write(f"\nTime Taken for Simulation: {simulation_time:.2f} seconds\n")
-            recap_file.write(f"Time Taken for Saving Output: {save_time:.2f} seconds\n")
+            # Simulation results
+            recap_file.write("SIMULATION RESULTS\n")
             recap_file.write("-" * 40 + "\n")
+            recap_file.write(f"Total Trees: {mutated_ts.num_trees:,}\n")
+            recap_file.write(f"Total Nodes: {mutated_ts.num_nodes:,} (can be shared between trees)\n")
+            recap_file.write(f"Total Mutations: {mutated_ts.num_mutations:,}\n")
+            recap_file.write(f"Total Edges: {mutated_ts.num_edges:,}\n\n")
+            
+            # Performance metrics
+            recap_file.write("PERFORMANCE METRICS\n")
+            recap_file.write("-" * 40 + "\n")
+            recap_file.write(f"Simulation time: {simulation_time:.2f} seconds\n")
+            recap_file.write(f"Output saving time: {save_time:.2f} seconds\n")
+            recap_file.write(f"Total runtime: {(simulation_time + save_time):.2f} seconds\n\n")
+            
+            # Full JSON configuration at the end
+            recap_file.write("=" * 60 + "\n")
+            recap_file.write("COMPLETE DEMOGRAPHIC MODEL JSON\n")
+            recap_file.write("=" * 60 + "\n")
+            recap_file.write(json.dumps(demo_data, indent=2))
+            recap_file.write("\n" + "=" * 60 + "\n")
         
         total_time = time.time() - start_time
         MSsuccess(f"Chr {chromosome_name} msprime recap created, total runtime: {total_time/60:.2f} min.")
