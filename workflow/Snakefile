@@ -148,22 +148,12 @@ rule visualization:
     priority: 2
     shell:
         """
-        python3 workflow/scripts/visualizer_tree.py {input.mutated_ts} \
-            {input.ancestry_ts} \
-            -o {params.out_tree} \
-            -c {wildcards.chromosome} \
-            --occasions 5 \
-            --edge-width 4 &
+        parallel --halt soon,fail=1 ::: \
+            "python3 -u workflow/scripts/visualizer_tree.py {input.mutated_ts} {input.ancestry_ts} -o {params.out_tree} -c {wildcards.chromosome} --occasions 5 --edge-width 4" \
+            "python3 -u workflow/scripts/visualizer_arg.py {input.full_ancestry_ts} {params.out_arg} {wildcards.chromosome} {wildcards.sample}"
 
-        python3 workflow/scripts/visualizer_arg.py \
-            {input.full_ancestry_ts} \
-            {params.out_arg} \
-            {wildcards.chromosome} &
-
-        wait
         echo "Visualization completed at $(date)" > {output.completion_flag}
         """
-
 
 # Use the preorder traversal to get the order in which the mutations should be handled, save a json
 rule coalescent_traversal:
