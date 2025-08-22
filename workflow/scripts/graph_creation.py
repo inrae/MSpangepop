@@ -1057,7 +1057,7 @@ class GraphEnsemble:
                     progress = (processed_paths / total_paths) * 100
                 
                 # Process path
-                paths_buffer.write(f"P\tlineage_{path.lineage}\t{repr(path)}\n")
+                paths_buffer.write(f"P\tlineage_{path.lineage}\t{repr(path)}\t*\n")
                 
                 # Collect edges from this path
                 path_edges_count = 0
