@@ -238,7 +238,7 @@ class MSpangepopDataHandler:
         os.makedirs(fasta_folder, exist_ok=True)
         ext = ".fasta.gz" if compress else ".fasta"
         fasta_output_path = os.path.join(fasta_folder, f"{sample}_chr{chromosome}{ext}")
-
+        MScompute(f"Starting to write fasta file with {threads} threads")
         def generate_seqrecord(lineage, path):
             if lineage == "Ancestral":
                 return None  # Skip "Ancestral" lineage
@@ -268,3 +268,142 @@ class MSpangepopDataHandler:
                         count += 1
 
         MSsuccess(f"Wrote {count} lineage FASTA sequences to {fasta_output_path}")
+
+    def save_to_gfav1_1_hybrid(ensemble, file_path, ignore_ancestral=False, max_workers=None):
+        """
+        Hybrid approach with progress reporting: parallel data collection + sequential writing.
+        Best balance of performance and simplicity with detailed progress updates.
+        """
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from io import StringIO
+        if not ensemble.graphs:
+            raise MSerror("No graphs to save")
+        
+        graph = ensemble.graphs[0]
+
+        # Set default max_workers if not provided
+        if max_workers is None:
+            max_workers = 4
+        
+        # Count total items for progress reporting
+        total_nodes = len(graph.nodes)
+        total_paths = sum(1 for lineage in graph.paths.keys() 
+                        if not (ignore_ancestral and lineage == "Ancestral"))
+        MScompute(f"Starting GFA export: {total_nodes} nodes, {total_paths} paths to process")
+        
+        def process_nodes_parallel():
+            """Process nodes with chunking if beneficial"""
+
+            nodes_list = list(graph.nodes)
+
+            chunk_size = max(1, len(nodes_list) // max_workers)
+            
+            def process_chunk(chunk_data):
+                chunk_idx, chunk = chunk_data
+                buffer = StringIO()
+                for node in chunk:
+                    buffer.write(f"S\t{node.id}\t{node}\n")
+                return chunk_idx, buffer.getvalue()
+            
+            # Fixed: Create chunks properly with actual node objects
+            chunks = []
+            for i in range(0, len(nodes_list), chunk_size):
+                chunk_nodes = nodes_list[i:i + chunk_size]
+                chunk_idx = len(chunks)
+                chunks.append((chunk_idx, chunk_nodes))
+            
+            completed_chunks = 0
+            results = [''] * len(chunks)
+            
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                future_to_chunk = {executor.submit(process_chunk, chunk_data): chunk_data 
+                                for chunk_data in chunks}
+                
+                for future in as_completed(future_to_chunk):
+                    chunk_idx, chunk_result = future.result()
+                    results[chunk_idx] = chunk_result
+                    completed_chunks += 1
+            
+            result = ''.join(results)
+    
+            return result
+        
+        def process_paths_and_edges():
+            """Process paths and collect edges simultaneously"""
+            
+            paths_buffer = StringIO()
+            unique_edges = set()
+            processed_paths = 0
+            
+            for lineage, path in graph.paths.items():
+                if ignore_ancestral and lineage == "Ancestral":
+                    continue
+                
+                # Progress update every 100 paths or for large datasets
+                if processed_paths % max(1, total_paths // 10) == 0 and processed_paths > 0:
+                    progress = (processed_paths / total_paths) * 100
+                
+                # Process path
+                paths_buffer.write(f"P\tlineage_{path.lineage}\t{repr(path)}\t*\n")
+                
+                # Collect edges from this path
+                path_edges_count = 0
+                for edge in path.path_edges:
+                    edge_signature = (
+                        edge.node1.id, edge.node1_side,
+                        edge.node2.id, edge.node2_side
+                    )
+                    unique_edges.add(edge_signature)
+                    path_edges_count += 1
+                
+                processed_paths += 1
+            
+            
+            # Convert edges to strings
+            edges_buffer = StringIO()
+            processed_edges = 0
+            
+            for edge_data in unique_edges:
+
+            
+                node1_id, node1_side, node2_id, node2_side = edge_data
+                orientation1 = "+" if node1_side else "-"
+                orientation2 = "+" if not node2_side else "-"
+                edges_buffer.write(f"L\t{node1_id}\t{orientation1}\t{node2_id}\t{orientation2}\t0M\n")
+                processed_edges += 1
+            
+
+            return paths_buffer.getvalue(), edges_buffer.getvalue()
+        
+        # Execute both tasks in parallel
+        MScompute(f"Starting to create buffer with {max_workers} threads")
+        
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            nodes_future = executor.submit(process_nodes_parallel)
+            paths_edges_future = executor.submit(process_paths_and_edges)
+            
+            nodes_str = nodes_future.result()
+            paths_str, edges_str = paths_edges_future.result()
+        
+        # Calculate data sizes for reporting
+        nodes_size = len(nodes_str)
+        edges_size = len(edges_str)
+        paths_size = len(paths_str)
+        total_size = nodes_size + edges_size + paths_size
+        
+        MScompute(f"Buffer ready : {total_size:,} characters to save. ({nodes_size:,} S, {edges_size:,} L, {paths_size:,} P)")
+        
+        # Write to file
+        MScompute(f"Writing GFA file...")
+        
+        with open(file_path, 'w') as f:
+            print("\t\tWriting nodes...")
+            f.write(nodes_str)
+            
+            print("\t\tWriting edges...")
+            f.write(edges_str)
+            
+            print("\t\tWriting paths...")
+            f.write(paths_str)
+        
+        print(f"\t\tGFA export completed successfully!")
