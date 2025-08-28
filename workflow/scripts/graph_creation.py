@@ -19,17 +19,16 @@ import argparse
 import psutil # type: ignore
 from bitarray import bitarray # type: ignore
 import threading
-from io import StringIO
 import os
-from Bio.Seq import Seq
-from Bio.SeqRecord import SeqRecord
-from Bio import SeqIO
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from io import StringIO
 import time
-
 from io_handler import MSpangepopDataHandler, MSerror, MSsuccess, MScompute, MSwarning
-from graph_utils import mutate_base, generate_sequence,gather_lineages, MutationRecap, VariantSizeVisualizer, LintVisualizer
+from graph_utils import (
+    mutate_base, generate_sequence, gather_lineages, 
+    MutationRecap, VariantSizeVisualizer, LintVisualizer,
+    GraphInitResult, MutationResult, ThreadSafeNodeIDGenerator,
+    ProgressTracker, estimate_node_count
+)
 
 # You can choose a matrix here for the SNP and insertion sequences
 from matrix import random_matrix as snp_matrix, simple_at_bias_matrix as insertion_matrix
@@ -646,10 +645,7 @@ class Path:
 class Graph:
     """Represents a directed graph"""
 
-    graph_id_generator = itertools.count(1)  # Unique ID generator for graphs
-
     def __init__(self, node_id_generator: itertools.count):
-        self.id: int = next(self.graph_id_generator)
         self.node_id_generator: itertools.count = node_id_generator
         self.nodes: set[Node] = set()
         self.paths: dict[int, Path] = {}
@@ -775,14 +771,6 @@ class Graph:
 
     def __repr__(self) -> str:
         return f"Graph(id={self.id}, Nodes={len(self.nodes)}, Paths={len(self.paths)})"
-
-    @property
-    def details(self):
-        """Show graph details"""
-        print(self)
-        print("Paths :")
-        for path in self.paths.items() :
-            print(path)
 
     def _apply_to_paths(self, affected_lineages, operation_func):
         """
@@ -982,171 +970,93 @@ class GraphEnsemble:
         for graph in self: 
             graph.lint(ignore_ancestral, visualizer=visualizer)
 
-    def save_to_gfav1_1_hybrid(self, file_path, ignore_ancestral=False, max_workers=None):
-        """
-        Hybrid approach with progress reporting: parallel data collection + sequential writing.
-        Best balance of performance and simplicity with detailed progress updates.
-        """
-        
-        if not self.graphs:
-            raise MSerror("No graphs to save")
-        
-        graph = self.graphs[0]
-        start_time = time.time()
-        
-        # Set default max_workers if not provided
-        if max_workers is None:
-            max_workers = 4
-        
-        # Count total items for progress reporting
-        total_nodes = len(graph.nodes)
-        total_paths = sum(1 for lineage in graph.paths.keys() 
-                        if not (ignore_ancestral and lineage == "Ancestral"))
-        MScompute(f"Starting GFA export: {total_nodes} nodes, {total_paths} paths to process")
-        
-        def process_nodes_parallel():
-            """Process nodes with chunking if beneficial"""
+# ============================================================================
+# PARALLELIZATION FUNCTIONS
+# ============================================================================
 
-            nodes_list = list(graph.nodes)
-
-            chunk_size = max(1, len(nodes_list) // max_workers)
-            
-            def process_chunk(chunk_data):
-                chunk_idx, chunk = chunk_data
-                buffer = StringIO()
-                for node in chunk:
-                    buffer.write(f"S\t{node.id}\t{node}\n")
-                return chunk_idx, buffer.getvalue()
-            
-            # Fixed: Create chunks properly with actual node objects
-            chunks = []
-            for i in range(0, len(nodes_list), chunk_size):
-                chunk_nodes = nodes_list[i:i + chunk_size]
-                chunk_idx = len(chunks)
-                chunks.append((chunk_idx, chunk_nodes))
-            
-            completed_chunks = 0
-            results = [''] * len(chunks)
-            
-            with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                future_to_chunk = {executor.submit(process_chunk, chunk_data): chunk_data 
-                                for chunk_data in chunks}
-                
-                for future in as_completed(future_to_chunk):
-                    chunk_idx, chunk_result = future.result()
-                    results[chunk_idx] = chunk_result
-                    completed_chunks += 1
-            
-            result = ''.join(results)
-    
-            return result
-        
-        def process_paths_and_edges():
-            """Process paths and collect edges simultaneously"""
-            
-            paths_buffer = StringIO()
-            unique_edges = set()
-            processed_paths = 0
-            
-            for lineage, path in graph.paths.items():
-                if ignore_ancestral and lineage == "Ancestral":
-                    continue
-                
-                # Progress update every 100 paths or for large datasets
-                if processed_paths % max(1, total_paths // 10) == 0 and processed_paths > 0:
-                    progress = (processed_paths / total_paths) * 100
-                
-                # Process path
-                paths_buffer.write(f"P\tlineage_{path.lineage}\t{repr(path)}\t*\n")
-                
-                # Collect edges from this path
-                path_edges_count = 0
-                for edge in path.path_edges:
-                    edge_signature = (
-                        edge.node1.id, edge.node1_side,
-                        edge.node2.id, edge.node2_side
-                    )
-                    unique_edges.add(edge_signature)
-                    path_edges_count += 1
-                
-                processed_paths += 1
-            
-            
-            # Convert edges to strings
-            edges_buffer = StringIO()
-            processed_edges = 0
-            
-            for edge_data in unique_edges:
-
-            
-                node1_id, node1_side, node2_id, node2_side = edge_data
-                orientation1 = "+" if node1_side else "-"
-                orientation2 = "+" if not node2_side else "-"
-                edges_buffer.write(f"L\t{node1_id}\t{orientation1}\t{node2_id}\t{orientation2}\t0M\n")
-                processed_edges += 1
-            
-
-            return paths_buffer.getvalue(), edges_buffer.getvalue()
-        
-        # Execute both tasks in parallel
-        MScompute(f"Starting to create buffer with {max_workers} threads")
-        
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            nodes_future = executor.submit(process_nodes_parallel)
-            paths_edges_future = executor.submit(process_paths_and_edges)
-            
-            nodes_str = nodes_future.result()
-            paths_str, edges_str = paths_edges_future.result()
-        
-        # Calculate data sizes for reporting
-        nodes_size = len(nodes_str)
-        edges_size = len(edges_str)
-        paths_size = len(paths_str)
-        total_size = nodes_size + edges_size + paths_size
-        
-        MScompute(f"Buffer ready : {total_size:,} characters to save. ({nodes_size:,} S, {edges_size:,} L, {paths_size:,} P)")
-        
-        # Write to file
-        MScompute(f"Writing GFA file...")
-        write_start = time.time()
-        
-        with open(file_path, 'w') as f:
-            print("\t\tWriting nodes...")
-            f.write(nodes_str)
-            
-            print("\t\tWriting edges...")
-            f.write(edges_str)
-            
-            ("\t\tWriting paths...")
-            f.write(paths_str)
-        
-        write_time = time.time() - write_start
-        total_time = time.time() - start_time
-        
-        # Final statistics
-        file_size_mb = total_size / (1024 * 1024)
-        write_speed_mb_s = file_size_mb / write_time if write_time > 0 else 0
-        print(f"\t\tGFA export completed successfully!")
-        print(f"\t\tSize: {file_size_mb:.2f} MB")
-        print(f"\t\tWrite speed: {write_speed_mb_s:.2f} MB/s")
-        print()
-
-def apply_mutations_to_graphs(graphs, traversal, recap: MutationRecap, visualizer: VariantSizeVisualizer, chromosome):
+def parallel_graph_initialization(sequences, tree_lineages, chromosome, max_workers=4):
     """
-    Apply mutations from the augmented traversal to the corresponding graphs.
-    
-    Simplified version that only validates against actual path lengths, not static tree boundaries.
+    Parallelize graph initialization with proper node ID management
     """
-    i = 0 
-    # Process each tree and its corresponding graph
-    for tree_idx, (tree_data, graph) in enumerate(zip(traversal, graphs)):
-        # Extract tree metadata (for reporting only)
+    MScompute(f"Starting parallel graph initialization for chromosome {chromosome}")
+    
+    # Pre-allocate node IDs
+    node_id_allocator = ThreadSafeNodeIDGenerator()
+    allocations = []
+    
+    # Estimate and allocate IDs for each graph
+    for i, (record, (tree_index, lineages)) in enumerate(zip(sequences, tree_lineages)):
+        sequence = str(record.seq)
+        estimated_nodes = estimate_node_count(sequence, lineages)
+        id_range = node_id_allocator.allocate_range(estimated_nodes)
+        allocations.append((i, record, tree_index, lineages, id_range))
+    
+    # Progress tracker
+    progress = ProgressTracker(len(sequences), f"Initializing chromosome {chromosome} subgraphs")
+    
+    # Worker function
+    def init_single_graph(args):
+        idx, record, tree_index, lineages, id_range = args
+        
+        # Create local ID generator
+        local_id_gen = node_id_allocator.create_local_generator(id_range.start)
+        
+        # Create and initialize graph
+        sequence = str(record.seq)
+        graph = Graph(local_id_gen)
+        graph.build_from_sequence(sequence, lineages)
+        
+        # Update progress
+        progress.update()
+        
+        # Return indexed result
+        return GraphInitResult(
+            index=idx,
+            graph=graph,
+            tree_index=tree_index,
+            lineages=lineages,
+            node_count=len(graph.nodes)
+        )
+    
+    # Execute in parallel
+    graphs = [None] * len(sequences)  # Pre-allocate list for order preservation
+    
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(init_single_graph, args): args[0] 
+                  for args in allocations}
+        
+        for future in as_completed(futures):
+            try:
+                result = future.result()
+                graphs[result.index] = result.graph
+            except Exception as e:
+                idx = futures[future]
+                raise MSerror(f"Failed to initialize graph {idx}: {e}")
+    
+    MScompute(f"Graph initialization complete. Total nodes allocated: {node_id_allocator.current_id - 1}")
+    return graphs
+
+def parallel_apply_mutations(graphs, traversal, chromosome, max_workers=4):
+    """
+    Parallelize mutation application with thread-safe tracking
+    """
+    MScompute(f"Starting parallel mutation application for chromosome {chromosome}")
+    
+    # Progress tracker
+    progress = ProgressTracker(len(graphs), f"Applying mutations to chromosome {chromosome} subgraphs")
+    
+    # Worker function for applying mutations to a single graph
+    def apply_mutations_to_single_graph(args):
+        graph_idx, graph, tree_data = args
+        
+        # Local tracking for this graph's mutations
+        local_mutations = []
+        local_variants = []
+        
+        # Extract tree metadata
         tree_index = tree_data.get("tree_index", "unknown")
         tree_interval = tree_data.get("initial_tree_interval", [0, 0])
         tree_start = tree_interval[0]
-        
-        if i == 0 or i % 10 == 0 : 
-            MScompute(f"Applying mutations to chromosome {chromosome} subgraphs -> {(tree_index*100)/len(graphs):.0f} %")
         
         # Process each node in the tree
         for node_data in tree_data.get("nodes", []):
@@ -1161,36 +1071,50 @@ def apply_mutations_to_graphs(graphs, traversal, recap: MutationRecap, visualize
             affected_lineages = affected_nodes.intersection(lineages)
             
             if not affected_lineages:
-                MSwarning(f"Node {node_id} has mutations but no affected lineages")
                 continue
             
-            # Apply each mutation for this node
+            # Apply each mutation (simplified from your original logic)
             for mutation in mutations:
                 mut_type = mutation.get("type")
                 start = mutation.get("start")
                 length = mutation.get("length")
                 
-                # HANDLE NONE MUTATIONS - Skip mutations that couldn't be placed
+                # Handle None mutations
                 if mut_type is None:
-                    # This mutation was skipped in draw_variants.py due to interval constraints
-                    error_msg = "Mutation skipped in previous step (locus got too small)"
-                    recap.add_mutation(tree_index, node_id, "SKIPPED", start, length, 
-                                     affected_lineages, False, error_msg)
+                    local_mutations.append({
+                        "tree_index": tree_index,
+                        "node_id": node_id,
+                        "mutation_type": "SKIPPED",
+                        "position": start,
+                        "length": length,
+                        "affected_lineages": affected_lineages,
+                        "success": False,
+                        "error_msg": "Mutation skipped in previous step"
+                    })
                     continue
                 
-                # Check if start position is None
                 if start is None:
-                    error_msg = "Mutation has no start position"
-                    recap.add_mutation(tree_index, node_id, mut_type, start, length, 
-                                     affected_lineages, False, error_msg)
-                    visualizer.add_variant(mut_type, start, length, False, affected_lineages)
+                    local_mutations.append({
+                        "tree_index": tree_index,
+                        "node_id": node_id,
+                        "mutation_type": mut_type,
+                        "position": start,
+                        "length": length,
+                        "affected_lineages": affected_lineages,
+                        "success": False,
+                        "error_msg": "Mutation has no start position"
+                    })
+                    local_variants.append((mut_type, start, length, False, affected_lineages))
                     continue
                 
-                # Convert to relative position within the tree
+                # Convert to relative position
                 relative_start = start - tree_start
                 
-                # Validate against each affected lineage's CURRENT path length
-                # Path lengths can vary between lineages due to previous mutations
+                # Validate and apply mutation
+                success = False
+                error_msg = None
+                
+                # Validate against each affected lineage's current path length
                 failed_lineages = []
                 error_messages = []
                 
@@ -1202,16 +1126,11 @@ def apply_mutations_to_graphs(graphs, traversal, recap: MutationRecap, visualize
                         error_messages.append(f"Lineage {lineage} not found in graph")
                         continue
                     
-                    # Get current path length (number of nodes)
-                    # CRITICAL FIX: node_count is edges, actual nodes = edges + 1
+                    # Get current path length
                     current_path_length = path.node_count + 1
                     
-                    # Validate based on mutation type - only check against current path
-                    # No need to check static tree boundaries!
-                    
+                    # Validate based on mutation type
                     if mut_type == "SNP":
-                        # SNPs modify a single existing position [0, path_length-1]
-                        # Cannot be at first or last position for connectivity
                         if relative_start == 0:
                             failed_lineages.append(lineage)
                             error_messages.append("SNP at first position would break connectivity")
@@ -1222,9 +1141,6 @@ def apply_mutations_to_graphs(graphs, traversal, recap: MutationRecap, visualize
                             )
                     
                     elif mut_type == "INS":
-                        # Insertions add sequence between two adjacent positions
-                        # Cannot insert at position 0 (before first node)
-                        # Can insert up to position path_length-1 (after last node)
                         if relative_start == 0:
                             failed_lineages.append(lineage)
                             error_messages.append("INS at position 0 would break connectivity")
@@ -1235,13 +1151,10 @@ def apply_mutations_to_graphs(graphs, traversal, recap: MutationRecap, visualize
                             )
                     
                     elif mut_type == "DEL":
-                        # Deletion removes nodes from [start, start+length) 
-                        # Cannot delete first or last node
                         if length is None:
                             failed_lineages.append(lineage)
                             error_messages.append("DEL has no length specified")
                         else:
-                            # Check boundaries against current path
                             if relative_start == 0:
                                 failed_lineages.append(lineage)
                                 error_messages.append("DEL at first position would break connectivity")
@@ -1250,7 +1163,6 @@ def apply_mutations_to_graphs(graphs, traversal, recap: MutationRecap, visualize
                                 error_messages.append(
                                     f"DEL would affect last position (end {relative_start + length}, path length {current_path_length})"
                                 )
-                            # Also ensure we don't delete too much
                             elif length >= current_path_length - 2:
                                 failed_lineages.append(lineage)
                                 error_messages.append(
@@ -1258,8 +1170,6 @@ def apply_mutations_to_graphs(graphs, traversal, recap: MutationRecap, visualize
                                 )
                     
                     elif mut_type == "INV":
-                        # Inversion affects nodes [start, start+length-1] inclusive
-                        # Cannot invert first or last node
                         if length is None:
                             failed_lineages.append(lineage)
                             error_messages.append("INV has no length specified")
@@ -1276,8 +1186,6 @@ def apply_mutations_to_graphs(graphs, traversal, recap: MutationRecap, visualize
                                 )
                     
                     elif mut_type == "DUP":
-                        # Duplication affects nodes [start, start+length-1] inclusive
-                        # Cannot duplicate first or last node
                         if length is None:
                             failed_lineages.append(lineage)
                             error_messages.append("DUP has no length specified")
@@ -1295,98 +1203,140 @@ def apply_mutations_to_graphs(graphs, traversal, recap: MutationRecap, visualize
                 
                 # Handle validation failures
                 if failed_lineages:
-                    # Some lineages failed validation
                     valid_lineages = affected_lineages - set(failed_lineages)
                     error_msg = f"Invalid for lineages {failed_lineages}: {'; '.join(error_messages)}"
                     
-                    # Record the failure for failed lineages
-                    recap.add_mutation(tree_index, node_id, mut_type, start, length, 
-                                     set(failed_lineages), False, error_msg)
+                    # Record the failure
+                    local_mutations.append({
+                        "tree_index": tree_index,
+                        "node_id": node_id,
+                        "mutation_type": mut_type,
+                        "position": start,
+                        "length": length,
+                        "affected_lineages": set(failed_lineages),
+                        "success": False,
+                        "error_msg": error_msg
+                    })
                     
-                    # If no valid lineages remain, skip this mutation entirely
                     if not valid_lineages:
-                        visualizer.add_variant(mut_type, start, length, False, affected_lineages)
+                        local_variants.append((mut_type, start, length, False, affected_lineages))
                         continue
                     
-                    # Otherwise, continue with valid lineages only
                     affected_lineages = valid_lineages
                 
-                # Try to apply the mutation to valid lineages
-                success = False
+                # Try to apply the mutation
                 try:
-                    # Apply the appropriate mutation type
-                    # Note: Graph methods use 0-based indexing
-                    
+                    # Apply the mutation based on type
                     if mut_type == "SNP":
-                        # Single nucleotide polymorphism at one position
                         graph.add_snp(relative_start, affected_lineages)
-                    
                     elif mut_type == "INS":
-                        # Insertion of new sequence at a position
                         if length is None:
-                            raise MSerror(f"Insertion at position {start} has no length specified")
+                            raise MSerror(f"Insertion has no length")
                         graph.add_ins(relative_start, length, affected_lineages)
-                    
                     elif mut_type == "DEL":
-                        # Deletion from start to start+length (exclusive)
                         if length is None:
-                            raise MSerror(f"Deletion at position {start} has no length specified")
+                            raise MSerror(f"Deletion has no length")
                         graph.add_del(relative_start, relative_start + length, affected_lineages)
-                    
                     elif mut_type == "INV":
-                        # Inversion from start to start+length-1 (inclusive)
                         if length is None:
-                            raise MSerror(f"Inversion at position {start} has no length specified")
+                            raise MSerror(f"Inversion has no length")
                         graph.add_inv(relative_start, relative_start + length - 1, affected_lineages)
-                    
                     elif mut_type == "DUP":
-                        # Tandem duplication from start to start+length-1 (inclusive)
                         if length is None:
-                            raise MSerror(f"Duplication at position {start} has no length specified")
+                            raise MSerror(f"Duplication has no length")
                         graph.add_tdup(relative_start, relative_start + length - 1, affected_lineages)
-                    
                     else:
-                        # Unknown mutation type
                         raise MSerror(f"Unknown mutation type: {mut_type}")
                     
-                    # Mutation applied successfully
                     success = True
                     
-                    # Record success
-                    recap.add_mutation(tree_index, node_id, mut_type, start, length, 
-                                     affected_lineages, True)
-                    
                 except Exception as e:
-                    # Mutation application failed
                     error_msg = str(e)
-                    
-                    # Record failure
-                    recap.add_mutation(tree_index, node_id, mut_type, start, length, 
-                                     affected_lineages, False, error_msg)
+                    success = False
                 
-                # Track variant size for visualization (both success and failure)
-                visualizer.add_variant(mut_type, start, length, success, affected_lineages)
+                # Track the mutation
+                local_mutations.append({
+                    "tree_index": tree_index,
+                    "node_id": node_id,
+                    "mutation_type": mut_type,
+                    "position": start,
+                    "length": length,
+                    "affected_lineages": affected_lineages,
+                    "success": success,
+                    "error_msg": error_msg
+                })
+                
+                # Track the variant
+                local_variants.append((mut_type, start, length, success, affected_lineages))
         
-        i += 1
+        # Update progress
+        progress.update()
         
-def step(graphs, output_file):
-    """Test function for graph saving"""
-    ensemble = GraphEnsemble(name=f"step", graph_list=graphs)
-    ensemble.concatenate
-    if ensemble.graphs:  
-        final_graph = ensemble.graphs[0]
-    ensemble.lint(ignore_ancestral=False)
-    ensemble.save_to_gfav1_1_hybrid(output_file, ignore_ancestral=False, max_workers=4)
+        return MutationResult(
+            index=graph_idx,
+            mutations_applied=local_mutations,
+            variants_tracked=local_variants,
+            success=True
+        )
+    
+    # Prepare work items
+    work_items = [(i, graph, tree_data) 
+                  for i, (graph, tree_data) in enumerate(zip(graphs, traversal))]
+    
+    # Collect results
+    all_mutations = []
+    all_variants = []
+    
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(apply_mutations_to_single_graph, item): item[0] 
+                  for item in work_items}
+        
+        # Collect results in order
+        results = [None] * len(graphs)
+        for future in as_completed(futures):
+            try:
+                result = future.result()
+                results[result.index] = result
+            except Exception as e:
+                idx = futures[future]
+                raise MSerror(f"Failed to apply mutations to graph {idx}: {e}")
+        
+        # Merge results in order
+        for result in results:
+            if result:
+                all_mutations.extend(result.mutations_applied)
+                all_variants.extend(result.variants_tracked)
+    
+    MScompute(f"Mutation application complete. Total mutations processed: {len(all_mutations)}")
+    return all_mutations, all_variants
+
+def apply_mutations_to_graphs(graphs, traversal, recap: MutationRecap, visualizer: VariantSizeVisualizer, chromosome, threads=4):
+    """
+    Apply mutations from the augmented traversal to the corresponding graphs.
+    Now uses parallel processing by default.
+    """
+    # Use parallel mutation application
+    mutations, variants = parallel_apply_mutations(graphs, traversal, chromosome, max_workers=threads)
+    
+    # Merge tracking results into recap and visualizer
+    for mutation_data in mutations:
+        recap.add_mutation(**mutation_data)
+    
+    for variant_data in variants:
+        visualizer.add_variant(*variant_data)
 
 def main(splited_fasta: str, augmented_traversal: str, output_file: str, 
          sample: str, chromosome: str, fasta_folder: str, recap_file: str = None, 
          variant_plot_dir: str = None, threads = 1) -> None:
-    """Main function for graph creation with recap and visualization."""
+    """
+    Main function for graph creation with recap and visualization.
+    Uses parallel processing by default for improved performance.
+    """
     
     # Initialize tracking objects
     recap = MutationRecap(sample, chromosome)
     lint_visualizer = LintVisualizer()
-    MScompute("Starting to generate the variation graph")
+    MScompute("Starting parallelized graph generation")
     
     # Read input data first to get reference length
     sequences = MSpangepopDataHandler.read_fasta(splited_fasta)
@@ -1404,24 +1354,16 @@ def main(splited_fasta: str, augmented_traversal: str, output_file: str,
         if len(sequences) != len(tree_lineages):
             raise MSerror(f"Mismatch: {len(sequences)} sequences but {len(tree_lineages)} trees")
         
-        node_id_generator = itertools.count(1)
+        # Parallel graph initialization
+        graphs = parallel_graph_initialization(
+            sequences, tree_lineages, chromosome, 
+            max_workers=threads
+        )
         
-        graphs = []
-        y = 0
-        for i, (record, (tree_index, lineages)) in enumerate(zip(sequences, tree_lineages)):
-
-            if y == 0 or y % 50 == 0 :
-                memory = psutil.virtual_memory()
-                available_gb = memory.available / (1024**3)
-                MScompute(f"Initialization of chromosome {chromosome} subgraphs -> {(tree_index*100)/len(sequences):.0f}% | {available_gb:.1f} GB available")
-                            
-            sequence = str(record.seq)
-            new_graph = Graph(node_id_generator)
-            new_graph.build_from_sequence(sequence, lineages)
-            graphs.append(new_graph)
-            y += 1
+        # Parallel mutation application
+        apply_mutations_to_graphs(graphs, traversal, recap, var_visualizer, chromosome, threads)
         
-        apply_mutations_to_graphs(graphs, traversal, recap, var_visualizer, chromosome)
+        # Continue with concatenation and saving (sequential)
         ensemble = GraphEnsemble(name=f"{sample}_chr_{chromosome}", graph_list=graphs)
 
         MScompute(f"Concatenating and linting graphs")
@@ -1436,7 +1378,12 @@ def main(splited_fasta: str, augmented_traversal: str, output_file: str,
 
         ensemble.lint(ignore_ancestral=True, visualizer=lint_visualizer)
 
-        ensemble.save_to_gfav1_1_hybrid(output_file, ignore_ancestral=True, max_workers=threads)
+        MSpangepopDataHandler.save_to_gfav1_1_hybrid(
+            ensemble,
+            file_path=output_file,
+            ignore_ancestral=True,
+            max_workers=threads
+        )
         
         MSpangepopDataHandler.write_fasta_multithreaded(
             graph=final_graph,
@@ -1497,8 +1444,10 @@ if __name__ == "__main__":
     parser.add_argument("--recap_file", help="Path to save recap file")
     parser.add_argument("--variant_plot_dir", help="Directory to save variant size plots")
     parser.add_argument("--fasta_folder", help="Directory to save all fasta")
-    parser.add_argument("--threads", type=int)
+    parser.add_argument("--threads", type=int, default=4, help="Number of threads for parallel processing (default: 4)")
 
     args = parser.parse_args()
+    
     main(args.splited_fasta, args.augmented_traversal, args.output_file, 
-         args.sample, args.chromosome,args.fasta_folder, args.recap_file, args.variant_plot_dir, args.threads)  
+         args.sample, args.chromosome, args.fasta_folder, args.recap_file, 
+         args.variant_plot_dir, args.threads)

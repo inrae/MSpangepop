@@ -17,6 +17,11 @@ import numpy as np
 from collections import defaultdict
 from scipy.stats import gaussian_kde
 from scipy.interpolate import interp1d
+import threading
+import itertools
+import psutil
+from dataclasses import dataclass
+from typing import List, Tuple, Dict, Any
 
 def mutate_base(original_base: str, traition_matrix: dict) -> str:
     """Uses the provided transition matrix to determine the mutated base."""
@@ -641,3 +646,75 @@ class LintVisualizer:
             MSsuccess(f"Saved recap [2/2]")
         except Exception as e:
             MSwarning(f"Could not write lint report: {e}")
+
+# ============================================================================
+# PARALLELIZATION SUPPORT CLASSES
+# ============================================================================
+
+@dataclass
+class GraphInitResult:
+    """Container for graph initialization results"""
+    index: int
+    graph: Any  # Graph type
+    tree_index: int
+    lineages: set
+    node_count: int
+
+@dataclass
+class MutationResult:
+    """Container for mutation application results"""
+    index: int
+    mutations_applied: List[Dict]
+    variants_tracked: List[Tuple]
+    success: bool
+    error: str = None
+
+class ThreadSafeNodeIDGenerator:
+    """Thread-safe node ID generator using pre-allocation strategy"""
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.current_id = 1
+        
+    def allocate_range(self, count: int) -> range:
+        """Allocate a range of IDs for a graph"""
+        with self.lock:
+            start = self.current_id
+            self.current_id += count
+            return range(start, self.current_id)
+    
+    def create_local_generator(self, start: int):
+        """Create a local generator starting from a specific ID"""
+        return itertools.count(start)
+
+class ProgressTracker:
+    """Thread-safe progress tracker with neat output"""
+    def __init__(self, total_items: int, task_name: str):
+        self.total = total_items
+        self.completed = 0
+        self.task_name = task_name
+        self.lock = threading.Lock()
+        self.last_print_percentage = -1
+        
+    def update(self, increment: int = 1) -> None:
+        """Update progress and print if milestone reached"""
+        with self.lock:
+            self.completed += increment
+            percentage = int((self.completed * 100) / self.total)
+            
+            # Print at 0%, 10%, 20%, etc.
+            if percentage >= self.last_print_percentage + 10 or percentage == 100:
+                self.last_print_percentage = (percentage // 10) * 10
+                memory = psutil.virtual_memory()
+                available_gb = memory.available / (1024**3)
+                MScompute(f"{self.task_name} -> {percentage}% | {available_gb:.1f} GB available")
+
+
+def estimate_node_count(sequence: str, lineages: set) -> int:
+    """Estimate the number of nodes needed for a graph"""
+    # Base nodes for the sequence
+    base_nodes = len(sequence)
+
+    buffer = int(base_nodes * 3000) # Increase this in case of duplicates 
+
+    estimated = base_nodes + buffer
+    return estimated
