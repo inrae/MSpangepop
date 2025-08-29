@@ -397,13 +397,8 @@ class MSpangepopDataHandler:
         MScompute(f"Writing GFA file...")
         
         with open(file_path, 'w') as f:
-            print("\t\tWriting nodes...")
             f.write(nodes_str)
-            
-            print("\t\tWriting edges...")
             f.write(edges_str)
-            
-            print("\t\tWriting paths...")
             f.write(paths_str)
         
-        print(f"\t\tGFA export completed successfully!")
+        MSsuccess(f"GFA export completed successfully!")
