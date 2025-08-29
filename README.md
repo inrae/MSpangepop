@@ -66,7 +66,7 @@ sbatch mspangepop run # Then
 ./mspangepop local-run # Then
 ```
 
-## ⚙️ Other runing options
+## ⚙️ Other running options
 ```
 mspangepop [dry|run|local-run|dag|rulegraph|unlock|touch] [additional snakemake args]
     dry - run in dry-run mode
