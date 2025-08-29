@@ -55,10 +55,13 @@ class Node:
         """Returns only the raw DNA sequence as a string."""
         return self.__decode # Using str(Node) will automatically decode the node
 
-    @property
-    def reversed(self) -> str:
-        string = self.__repr__()
-        return string[::-1]
+    @property  
+    def reverse_complement(self) -> str:
+        """Returns the reverse complement of the DNA sequence."""
+        sequence = self.__decode
+        complement_map = {'A': 'T', 'T': 'A', 'G': 'C', 'C': 'G'}
+        return ''.join(complement_map.get(base, base) for base in reversed(sequence))
+
 
 class Edge:
     """Represents a directed edge between two nodes, keeping track of the side of each node involved."""
@@ -165,7 +168,7 @@ class Path:
         path_repr = f"{self.path_edges[0].node1}"
 
         for edge in self.path_edges:
-            path_repr += f"{edge.node2 if not edge.node2_side else edge.node2.reversed}"
+            path_repr += f"{edge.node2 if not edge.node2_side else edge.node2.reverse_complement}"
 
         return path_repr
 
@@ -978,7 +981,6 @@ def parallel_graph_initialization(sequences, tree_lineages, chromosome, max_work
     """
     Parallelize graph initialization with proper node ID management
     """
-    MScompute(f"Starting parallel graph initialization for chromosome {chromosome}")
     
     # Pre-allocate node IDs
     node_id_allocator = ThreadSafeNodeIDGenerator()
@@ -1033,7 +1035,6 @@ def parallel_graph_initialization(sequences, tree_lineages, chromosome, max_work
                 idx = futures[future]
                 raise MSerror(f"Failed to initialize graph {idx}: {e}")
     
-    MScompute(f"Graph initialization complete. Total nodes allocated: {node_id_allocator.current_id - 1}")
     return graphs
 
 def parallel_apply_mutations(graphs, traversal, chromosome, max_workers=4):
