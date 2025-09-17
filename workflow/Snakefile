@@ -48,7 +48,6 @@ def get_all_targets():
         chr_n = config["samples"][sample]["chr_n"]
         # Add polished GFA files
         for chr_num in range(1, chr_n + 1):
-            targets.append(os.path.join(output_dir, sample, graph,f"chr_{chr_num}", f"{sample}_chr_{chr_num}_graph_odgi.gfa"))
             targets.append(os.path.join(output_dir, sample, graph,f"chr_{chr_num}", f"{sample}_chr_{chr_num}_graph_vg.gfa"))
             targets.append(os.path.join(output_dir, sample, plot_dir, f"chr_{chr_num}", "visualization_complete.txt"))
         # Add global recap
@@ -271,41 +270,6 @@ rule graph_creation:
             --variant_plot_dir {params.out_dir} \
             --fasta_folder {params.fasta_folder} \
             --threads {threads}
-        """
-
-# This merges the nodes that can be merged in the GFA file
-rule gfa_merge_odgi:
-    input:
-        initial_gfa = rules.graph_creation.output.gfa
-    output:
-        polished_gfa = os.path.join(output_dir, "{sample}", graph, "chr_{chromosome}", "{sample}_chr_{chromosome}_graph_odgi.gfa"),
-        polished_gfa_stats = os.path.join(output_dir, "{sample}", graph, "chr_{chromosome}", "{sample}_chr_{chromosome}_graph_stats_odgi.txt"),
-        og_raw = temp(os.path.join(output_dir, "{sample}", temp_dir, "{sample}_chr_{chromosome}_raw.og")),
-        og_unchoped = temp(os.path.join(output_dir, "{sample}", temp_dir, "{sample}_chr_{chromosome}_unchoped.og"))
-    resources:
-        mem_mb=lambda wildcards: int(200000 * memory_multiplier),
-        time="60:00:00"
-    benchmark:
-        os.path.join(output_dir, "{sample}", "benchmark", "chr_{chromosome}", "gfa_merge_odgi_benchmark.txt")
-    container:
-        "docker://registry.forge.inrae.fr/pangepop/mspangepop/odgi:v0.9.2"
-    threads: 25
-    priority: 7
-    shell:
-        """
-        echo "[gfa_merge] Starting to clean the GFA file using odgi"
-        echo "[gfa_merge] Importing..."
-        odgi build -g {input.initial_gfa} -o {output.og_raw} -O -t {threads} -P
-        echo "\n[gfa_merge] Initial GFA state :" > {output.polished_gfa_stats}
-        odgi stats -i {output.og_raw} -S -L -b -t {threads} -P >> {output.polished_gfa_stats}
-        echo "[gfa_merge] Starting to unchop"
-        odgi unchop -i {output.og_raw} -o {output.og_unchoped} -t {threads} -P
-        echo "\n[gfa_merge] Final state" : >> {output.polished_gfa_stats}
-        odgi stats -i {output.og_unchoped} -S -S -L -b -t {threads} -P >> {output.polished_gfa_stats}
-        cat {output.polished_gfa_stats}
-        echo "\n[gfa_merge] Saving final GFA"
-        odgi view -i {output.og_unchoped} -t {threads} -g > {output.polished_gfa}
-        echo "✅ Final GFA @ {output.polished_gfa}"
         """
 
 # This merges the nodes that can be merged in the GFA file using VG
