@@ -3,15 +3,51 @@ Author: Lucien Piat
 Institution: INRAe
 Project: PangenOak
 
-Usage : This scripts create a variation graph from a json file full of mutations and lineages.
+This script constructs a variation graph from genomic sequences and mutation data,
+representing structural variations across multiple lineages in a unified graph structure.
+The resulting graph captures SNPs, insertions, deletions, inversions, and duplications
+while maintaining the relationships between different evolutionary lineages.
 
---splited_fasta ath to split FASTA file
---augmented_traversal Path to augmented traversal JSON
---output_file Path to output GFA file
---sample Sample name
---chromosome Chromosome identifier
---recap_file Path to save recap file
---variant_plot_dir Directory to save variant size plots
+Workflow:
+    The main() function orchestrates the following pipeline:
+    
+    1. INITIALIZATION PHASE:
+       - Create tracking objects for mutations (MutationRecap), graph optimization (LintVisualizer),
+         and variant visualization (VariantSizeVisualizer)
+       - Read input FASTA sequences (one per locus) and augmented traversal JSON
+       - Calculate reference genome length from input sequences
+    
+    2. PARALLEL GRAPH CONSTRUCTION:
+       - Extract lineage information from traversal data
+       - Initialize individual graphs for each locus in parallel
+       - Each graph represents ancestral sequence with paths for each lineage
+       - Node creation is deferred (no IDs assigned yet)
+    
+    3. PARALLEL MUTATION APPLICATION:
+       - Apply mutations from traversal data to corresponding graphs
+       - Mutations include: SNPs, insertions (INS), deletions (DEL), 
+         inversions (INV), duplications (DUP), replacements (REPL)
+       - Track success/failure of each mutation application
+       - Validate mutation positions against current path lengths
+    
+    4. GRAPH MERGING AND OPTIMIZATION:
+       - Create GraphEnsemble container and concatenate all subgraphs
+       - Calculate final sequence lengths for each lineage
+       - Perform graph linting to remove orphan nodes (nodes not in any path)
+       - Exclude ancestral path from final output if specified
+    
+    5. OUTPUT GENERATION:
+       - Assign node IDs just-in-time during GFA serialization
+       - Save graph in GFA v1.1 format with parallel I/O optimization
+       - Export individual lineage sequences as FASTA files
+       - Generate comprehensive visualization plots
+       - Write detailed mutation recap file with statistics
+    
+REQUIRED INPUTS:
+    --splited_fasta       : Path to split FASTA file containing sequence segments
+                           (one sequence per tree in the ARG)
+    --augmented_traversal : Path to JSON file containing the ORDERED mutation list and lineages
+                           information from ARG traversal and mutation augmentation
 """
 
 import itertools
@@ -26,8 +62,7 @@ from io_handler import MSpangepopDataHandler, MSerror, MSsuccess, MScompute, MSw
 from graph_utils import (
     mutate_base, generate_sequence, gather_lineages, 
     MutationRecap, VariantSizeVisualizer, LintVisualizer,
-    GraphInitResult, MutationResult, ThreadSafeNodeIDGenerator,
-    ProgressTracker, estimate_node_count
+    GraphInitResult, MutationResult, ProgressTracker
 )
 
 # You can choose a matrix here for the SNP and insertion sequences
@@ -35,7 +70,7 @@ from matrix import random_matrix as snp_matrix, simple_at_bias_matrix as inserti
 
 class Node:
     """Represents a node in the graph."""
-    def __init__(self, dna_sequence, node_id: int):
+    def __init__(self, dna_sequence, node_id=None): # Node ids allocation will append while saving
         self.id: int = node_id
         if isinstance(dna_sequence, str):
             self.dna_bases: bitarray = bitarray()
@@ -64,7 +99,15 @@ class Node:
 
 
 class Edge:
-    """Represents a directed edge between two nodes, keeping track of the side of each node involved."""
+    """
+    Represents a directed edge between two nodes, keeping track of the side of each node involved.
+    
+    Examples : 
+        - Edge(A, +, B, -) is a direct link between A and B 
+        - Edge(A, +, C, +) is a direct link between A and C but C will be read in reverse
+
+    ODGI and VG call this class a "hook"
+    """
 
     def __init__(self, node1: Node, node1_side, node2: Node, node2_side):
         """
@@ -106,18 +149,39 @@ class Edge:
         )
 
     def __repr__(self):
-        if self.node1_side: 
-            side1 = "+"
-        else:
-            side1 = "-"
-        if self.node2_side: 
-            side2 = "+"
-        else:
-            side2 = "-"
-        return f"({self.node1.id}{side1} -> {self.node2.id}{side2})"
+        # Use object id if node.id is not set
+        node1_id = self.node1.id if self.node1.id is not None else f"<{id(self.node1)}>"
+        node2_id = self.node2.id if self.node2.id is not None else f"<{id(self.node2)}>"
+        
+        side1 = "+" if self.node1_side else "-"
+        side2 = "+" if self.node2_side else "-"
+        return f"({node1_id}{side1} -> {node2_id}{side2})"
     
 class Path:
-    """Represents a path in the graph, consisting of a sequence of edges."""
+    """
+    Represents a path in the graph, consisting of a ordered list of edges.
+
+    Examples : 
+        - Path([Edge(AB, +, CD, -), Edge(CD, +, EF, -)]) will produce the sequence AB CD EF
+        - Path([Edge(AB, +, CD, +), Edge(CD, -, EF, -)]) will produce the sequence AB DC EF
+
+    Each path, is in our graph a lineage.
+
+    This class overloads the __getitem__(self, i) function so it yealds the node at the i position and NOT the Edge at i. 
+
+    With edges [AB -> BC -> CD], we have:
+        - 3 edges (node_count = 3)
+        - 4 nodes (A, B, C, D)
+        - Valid indices: 0, 1, 2, 3
+
+    Using this we can do operation in the path sutch as : 
+        - bypass
+        - loop
+        - invert
+        - swap
+        - paste
+    between two nodes ids in the path. 
+    """
 
     def __init__(self, lineage, path_edges: list[Edge] = None):
         """
@@ -646,55 +710,24 @@ class Path:
         self.node_count = len(self.path_edges)
 
 class Graph:
-    """Represents a directed graph"""
-
-    def __init__(self, node_id_generator: itertools.count):
-        self.node_id_generator: itertools.count = node_id_generator
-        self.nodes: set[Node] = set()
-        self.paths: dict[int, Path] = {}
-        self.start_node: Node = None
-        self.end_node: Node = None
-
-    def lint(self, ignore_ancestral=False, visualizer=None) -> None:
-        """
-        Removes orphan nodes from the graph.
-        
-        Orphan nodes are nodes that exist in self.nodes but are not referenced
-        by any edge in any path. This can happen after graph modifications like
-        deletions, bypasses, or other operations that leave unused nodes behind.
-        
-        Parameters:
-        - ignore_ancestral (bool): If True, nodes used only in the ancestral path
-                                will be considered orphans and removed
-        """
-        used_nodes = set()
-
-        for lineage, path in self.paths.items():
-            if ignore_ancestral and lineage == "Ancestral":
-                continue
-            for edge in path.path_edges:
-                used_nodes.add(edge.node1)
-                used_nodes.add(edge.node2)
-
-        if visualizer:
-            all_nodes = set(self.nodes)
-            removed_nodes = all_nodes - used_nodes
-            visualizer.record(
-                before=len(all_nodes),
-                after=len(used_nodes),
-                removed=removed_nodes
-            )
-
-        self.nodes &= used_nodes
+    """
+    Represents a directed graph
     
-    def __iter__(self):
-        """Make GraphEnsemble iterable."""
-        return iter(self.graphs)
+    This graph holds : 
+        - A set of unique nodes, that have no formal id and how a sequence (1 base for now)
+        - Paths that reference an ordered list of Edges. Paths can share nodes but Edges are deepcopies.
+        - The first and last node of the graph that cant be modified and are shared by all Paths. 
+    """
 
+    def __init__(self): 
+        self.nodes = set()
+        self.paths = {}
+        self.start_node = None
+        self.end_node = None
+    
     def add_new_node(self, dna_sequence: str) -> Node:
-        """
-        Creates and adds a new node to the graph, return it"""
-        node = Node(dna_sequence, next(self.node_id_generator))
+        """Creates and adds a new node to the graph, return it"""
+        node = Node(dna_sequence)
         self.nodes.add(node)
         return node
 
@@ -703,7 +736,7 @@ class Graph:
         self.nodes.add(node)
 
     def __iadd__(self, other: "Graph") -> "Graph":
-        """Merges another graph into this one."""
+        """Merges another graph into this one. This combine the nodes and links similar paths"""
 
         if not self.nodes or not other.nodes:
             raise MSerror("Cannot concatenate empty graphs.")
@@ -735,41 +768,70 @@ class Graph:
                 self.paths[lineage] = copied_path
 
         return self
+    
+    def lint(self, ignore_ancestral=False, visualizer=None) -> None:
+        """
+        Removes orphan nodes from the graph.
+        
+        Orphan nodes are nodes that exist in self.nodes but are not referenced
+        by any Edge in any Path. This can happen after graph modifications like
+        deletions, bypasses, or other operations that leave unused nodes behind.
+        
+        Parameters:
+        - ignore_ancestral (bool): If True, nodes used only in the ancestral path
+                                will be considered orphans and removed
+        """
+        used_nodes = set()
+
+        for lineage, path in self.paths.items():
+            if ignore_ancestral and lineage == "Ancestral":
+                continue
+            for edge in path.path_edges:
+                used_nodes.add(edge.node1)
+                used_nodes.add(edge.node2)
+
+        if visualizer:
+            all_nodes = set(self.nodes)
+            removed_nodes = all_nodes - used_nodes
+            visualizer.record(
+                before=len(all_nodes),
+                after=len(used_nodes),
+                removed=removed_nodes
+            )
+
+        self.nodes &= used_nodes # Use set operation for efficient linting 
 
     def build_from_sequence(self, nucleotide_sequence: str, lineages: set) -> None:
         """Constructs a graph and creates the associated paths from a nucleotide sequence."""
-
         if not nucleotide_sequence:
             raise MSerror("Cannot build a graph from an empty sequence.")
-
-        ancestral_path = Path("Ancestral") # Create the ancestral path
-
-        self.start_node = Node(nucleotide_sequence[0], next(self.node_id_generator)) # Add the first node to the graph
+        
+        ancestral_path = Path("Ancestral")
+        
+        # Create first node without ID
+        self.start_node = Node(nucleotide_sequence[0])
         previous_node = self.start_node
-        self.add_node(self.start_node) # Keep the pointer
-
-        for base in nucleotide_sequence[1:]: # For each base
-            current_node = self.add_new_node(base) # Create a new node
-            ancestral_path += Edge(previous_node, True, current_node, False) # Add an Edge in the ancestral path (+-)
+        self.add_node(self.start_node)
+        
+        for base in nucleotide_sequence[1:]:
+            current_node = self.add_new_node(base)
+            ancestral_path += Edge(previous_node, True, current_node, False)
             previous_node = current_node
-        self.end_node = previous_node # Keep the pointer on the last node
-
+        
+        self.end_node = previous_node
         self.paths[ancestral_path.lineage] = ancestral_path
         
         # Create deep copies of edges for each lineage
         for i in lineages:
             copied_path = Path(i)
-            
-            # Create new Edge objects for each path (deep copy)
             for edge in ancestral_path.path_edges:
                 new_edge = Edge(
-                    edge.node1,      # Same nodes
-                    edge.node1_side, # Same orientation
-                    edge.node2,      # Same nodes
-                    edge.node2_side  # Same orientation
+                    edge.node1,
+                    edge.node1_side,
+                    edge.node2,
+                    edge.node2_side
                 )
                 copied_path.add_edge(new_edge)
-            
             self.paths[i] = copied_path
 
     def __repr__(self) -> str:
@@ -921,12 +983,14 @@ class Graph:
         self._apply_to_paths(affected_lineages, lambda path: path.cut_paste(a, b, replacement_nodes))
 
 class GraphEnsemble:
+    """
+    This warper class is used to hold multiple Graph class. 
+
+    We do this to handle each subgraph (locus) in paralell. 
+    """
+
     def __init__(self, name: str = None, graph_list: list[Graph] = None):
-        """
-        Manages multiple graphs and allows linking them together.
-        """
         self.graphs: list[Graph] = graph_list if graph_list else []
-        self._node_id_generator: itertools.count = itertools.count(1)
         self.name = name
       
     def __repr__(self) -> str:
@@ -963,7 +1027,7 @@ class GraphEnsemble:
             
             # Concatenate each subsequent graph
             for graph in self.graphs[1:]:
-                concatenated_graph += graph
+                concatenated_graph += graph # We call the __iadd__ method of Graph
             self.graphs = [concatenated_graph]
 
     def lint(self, ignore_ancestral = False, visualizer=None): 
@@ -978,40 +1042,19 @@ class GraphEnsemble:
 # ============================================================================
 
 def parallel_graph_initialization(sequences, tree_lineages, chromosome, max_workers=4):
-    """
-    Parallelize graph initialization with proper node ID management
-    """
+    """Parallelize graph initialization"""
     
-    # Pre-allocate node IDs
-    node_id_allocator = ThreadSafeNodeIDGenerator()
-    allocations = []
-    
-    # Estimate and allocate IDs for each graph
-    for i, (record, (tree_index, lineages)) in enumerate(zip(sequences, tree_lineages)):
-        sequence = str(record.seq)
-        estimated_nodes = estimate_node_count(sequence, lineages)
-        id_range = node_id_allocator.allocate_range(estimated_nodes)
-        allocations.append((i, record, tree_index, lineages, id_range))
-    
-    # Progress tracker
     progress = ProgressTracker(len(sequences), f"Initializing chromosome {chromosome} subgraphs")
     
-    # Worker function
     def init_single_graph(args):
-        idx, record, tree_index, lineages, id_range = args
+        idx, record, tree_index, lineages = args
         
-        # Create local ID generator
-        local_id_gen = node_id_allocator.create_local_generator(id_range.start)
-        
-        # Create and initialize graph
         sequence = str(record.seq)
-        graph = Graph(local_id_gen)
+        graph = Graph()
         graph.build_from_sequence(sequence, lineages)
         
-        # Update progress
         progress.update()
         
-        # Return indexed result
         return GraphInitResult(
             index=idx,
             graph=graph,
@@ -1020,12 +1063,15 @@ def parallel_graph_initialization(sequences, tree_lineages, chromosome, max_work
             node_count=len(graph.nodes)
         )
     
-    # Execute in parallel
-    graphs = [None] * len(sequences)  # Pre-allocate list for order preservation
+    # Prepare work items
+    work_items = [(i, record, tree_index, lineages) 
+                  for i, (record, (tree_index, lineages)) in enumerate(zip(sequences, tree_lineages))]
+    
+    graphs = [None] * len(sequences)
     
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {executor.submit(init_single_graph, args): args[0] 
-                  for args in allocations}
+                  for args in work_items}
         
         for future in as_completed(futures):
             try:
@@ -1074,7 +1120,7 @@ def parallel_apply_mutations(graphs, traversal, chromosome, max_workers=4):
             if not affected_lineages:
                 continue
             
-            # Apply each mutation (simplified from your original logic)
+            # Apply each mutation
             for mutation in mutations:
                 mut_type = mutation.get("type")
                 start = mutation.get("start")
