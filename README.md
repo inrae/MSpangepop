@@ -1,17 +1,42 @@
-# MSpangepop Documentation
+# MSpangepop 
 
 MSpangepop is a workflow for simulating variation graphs from coalescent simulations. 
 
-## Documentation Structure
+### Documentation
+<div align="center">
+<table>
+<tr>
+<td>
 
-- **[Input Files](doc/input_file.md)** - Requirements and specifications for input data
-- **[Master Configuration](doc/configuration_master.md)** - How to set up configuration files and parameters
-- **[Demographic model configuration](doc/configuration_model.md)** - Adapt or create a model
-- **[Output Files](doc/output_files.md)** - Description of generated results and outputs
-- **[Visualizations](doc/visualisations.md)** - Understanding the generated plots and charts
-- **[Advanced Topics](doc/go_even_deeper.md)** - In-depth information for power users
+|  |  |
+|-------|-------------|
+| **[Input Files](doc/input_file.md)** | Requirements and specifications for input data |
+| **[Master Configuration](doc/configuration_master.md)** | How to set up configuration files and parameters |
+| **[Demographic model](doc/configuration_model.md)** | Adapt or create a model |
+| **[Output Files](doc/output_files.md)** | Description of generated results and outputs |
+| **[Visualizations](doc/visualisations.md)** | Understanding the generated plots and charts |
+| **[Advanced Topics](doc/go_even_deeper.md)** | In-depth information for power users |
 
-## 🚀 How to Use
+</td>
+<td>
+<img src="doc/logo_ms_round.png" width="200">
+</td>
+</tr>
+</table>
+</div>
+
+### Workflow Stages
+
+| Stage | Process | Scripts | Rules |
+|-------|---------|---------|--------|
+| **1. Setup** | → Validate FASTA/YAML<br>→ Expand configs<br>→ Create index | `input_index.py`<br>`sample_ranges.py`<br>`recap.py` | setup |
+| **2. Msprime Simulation** | → Build demographic model<br>→ Run msprime<br>→ Generate visualizations | `msprime_simulation.py`<br>`visualizer_arg.py`<br>`visualizer_tree.py` | msprime_simulation <br>visualization  |
+| **3. Preprocessing** | → Split by locus<br>→ Preorder traverse trees<br>→ Define SVs type lenght and position | `coalescent_traversal.py`<br>`draw_variants.py`<br>`split_recombination.py` | coalescent_traversal<br>draw_variants<br>split_recombination |
+| **4. Graph Creation** | **Initialize:** Build locus ancestral graphs<br>**Mutate:** Apply variants using MSpangepop library<br>**Save:** Assign IDs → Merge subgraphs→ Lint → Export chopped graph | `graph_creation.py`<br>`graph_utils.py`<br>`matrix.py` | graph_creation |
+| **5. Unchop** | VG unchop command | - | graph_merging |
+
+---
+## 🚀 How to Use 🚀
 ### 1. Set up
 
 Clone the Git repository
@@ -23,7 +48,7 @@ git clone https://forge.inrae.fr/pangepop/MSpangepop
 ```bash
 conda env create -n wf_env -f dependencies/wf_env.yaml
 ```  
-> Use Miniforge with the conda-forge channel, see why [here](https://science-ouverte.inrae.fr/fr/offre-service/fiches-pratiques-et-recommandations/quelles-alternatives-aux-fonctionnalites-payantes-danaconda) (french)
+
 
 
 ### 2. Configure the pipeline for your data
@@ -34,7 +59,7 @@ Two elements are needed to run the simulation :
 
 #### To do a quick test : 
 
-Edit the `masterconfig` file in the `.config/` directory with your sample information. -> **[Master Configuration](doc/configuration_master.md)**
+Edit the `masterconfig` file in the `.config/` directory with your sample information. (**[Master Configuration](doc/configuration_master.md)**)
 
 ```bash
 nano .config/masterconfig.yaml
@@ -47,7 +72,12 @@ samples:
     model: "simulation_data/Panmictic_Model.json"
     replicates: 1
 ```
-- `model` is the demographic scenario the simulation will run on. You can create your own or tailor the ones in `./simulation_data` -> **[Demographic model configuration](doc/configuration_model.md)**
+- `model` is the demographic scenario the simulation will run on. You can create your own or tailor the ones in `./simulation_data` (**[Demographic model configuration](doc/configuration_model.md)**)
+
+
+- **⚠️ Don't want to create your own model?⚠️** Use the provided `Panmictic_Model.json` - simply edit it to specify your genome, then adjust `mutation_rate` and `recombination_rate` (start with low values)
+
+
 
 
 ### 3. Run the workflow 
@@ -79,6 +109,25 @@ mspangepop [dry|run|local-run|dag|rulegraph|unlock|touch] [additional snakemake 
     touch - Tell snakemake that all files are up to date (use with caution)
     [additional snakemake args] - for any snakemake arg, like --until hifiasm
 ```
+
+## Path Operations in Mspangepop
+
+MSpangepop implements graph path operations to add variants by modifying how lineages traverse the graph. 
+
+**Core Features:**
+- **Multi-path targeting** - Operations apply to single or multiple lineage paths simultaneously, enabling both unique and shared variants
+- **Orientation-aware** - All operations preserve node directionality using edges that track exit and entry node sides, creating orientation-aware links (++, +-, -+, --)
+- **Composable** - Operations can be nested and overlapping (e.g., deletion within inversion), representing complex compound variants
+
+These operations modify paths through existing nodes rather than altering the graph structure, maintaining shared sequences while creating alternative routes for different lineages.  New nodes (e.g., for insertions) are generated using an order 1 Markov model or produce biologically realistic sequences.
+
+| Operation | Function | Used For | Path Change |
+|-----------|----------|----------|-------------|
+| `bypass(a,b)` | Skip nodes a to b | Deletions | Creates shortcut edge |
+| `loop(a,b)` | Duplicate nodes a to b | Tandem duplications | Adds loop-back + repeat |
+| `invert(a,b)` | Reverse nodes a to b | Inversions | Flips path direction |
+| `swap(a,node)` | Replace node at position a | SNPs | Substitutes single node |
+| `paste(a,a+1,nodes)` | Insert between adjacent nodes | Insertions | Adds new node sequence |
 
 ## Support and Development
 
