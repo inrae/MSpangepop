@@ -48,7 +48,7 @@ def get_all_targets():
         chr_n = config["samples"][sample]["chr_n"]
         # Add polished GFA files
         for chr_num in range(1, chr_n + 1):
-            targets.append(os.path.join(output_dir, sample, graph,f"chr_{chr_num}", f"{sample}_chr_{chr_num}_graph_vg.gfa"))
+            targets.append(os.path.join(output_dir, sample, graph,f"chr_{chr_num}", f"{sample}_chr_{chr_num}_graph.gfa"))
             targets.append(os.path.join(output_dir, sample, plot_dir, f"chr_{chr_num}", "visualization_complete.txt"))
         # Add global recap
         targets.append(os.path.join(output_dir, sample, simulation_data, f"{sample}_global_recap.txt"))
@@ -244,7 +244,7 @@ rule graph_creation:
         split_fasta=rules.split_recombination.output.split_fasta,
         augmented_traversal = rules.draw_variants.output.augmented_traversal,
     output:
-        gfa = temp(os.path.join(output_dir, "{sample}", temp_dir, "{sample}_chr_{chromosome}_unmergeg_graph.gfa")),
+        chopped_gfa = temp(os.path.join(output_dir, "{sample}", temp_dir, "{sample}_chr_{chromosome}_unmergeg_graph.gfa")),
         recap = os.path.join(output_dir, "{sample}", simulation_data, "chr_{chromosome}","{sample}_chr_{chromosome}_graph_creation_recap.txt")
     params:
         out_dir = lambda wildcards: os.path.join(output_dir, wildcards.sample, plot_dir, f"chr_{wildcards.chromosome}", "03_graph_plots"), 
@@ -263,7 +263,7 @@ rule graph_creation:
         python3 workflow/scripts/graph_creation.py \
             --splited_fasta {input.split_fasta} \
             --augmented_traversal {input.augmented_traversal} \
-            --output_file {output.gfa} \
+            --output_file {output.chopped_gfa} \
             --sample {wildcards.sample} \
             --chromosome {wildcards.chromosome} \
             --recap_file {output.recap} \
@@ -273,17 +273,17 @@ rule graph_creation:
         """
 
 # This merges the nodes that can be merged in the GFA file using VG
-rule gfa_merge_vg:
+rule gfa_merge:
     input:
-        initial_gfa = rules.graph_creation.output.gfa
+        chopped_gfa = rules.graph_creation.output.chopped_gfa
     output:
-        polished_gfa = os.path.join(output_dir, "{sample}", graph, "chr_{chromosome}", "{sample}_chr_{chromosome}_graph_vg.gfa"),
-        polished_gfa_stats = os.path.join(output_dir, "{sample}", graph, "chr_{chromosome}", "{sample}_chr_{chromosome}_graph_stats_vg.txt"),
+        polished_gfa = os.path.join(output_dir, "{sample}", graph, "chr_{chromosome}", "{sample}_chr_{chromosome}_graph.gfa"),
+        polished_gfa_stats = os.path.join(output_dir, "{sample}", graph, "chr_{chromosome}", "{sample}_chr_{chromosome}_graph_stats.txt"),
     resources:
         mem_mb=lambda wildcards: int(200000 * memory_multiplier),
         time="60:00:00"
     benchmark:
-        os.path.join(output_dir, "{sample}", "benchmark", "chr_{chromosome}", "gfa_merge_vg_benchmark.txt")
+        os.path.join(output_dir, "{sample}", "benchmark", "chr_{chromosome}", "gfa_merge_benchmark.txt")
     container:
         "docker://registry.forge.inrae.fr/pangepop/mspangepop/vg:v1.67.0"  
     threads: 25
@@ -293,10 +293,10 @@ rule gfa_merge_vg:
         echo "[gfa_merge] Starting to clean the GFA file using VG"
 
         echo "\n[gfa_merge] Initial GFA state :" > {output.polished_gfa_stats}
-        vg view -Fg {input.initial_gfa} | vg stats -z - -t {threads} >> {output.polished_gfa_stats}
+        vg view -Fg {input.chopped_gfa} | vg stats -z - -t {threads} >> {output.polished_gfa_stats}
 
         echo "[gfa_merge] Starting to unchop"
-        vg view -Fg {input.initial_gfa} | vg mod -u - -t {threads} | vg view - > {output.polished_gfa}
+        vg view -Fg {input.chopped_gfa} | vg mod -u - -t {threads} | vg view - > {output.polished_gfa}
 
         echo "\n[gfa_merge] Final state :" >> {output.polished_gfa_stats}
         vg view -Fg {output.polished_gfa} | vg stats -z - -t {threads} >> {output.polished_gfa_stats}
