@@ -119,7 +119,7 @@ MSpangepop implements graph path operations to add variants by modifying how lin
 - **Orientation-aware** - All operations preserve node directionality using edges that track exit and entry node sides, creating orientation-aware links (++, +-, -+, --)
 - **Composable** - Operations can be nested and overlapping (e.g., deletion within inversion), representing complex compound variants
 
-These operations modify paths through existing nodes rather than altering the graph structure, maintaining shared sequences while creating alternative routes for different lineages.  New nodes (e.g., for insertions) are generated using an order 1 Markov model or produce biologically realistic sequences.
+These operations modify paths through existing nodes rather than altering the graph structure, maintaining shared sequences while creating alternative routes for different lineages.  New nodes (e.g., for insertions) are generated using an order 1 Markov model to produce realistic sequences.
 
 | Operation | Function | Used For | Path Change |
 |-----------|----------|----------|-------------|
