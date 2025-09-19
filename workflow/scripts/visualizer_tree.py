@@ -1,4 +1,13 @@
 #!/usr/bin/env python3
+
+"""
+Author: Lucien Piat
+Institution: INRAe
+Project: PangenOak
+
+Usage : Produce visualizations for the tree sequence 
+"""
+
 import os
 import tskit
 import random
@@ -244,7 +253,7 @@ def load_tree_sequences(mutated_path, ancestry_path):
 def parse_arguments():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(
-        description="Generate tree sequence visualizations for poster",
+        description="Generate tree sequence visualizations",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
