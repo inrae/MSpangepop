@@ -279,29 +279,31 @@ rule gfa_merge:
     output:
         polished_gfa = os.path.join(output_dir, "{sample}", graph, "chr_{chromosome}", "{sample}_chr_{chromosome}_graph.gfa"),
         polished_gfa_stats = os.path.join(output_dir, "{sample}", graph, "chr_{chromosome}", "{sample}_chr_{chromosome}_graph_stats.txt"),
+        vg_raw = temp(os.path.join(output_dir, "{sample}", temp_dir, "{sample}_chr_{chromosome}_raw.vg")),
+        vg_unchoped = temp(os.path.join(output_dir, "{sample}", temp_dir, "{sample}_chr_{chromosome}_unchoped.vg"))
     resources:
         mem_mb=lambda wildcards: int(200000 * memory_multiplier),
         time="60:00:00"
     benchmark:
         os.path.join(output_dir, "{sample}", "benchmark", "chr_{chromosome}", "gfa_merge_benchmark.txt")
     container:
-        "docker://registry.forge.inrae.fr/pangepop/mspangepop/vg:v1.67.0"  
+        "docker://registry.forge.inrae.fr/pangepop/mspangepop/vg:v1.67.0"
     threads: 25
     priority: 7
     shell:
         """
         echo "[gfa_merge] Starting to clean the GFA file using VG"
-
-        echo "\n[gfa_merge] Initial GFA state :" > {output.polished_gfa_stats}
-        vg view -Fg {input.chopped_gfa} | vg stats -z - -t {threads} >> {output.polished_gfa_stats}
-
+        echo "[gfa_merge] Importing GFA to VG format..."
+        vg convert -g {input.chopped_gfa} -t {threads} -p > {output.vg_raw}
+        echo "[gfa_merge] Initial GFA state :" > {output.polished_gfa_stats}
+        vg stats -z {output.vg_raw} -t {threads} >> {output.polished_gfa_stats}
         echo "[gfa_merge] Starting to unchop"
-        vg view -Fg {input.chopped_gfa} | vg mod -u - -t {threads} | vg view - > {output.polished_gfa}
-
-        echo "\n[gfa_merge] Final state :" >> {output.polished_gfa_stats}
-        vg view -Fg {output.polished_gfa} | vg stats -z - -t {threads} >> {output.polished_gfa_stats}
+        vg mod -u {output.vg_raw} -t {threads} > {output.vg_unchoped}
+        echo "[gfa_merge] Final state :" >> {output.polished_gfa_stats}
+        vg stats -z {output.vg_unchoped} -t {threads} >> {output.polished_gfa_stats}
         cat {output.polished_gfa_stats}
-
+        echo "[gfa_merge] Saving final GFA"
+        vg view {output.vg_unchoped} > {output.polished_gfa}
         echo "✅ Final GFA @ {output.polished_gfa}"
         """
 
