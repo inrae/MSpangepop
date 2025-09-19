@@ -16,12 +16,13 @@
 !/simulation_data/**
 !small_test_genome.fa.gz
 !**setting.json
-!slurm_logs/
 !.config/**
-!dependencies/*.def
+!dependencies/*
 results
 **__pycache__
 .snakemake
 !mspangepop
 .config/matplotlib
 !doc/*
+.config/expanded_config.yaml
+.config/expanded*

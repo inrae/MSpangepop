@@ -5,7 +5,7 @@ Institution: INRAe
 Project: PangenOak
 
 This script generates a JSON file for a specified chromosome using msprime simulations.
-It utilizes recombination and mutation rates provided by the user and outputs the result to a specified directory.
+It utilizes demographic scenarios from JSON files and outputs the result to a specified directory.
 """
 
 import msprime
@@ -14,7 +14,9 @@ import os
 import json
 import time
 from collections import defaultdict
-
+os.environ['MPLCONFIGDIR'] = './.config/matplotlib'
+import matplotlib.pyplot as plt
+import demesdraw
 from io_handler import MSpangepopDataHandler, MSerror, MSsuccess, MScompute, get_indent, process_seed
 
 def get_chromosome_bounds(chrom_length: int) -> tuple:
@@ -30,70 +32,178 @@ def create_recombination_map(chrom_length:int, recombination_rate:float)-> mspri
     except Exception as e:
             raise MSerror(f"Error creating recombination map: {e}")
 
-def save_output_v1(mutated_ts, chromosome_name: str, output_dir: str, readable_json: bool):
+def load_demographic_model(demographic_file: str, verbose = True):
     """
-    Save simulation results into a JSON file.
-    Uses incremental JSON writing to avoid high memory usage.
-
-    /!\ this implementation is realy complex (but stable):
-
-    Given
-    T = number of trees in the tree sequence
-    N = average number of nodes per tree
-    M = total number of mutations across all trees
-    Theorical complexity = O(T × (N + M))
-    
-    This mess TRULY quadratic. 
+    Load demographic model from JSON file and create msprime demography object.
+    Supports both old format (top-level parameters) and new format (nested in evolutionary_params).
+    Returns demography object, sample configuration, mutation rate, and recombination rate.
     """
-
-    json_filename = os.path.join(output_dir, f"chr_{chromosome_name}_msprime_simulation.json")
-
     try:
-        with open(json_filename, 'w') as f:
-            f.write('[\n')  # Start JSON array
-            first_tree = True
+        with open(demographic_file, 'r') as f:
+            demo_data = json.load(f)
 
-            for tree_index, tree in enumerate(mutated_ts.trees()):
-                interval = [int(tree.interval[0]), int(tree.interval[1])]  # Tree interval
+        if verbose == True : 
+            MScompute(f"Loading demographic model: {demo_data.get('name', 'Unknown')}")
 
-                # Cache nodes and children to avoid redundant function calls
-                nodes = [{"id": node, "time": mutated_ts.node(node).time} for node in tree.nodes()]
-                edges = []
-                for parent in tree.nodes():
-                    children = list(tree.children(parent))
-                    edges.extend({"parent": parent, "child": child} for child in children)
+        # Handle new format with evolutionary_params
+        if 'evolutionary_params' in demo_data:
+            # New format: parameters are nested
+            evolutionary_params = demo_data['evolutionary_params']
+            mutation_rate = evolutionary_params.get('mutation_rate')
+            recombination_rate = evolutionary_params.get('recombination_rate')
+            generation_time = evolutionary_params.get('generation_time', 25)
+            
+            if mutation_rate is None:
+                raise MSerror("Missing 'mutation_rate' in evolutionary_params")
+            if recombination_rate is None:
+                raise MSerror("Missing 'recombination_rate' in evolutionary_params")
+                
+        else:
+            # Old format: parameters at top level (backward compatibility)
+            mutation_rate = demo_data.get('mutation_rate')
+            recombination_rate = demo_data.get('recombination_rate')
+            generation_time = demo_data.get('generation_time', 25)
+            
+            if mutation_rate is None:
+                raise MSerror("Missing 'mutation_rate' in demographic JSON file. "
+                            "It should be either at top level or in 'evolutionary_params'")
+            if recombination_rate is None:
+                raise MSerror("Missing 'recombination_rate' in demographic JSON file. "
+                            "It should be either at top level or in 'evolutionary_params'")
 
-                # Collect mutations within tree interval
-                mutations = [
-                    {"node": mutation.node}
-                    for mutation in mutated_ts.mutations()
-                    if tree.interval[0] < mutated_ts.site(mutation.site).position < tree.interval[1]
-                ]
+        # Validate other required fields
+        required_fields = ['populations', 'samples']
+        for field in required_fields:
+            if field not in demo_data:
+                raise MSerror(f"Missing required field '{field}' in demographic JSON file")
 
-                # Construct tree data
-                tree_data = {
-                    "tree_index": tree_index,
-                    "interval": interval,
-                    "nodes": nodes,
-                    "edges": edges,
-                    "mutations": mutations,
-                }
+        # Create demography object
+        demography = msprime.Demography()
 
-                # Write JSON object, separating with a comma if not the first entry
-                if not first_tree:
-                    f.write(",\n")
-                first_tree = False
+        # Add populations
+        for pop in demo_data['populations']:
+            demography.add_population(
+                name=pop['id'],
+                initial_size=pop['initial_size'],
+                description=pop.get('description', '')
+            )
 
-                json.dump(tree_data, f, indent=get_indent(readable_json))
+        # Add demographic events
+        for event in demo_data.get('demographic_events', []):
+            time = event['time']
+            event_type = event['type']
 
-            f.write('\n]')  # End JSON array
+            if event_type == 'population_parameters_change':
+                demography.add_population_parameters_change(
+                    time=time,
+                    population=event['population'],
+                    initial_size=event.get('size'),
+                    growth_rate=event.get('growth_rate', 0)
+                )
 
-        MSsuccess(f"Successfully saved output to {json_filename}")
+            elif event_type == 'mass_migration':
+                demography.add_mass_migration(
+                    time=time,
+                    source=event['source'],
+                    dest=event['dest'],
+                    proportion=event['proportion']
+                )
 
+            elif event_type == 'population_split' or event_type == 'split':
+                # Handle both 'population_split' and 'split' for compatibility
+                if 'derived' in event:
+                    demography.add_population_split(
+                        time=time,
+                        derived=event['derived'],
+                        ancestral=event.get('ancestral', event.get('source'))
+                    )
+                else:
+                    # Old format with single derived population
+                    demography.add_population_split(
+                        time=time,
+                        derived=[event.get('population', event.get('derived_population'))],
+                        ancestral=event.get('ancestral', event.get('source'))
+                    )
+
+            elif event_type == 'add_migration_rate_change':
+                demography.add_migration_rate_change(
+                    time=time,
+                    rate=event['rate'],
+                    source=event['source'],
+                    dest=event['dest']
+                )
+
+        # Set migration rates at time = 0
+        if 'migration_matrix' in demo_data and demo_data['migration_matrix']:
+            for migration in demo_data['migration_matrix']:
+                if migration['time'] == 0:
+                    demography.set_migration_rate(
+                        source=migration['source'],
+                        dest=migration['dest'],
+                        rate=migration['rate']
+                    )
+
+        # Set up sample configuration
+        samples = []
+        total_sample_size = 0
+        for sample_spec in demo_data['samples']:
+            pop_name = sample_spec['population']
+            sample_size = sample_spec['sample_size']
+            samples.append(msprime.SampleSet(sample_size, population=pop_name))
+            total_sample_size += sample_size
+
+        if mutation_rate < 0:
+            raise MSerror("Mutation rate must be non-negative.")
+        if recombination_rate < 0:
+            raise MSerror("Recombination rate must be non-negative.")
+
+        demography.sort_events()
+
+        # Store generation_time in demo_data if it's not there (for recap file)
+        if 'generation_time' not in demo_data:
+            demo_data['generation_time'] = generation_time
+
+        return demography, samples, total_sample_size, mutation_rate, recombination_rate, demo_data
+
+    except FileNotFoundError:
+        raise MSerror(f"Demographic file not found: {demographic_file}")
+    except json.JSONDecodeError as e:
+        raise MSerror(f"Invalid JSON in demographic file: {e}")
+    except KeyError as e:
+        raise MSerror(f"Missing key in demographic file: {e}")
     except Exception as e:
-        raise MSerror(f"Error saving JSON output: {e}")
+        raise MSerror(f"Error loading demographic model: {e}")
 
-def save_output_v2(mutated_ts, chromosome_name: str, json_file: str, readable_json: bool):
+def plot_demographic(demographic_file: str, output_file: str, log_time: bool = True):
+    """
+    Plot demographic model using demes visualization.
+    
+    Args:
+        demographic_file: Path to demographic JSON file
+        output_file: Path to save the output plot
+        log_time: Whether to use log scale for time axis
+    """
+    try:
+        # Load the demographic model
+        demography, _, _, _, _, demo_data = load_demographic_model(demographic_file, verbose = False)
+        
+        # Create figure and plot
+        fig, ax = plt.subplots(figsize=(10, 8))
+        
+        # Convert to demes and draw
+        graph = demography.to_demes()
+        demesdraw.tubes(graph, ax=ax, log_time=log_time)
+        ax.set_title(f"{demo_data.get('name', 'Demographic Model')}\n{demo_data.get('description', '')}")
+        
+        # Save
+        plt.tight_layout()
+        plt.savefig(output_file, dpi=300, bbox_inches='tight')
+        plt.close()
+    except Exception as e:
+        MScompute(f"Warning: Could not generate demographic plot: {e}")
+    
+
+def save_output(mutated_ts, chromosome_name: str, json_file: str, readable_json: bool):
     """
     Optimized version with pre-indexed mutations
     O(M + T × N) M is no more a factor
@@ -150,8 +260,6 @@ def save_output_v2(mutated_ts, chromosome_name: str, json_file: str, readable_js
                 json.dump(tree_data, f, indent=get_indent(readable_json))
             
             f.write('\n]')
-        
-        MSsuccess(f"Successfully saved output to {json_filename}")
     
     except Exception as e:
         raise MSerror(f"Error saving JSON output: {e}")
@@ -160,8 +268,6 @@ def get_chromosome_length(fai_file, chromosome_name):
     """
     Retrieves the length of a specified chromosome from a FASTA index (.fai) file.
     """
-
-    MScompute(f"Gathering length for chromosome {chromosome_name}")
 
     chrom_lengths = MSpangepopDataHandler.read_fai(fai_file)
 
@@ -172,42 +278,48 @@ def get_chromosome_length(fai_file, chromosome_name):
 
     if chrom_length <= 0:
         raise MSerror(f"Invalid chromosome length ({chrom_length}) for {chromosome_name}")
-    MSsuccess(f"Found chr {chromosome_name} of length: {chrom_length}")
 
     return chrom_length
 
-def save_tree_sequences(mutated_ts, ancestry_ts,  ancestry_ts_file,mutated_ts_file):
+def save_tree_sequences(mutated_ts, ancestry_ts, full_ancestry_ts, mutated_ts_file, ancestry_ts_file, full_ancestry_ts_file):
     """Save both tree sequences to files"""
     # Save as .trees files (tskit native format - recommended)
     mutated_ts.dump(mutated_ts_file)
     ancestry_ts.dump(ancestry_ts_file)
+    full_ancestry_ts.dump(full_ancestry_ts_file)
 
 def simulate_chromosome_evolution(
-    fai_file: str, population_size: int, mutation_rate: float, recombination_rate: float, 
-    sample_size: int, json_file: str, chromosome_name: str, model: str, readable_json, seed, ancestry_ts_file, mutated_ts_file, recap
+    fai_file: str, json_file: str, chromosome_name: str, model: str, readable_json, 
+    seed, mutated_ts_file, ancestry_ts_file, full_ancestry_ts_file, recap, demographic_file: str
 ):
     """
-    Simulates chromosome evolution and generates a recap file with details.
+    Simulates chromosome evolution using demographic scenarios from JSON files.
     """
     pseed = process_seed(seed)
     try:
+        MScompute(f"Chr {chromosome_name}, starting MSprime simulation...")
         start_time = time.time()
 
         # Fetch chromosome length
         chrom_length = get_chromosome_length(fai_file, chromosome_name)
-        MScompute("Starting MSprime simulation...")
+        
+        # Load demographic model
+        demography, samples, sample_size, mutation_rate, recombination_rate, demo_data = load_demographic_model(demographic_file)
+        plot_demographic(demographic_file, recap.replace('.txt', '_plot.png'))
+        MScompute(f"Using mutation rate: {mutation_rate}, recombination rate: {recombination_rate}")
 
         # Create recombination map
         recombination_map = create_recombination_map(chrom_length, recombination_rate)
 
         # Run ancestry simulation
-        ancestry_ts = msprime.sim_ancestry(
-            samples=sample_size,
+        full_ancestry_ts = msprime.sim_ancestry(
+            samples=samples,
+            demography=demography,
             recombination_rate=recombination_map,
-            population_size=population_size,
-            random_seed=pseed
-        ).simplify()
-
+            random_seed=pseed, 
+            record_full_arg=True
+        )
+        ancestry_ts = full_ancestry_ts.simplify()
         # Simulate mutations
         mutated_ts = msprime.sim_mutations(
             ancestry_ts,
@@ -216,47 +328,125 @@ def simulate_chromosome_evolution(
             model=model,
             random_seed=pseed)
 
-        mutated_ts = mutated_ts.keep_intervals([[0, chrom_length]], simplify=True).trim()
+        mutated_ts = mutated_ts.simplify()
 
         simulation_time = time.time() - start_time  # Time taken for simulation
-        MSsuccess(f"Simulation completed for chromosome {chromosome_name}")
-
+        MScompute(f"Simulated: {mutated_ts.num_trees} trees, {mutated_ts.num_mutations} mutations")
         # Save mutation visualization
         MScompute(f"Saving output for chromosome {chromosome_name}")
 
         # Record time taken for saving output
         save_start_time = time.time()
-        save_output_v2(mutated_ts, chromosome_name, json_file, readable_json)
+        save_output(mutated_ts, chromosome_name, json_file, readable_json)
         save_time = time.time() - save_start_time 
 
-        save_tree_sequences(mutated_ts, ancestry_ts, ancestry_ts_file, mutated_ts_file)
+        save_tree_sequences(mutated_ts, ancestry_ts, full_ancestry_ts, mutated_ts_file, ancestry_ts_file, full_ancestry_ts_file)
+
+        # Extract generation_time from the appropriate location
+        if 'evolutionary_params' in demo_data:
+            generation_time = demo_data['evolutionary_params'].get('generation_time', 25)
+        else:
+            generation_time = demo_data.get('generation_time', 25)
 
         # Write recap file
         recap_file_path = recap
         with open(recap_file_path, "w") as recap_file:
             recap_file.write("🔹 MSpangepop MSprime Simulation Recap \n")
+            recap_file.write("=" * 60 + "\n\n")
+            
+            # Basic information
+            recap_file.write("SIMULATION SUMMARY\n")
             recap_file.write("-" * 40 + "\n")
-            recap_file.write(f"Seed specified : {seed}\n")
-            recap_file.write(f"Chromosome indice (from fai): {chromosome_name}\n")
-            recap_file.write(f"Chromosome Length: {chrom_length} bp\n")
-            recap_file.write(f"Effective Population Size (Ne): {population_size}\n")
-            recap_file.write(f"Mutation Rate: {mutation_rate} per bp\n")
-            recap_file.write(f"Recombination Rate: {recombination_rate} per bp\n")
-            recap_file.write(f"Sample Size: {sample_size} individuals\n")
-            recap_file.write(f"Mutation Model: {model}\n")
-            recap_file.write(f"Total Trees: {mutated_ts.num_trees}\n")
-            recap_file.write(f"Total Nodes: {mutated_ts.num_nodes} (can be shared between Trees)\n")
-            recap_file.write(f"Total Mutations: {mutated_ts.num_mutations}\n")
-            recap_file.write(f"Total Edges: {mutated_ts.num_edges}\n\n")
-            recap_file.write(f"Time Taken for Simulation: {simulation_time:.2f} seconds\n")
-            recap_file.write(f"Time Taken for Saving Output: {save_time:.2f} seconds\n")
+            recap_file.write(f"Demographic Model: {demo_data.get('name', 'Unknown')}\n")
+            recap_file.write(f"Description: {demo_data.get('description', 'No description')}\n")
+            recap_file.write(f"Demographic File: {demographic_file}\n")
+            recap_file.write(f"Seed specified: {seed}\n")
+            recap_file.write(f"Chromosome index (from fai): {chromosome_name}\n")
+            recap_file.write(f"Chromosome Length: {chrom_length:,} bp\n\n")
+            
+            # Evolutionary parameters
+            recap_file.write("EVOLUTIONARY PARAMETERS\n")
             recap_file.write("-" * 40 + "\n")
-
-        MSsuccess(f"Simulation recap saved to {recap_file_path}")
-
-        # Final timing
+            recap_file.write(f"Mutation Rate: {mutation_rate:.2e} per bp\n")
+            recap_file.write(f"Recombination Rate: {recombination_rate:.2e} per bp\n")
+            recap_file.write(f"Generation Time: {generation_time} years\n\n")
+            
+            # Simulation parameters (if present)
+            if 'simulation_params' in demo_data:
+                recap_file.write("SIMULATION PARAMETERS\n")
+                recap_file.write("-" * 40 + "\n")
+                sim_params = demo_data['simulation_params']
+                recap_file.write(f"Reference genome: {sim_params.get('fasta_gz', 'Not specified')}\n")
+                recap_file.write(f"Chromosomes: {sim_params.get('chr_n', 'Not specified')}\n")
+                recap_file.write(f"Mutation model: {sim_params.get('model', model)}\n")
+                recap_file.write(f"Min SV length: {sim_params.get('minimal_sv_length', 1)} bp\n")
+                
+                # SV distribution
+                if 'sv_distribution' in sim_params:
+                    recap_file.write("\nStructural Variant Distribution:\n")
+                    sv_dist = sim_params['sv_distribution']
+                    for sv_type in ['SNP', 'DEL', 'INS', 'INV', 'DUP']:
+                        if sv_type in sv_dist:
+                            value = sv_dist[sv_type]
+                            # Handle both fixed values and sampled values
+                            if isinstance(value, dict):
+                                recap_file.write(f"  {sv_type}: sampled from range\n")
+                            else:
+                                recap_file.write(f"  {sv_type}: {value}%\n")
+                recap_file.write("\n")
+            
+            # Population details
+            recap_file.write("POPULATION CONFIGURATION\n")
+            recap_file.write("-" * 40 + "\n")
+            for pop in demo_data['populations']:
+                recap_file.write(f"- {pop['id']}: {pop.get('description', 'No description')}\n")
+                recap_file.write(f"  Initial size: {pop['initial_size']:,}\n")
+            
+            recap_file.write("\nSAMPLE DISTRIBUTION\n")
+            recap_file.write("-" * 40 + "\n")
+            total_samples = 0
+            for sample in demo_data['samples']:
+                sample_size = sample['sample_size']
+                total_samples += sample_size
+                recap_file.write(f"- {sample['population']}: {sample_size} samples\n")
+            recap_file.write(f"Total samples: {total_samples}\n\n")
+            
+            # Demographic events summary if present
+            if 'demographic_events' in demo_data and demo_data['demographic_events']:
+                recap_file.write("DEMOGRAPHIC EVENTS\n")
+                recap_file.write("-" * 40 + "\n")
+                event_types = {}
+                for event in demo_data['demographic_events']:
+                    event_type = event.get('type', 'unknown')
+                    event_types[event_type] = event_types.get(event_type, 0) + 1
+                for event_type, count in event_types.items():
+                    recap_file.write(f"- {event_type}: {count} events\n")
+                recap_file.write("\n")
+            
+            # Simulation results
+            recap_file.write("SIMULATION RESULTS\n")
+            recap_file.write("-" * 40 + "\n")
+            recap_file.write(f"Total Trees: {mutated_ts.num_trees:,}\n")
+            recap_file.write(f"Total Nodes: {mutated_ts.num_nodes:,} (can be shared between trees)\n")
+            recap_file.write(f"Total Mutations: {mutated_ts.num_mutations:,}\n")
+            recap_file.write(f"Total Edges: {mutated_ts.num_edges:,}\n\n")
+            
+            # Performance metrics
+            recap_file.write("PERFORMANCE METRICS\n")
+            recap_file.write("-" * 40 + "\n")
+            recap_file.write(f"Simulation time: {simulation_time:.2f} seconds\n")
+            recap_file.write(f"Output saving time: {save_time:.2f} seconds\n")
+            recap_file.write(f"Total runtime: {(simulation_time + save_time):.2f} seconds\n\n")
+            
+            # Full JSON configuration at the end
+            recap_file.write("=" * 60 + "\n")
+            recap_file.write("COMPLETE DEMOGRAPHIC MODEL JSON\n")
+            recap_file.write("=" * 60 + "\n")
+            recap_file.write(json.dumps(demo_data, indent=2))
+            recap_file.write("\n" + "=" * 60 + "\n")
+        
         total_time = time.time() - start_time
-        MSsuccess(f"Total runtime: {total_time/60:.2f} min.")
+        MSsuccess(f"Chr {chromosome_name} msprime recap created, total runtime: {total_time/60:.2f} min.")
 
     except FileNotFoundError as e:
         raise MSerror(f"MSpangepop -> Missing file: {e}")
@@ -264,62 +454,60 @@ def simulate_chromosome_evolution(
     except ValueError as e:
         raise MSerror(f"MSpangepop -> Invalid value encountered: {e}")
 
-    except msprime.LibraryError as e:
-        raise MSerror(f"MSpangepop -> msprime simulation error: {e}")
-
     except Exception as e:
         raise MSerror(f"MSpangepop -> Unexpected error: {e}")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
-        description="Simulate chromosome evolution using msprime and generate a JSON output."
+        description="Simulate chromosome evolution using msprime with demographic scenarios from JSON files."
     )
 
-    # Required arguments with better descriptions
+    # Required arguments
     parser.add_argument('-fai', '--fai', type=str, required=True,
                         help='Path to the FAI index file for the reference FASTA.')
-    parser.add_argument('-p', '--population_size', type=int, required=True,
-                        help='Effective population size (Ne). Must be a positive integer.')
-    parser.add_argument('-mu', '--mutation_rate', type=float, required=True,
-                        help='Mutation rate per base pair (µ). Must be non-negative.')
-    parser.add_argument('-r', '--recombination_rate', type=float, required=True,
-                        help='Recombination rate per base pair. Must be non-negative.')
-    parser.add_argument('-n', '--sample_size', type=int, required=True,
-                        help='Sample size (number of individuals to simulate). Must be positive.')
+    parser.add_argument('-d', '--demographic', type=str, required=True,
+                        help='Path to JSON file containing demographic scenario (required).')
     parser.add_argument('--json', type=str, required=True,
-                        help='Directory to save the output files.')
+                        help='Path to save the output JSON file.')
     parser.add_argument('-c', '--chromosome', type=str, required=True,
                         help='Chromosome number (1-based index). Must be a valid integer string.')
     parser.add_argument('-mo', '--model', type=str, required=True,
-                        help='Mutation model to use in msprime simulations.')
+                        help='Mutation model to use in msprime simulations (e.g., JC69, HKY, GTR).')
+    
+    # Optional arguments
     parser.add_argument("--readable_json", type=lambda x: x.lower() == 'true',
-                        choices=[True, False],
+                        choices=[True, False], default=False,
                         help="Save JSON in a human-readable format (True/False, default: False).")
-    parser.add_argument('-s', '--seed')
-    parser.add_argument('--ancestry_ts')
-    parser.add_argument('--mutated_ts')
-    parser.add_argument('--recap')
+    parser.add_argument('-s', '--seed', type=str,
+                        help='Random seed for reproducibility.')
+    parser.add_argument('--mutated_ts', type=str, required=True,
+                        help='Path to save the mutated tree sequence file.')
+    parser.add_argument('--ancestry_ts', type=str, required=True,
+                        help='Path to save the ancestry tree sequence file.')
+    parser.add_argument('--full_ancestry_ts', type=str, required=True,
+                        help='Path to save the ancestry tree sequence file.')
+    parser.add_argument('--recap', type=str, required=True,
+                        help='Path to save the simulation recap file.')
+    
     args = parser.parse_args()
 
     # Input validation
-    if args.population_size <= 0: raise MSerror("Population size must be a positive integer.")
-    if args.mutation_rate < 0: raise MSerror("Mutation rate must be non-negative.")
-    if args.recombination_rate < 0: raise MSerror("Recombination rate must be non-negative.")
-    if args.sample_size <= 0: raise MSerror("Sample size must be a positive integer.")
-    if not args.chromosome.isdigit() or int(args.chromosome) <= 0: raise MSerror(f"Invalid chromosome number: {args.chromosome}")
+    if not os.path.exists(args.demographic):
+        raise MSerror(f"Demographic file not found: {args.demographic}")
+    
+    if not args.chromosome.isdigit() or int(args.chromosome) <= 0:
+        raise MSerror(f"Invalid chromosome number: {args.chromosome}")
     
     simulate_chromosome_evolution(
         fai_file=args.fai,
-        population_size=args.population_size,
-        mutation_rate=args.mutation_rate,
-        recombination_rate=args.recombination_rate,
-        sample_size=args.sample_size,
         json_file=args.json,
         chromosome_name=args.chromosome,
         model=args.model,
         readable_json=args.readable_json,
         seed=args.seed,
-        ancestry_ts_file=args.ancestry_ts,
         mutated_ts_file=args.mutated_ts,
-        recap=args.recap
+        ancestry_ts_file=args.ancestry_ts,
+        full_ancestry_ts_file=args.full_ancestry_ts,
+        recap=args.recap,
+        demographic_file=args.demographic
     )

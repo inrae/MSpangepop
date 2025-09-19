@@ -3,15 +3,51 @@ Author: Lucien Piat
 Institution: INRAe
 Project: PangenOak
 
-Usage : This scripts create a variation graph from a json file full of mutations and lineages.
+This script constructs a variation graph from genomic sequences and mutation data,
+representing structural variations across multiple lineages in a unified graph structure.
+The resulting graph captures SNPs, insertions, deletions, inversions, and duplications
+while maintaining the relationships between different evolutionary lineages.
 
---splited_fasta ath to split FASTA file
---augmented_traversal Path to augmented traversal JSON
---output_file Path to output GFA file
---sample Sample name
---chromosome Chromosome identifier
---recap_file Path to save recap file
---variant_plot_dir Directory to save variant size plots
+Workflow:
+    The main() function orchestrates the following pipeline:
+    
+    1. INITIALIZATION PHASE:
+       - Create tracking objects for mutations (MutationRecap), graph optimization (LintVisualizer),
+         and variant visualization (VariantSizeVisualizer)
+       - Read input FASTA sequences (one per locus) and augmented traversal JSON
+       - Calculate reference genome length from input sequences
+    
+    2. PARALLEL GRAPH CONSTRUCTION:
+       - Extract lineage information from traversal data
+       - Initialize individual graphs for each locus in parallel
+       - Each graph represents ancestral sequence with paths for each lineage
+       - Node creation is deferred (no IDs assigned yet)
+    
+    3. PARALLEL MUTATION APPLICATION:
+       - Apply mutations from traversal data to corresponding graphs
+       - Mutations include: SNPs, insertions (INS), deletions (DEL), 
+         inversions (INV), duplications (DUP), replacements (REPL)
+       - Track success/failure of each mutation application
+       - Validate mutation positions against current path lengths
+    
+    4. GRAPH MERGING AND OPTIMIZATION:
+       - Create GraphEnsemble container and concatenate all subgraphs
+       - Calculate final sequence lengths for each lineage
+       - Perform graph linting to remove orphan nodes (nodes not in any path)
+       - Exclude ancestral path from final output if specified
+    
+    5. OUTPUT GENERATION:
+       - Assign node IDs just-in-time during GFA serialization
+       - Save graph in GFA v1.1 format with parallel I/O optimization
+       - Export individual lineage sequences as FASTA files
+       - Generate comprehensive visualization plots
+       - Write detailed mutation recap file with statistics
+    
+REQUIRED INPUTS:
+    --splited_fasta       : Path to split FASTA file containing sequence segments
+                           (one sequence per tree in the ARG)
+    --augmented_traversal : Path to JSON file containing the ORDERED mutation list and lineages
+                           information from ARG traversal and mutation augmentation
 """
 
 import itertools
@@ -19,18 +55,22 @@ import argparse
 import psutil # type: ignore
 from bitarray import bitarray # type: ignore
 import threading
-from concurrent.futures import ThreadPoolExecutor
-from io import StringIO
-
+import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import time
 from io_handler import MSpangepopDataHandler, MSerror, MSsuccess, MScompute, MSwarning
-from graph_utils import mutate_base, generate_sequence,gather_lineages, MutationRecap, VariantSizeVisualizer
+from graph_utils import (
+    mutate_base, generate_sequence, gather_lineages, 
+    MutationRecap, VariantSizeVisualizer, LintVisualizer,
+    GraphInitResult, MutationResult, ProgressTracker
+)
 
 # You can choose a matrix here for the SNP and insertion sequences
 from matrix import random_matrix as snp_matrix, simple_at_bias_matrix as insertion_matrix
 
 class Node:
     """Represents a node in the graph."""
-    def __init__(self, dna_sequence, node_id: int):
+    def __init__(self, dna_sequence, node_id=None): # Node ids allocation will append while saving
         self.id: int = node_id
         if isinstance(dna_sequence, str):
             self.dna_bases: bitarray = bitarray()
@@ -50,13 +90,24 @@ class Node:
         """Returns only the raw DNA sequence as a string."""
         return self.__decode # Using str(Node) will automatically decode the node
 
-    @property
-    def reversed(self) -> str:
-        string = self.__repr__()
-        return string[::-1]
+    @property  
+    def reverse_complement(self) -> str:
+        """Returns the reverse complement of the DNA sequence."""
+        sequence = self.__decode
+        complement_map = {'A': 'T', 'T': 'A', 'G': 'C', 'C': 'G'}
+        return ''.join(complement_map.get(base, base) for base in reversed(sequence))
+
 
 class Edge:
-    """Represents a directed edge between two nodes, keeping track of the side of each node involved."""
+    """
+    Represents a directed edge between two nodes, keeping track of the side of each node involved.
+    
+    Examples : 
+        - Edge(A, +, B, -) is a direct link between A and B 
+        - Edge(A, +, C, +) is a direct link between A and C but C will be read in reverse
+
+    ODGI and VG call this class a "hook"
+    """
 
     def __init__(self, node1: Node, node1_side, node2: Node, node2_side):
         """
@@ -98,18 +149,39 @@ class Edge:
         )
 
     def __repr__(self):
-        if self.node1_side: 
-            side1 = "+"
-        else:
-            side1 = "-"
-        if self.node2_side: 
-            side2 = "+"
-        else:
-            side2 = "-"
-        return f"({self.node1.id}{side1} -> {self.node2.id}{side2})"
+        # Use object id if node.id is not set
+        node1_id = self.node1.id if self.node1.id is not None else f"<{id(self.node1)}>"
+        node2_id = self.node2.id if self.node2.id is not None else f"<{id(self.node2)}>"
+        
+        side1 = "+" if self.node1_side else "-"
+        side2 = "+" if self.node2_side else "-"
+        return f"({node1_id}{side1} -> {node2_id}{side2})"
     
 class Path:
-    """Represents a path in the graph, consisting of a sequence of edges."""
+    """
+    Represents a path in the graph, consisting of a ordered list of edges.
+
+    Examples : 
+        - Path([Edge(AB, +, CD, -), Edge(CD, +, EF, -)]) will produce the sequence AB CD EF
+        - Path([Edge(AB, +, CD, +), Edge(CD, -, EF, -)]) will produce the sequence AB DC EF
+
+    Each path, is in our graph a lineage.
+
+    This class overloads the __getitem__(self, i) function so it yealds the node at the i position and NOT the Edge at i. 
+
+    With edges [AB -> BC -> CD], we have:
+        - 3 edges (node_count = 3)
+        - 4 nodes (A, B, C, D)
+        - Valid indices: 0, 1, 2, 3
+
+    Using this we can do operation in the path sutch as : 
+        - bypass
+        - loop
+        - invert
+        - swap
+        - paste
+    between two nodes ids in the path. 
+    """
 
     def __init__(self, lineage, path_edges: list[Edge] = None):
         """
@@ -118,27 +190,37 @@ class Path:
         Parameters:
         - lineage (int): A unique identifier for the path.
         - path_edges (list[Edge]): A list of Edge objects forming the path.
+        
+        Note: node_count represents the number of EDGES in the path.
+        The actual number of nodes = node_count + 1 (edges + 1)
         """
         self.lineage = lineage
         self.path_edges: list[Edge] = path_edges if path_edges else []
-        self.node_count = len(self.path_edges)
+        self.node_count = len(self.path_edges)  # This is actually edge count!
+
+    @property
+    def num_nodes(self) -> int:
+        """Returns the actual number of nodes in the path."""
+        if not self.path_edges:
+            return 0
+        return self.node_count + 1  # edges + 1 = nodes
 
     def add_edge(self, edge: Edge) -> None:
         """Adds an edge to the path."""
         self.path_edges.append(edge)
-        self.node_count += 1
+        self.node_count += 1  # Increment edge count
 
     def __repr__(self) -> str:
-        """Returns a readable representation of the path without repeating nodes."""
+        """Returns the gfa string of the path"""
         if not self.path_edges:
             return ""  # If there are no edges, return an empty string
 
         # Start with the first node
-        path_repr = f"{self.path_edges[0].node1.id}"
+        path_repr = f"{self.path_edges[0].node1.id}+"
 
         # Then for each edge, append the node2 id (only if it's not the first node)
         for edge in self.path_edges:
-            path_repr += f"{'>' if not edge.node2_side else '<'}{edge.node2.id}"
+            path_repr += f",{edge.node2.id}{'+' if not edge.node2_side else '-'}"
 
         return path_repr
 
@@ -150,28 +232,23 @@ class Path:
         path_repr = f"{self.path_edges[0].node1}"
 
         for edge in self.path_edges:
-            path_repr += f"{edge.node2 if not edge.node2_side else edge.node2.reversed}"
+            path_repr += f"{edge.node2 if not edge.node2_side else edge.node2.reverse_complement}"
 
         return path_repr
-    
-    @property
-    def bandage_path(self):
-        if not self.path_edges:
-            print("")
-            return 
-        path_repr = f"{self.path_edges[0].node1.id},"
 
-        for edge in self.path_edges:
-            path_repr += f"{edge.node2.id},"
-        print(path_repr)
-
-    def __getitem__(self, i: int) -> Node: # Here we have to reimplement the list functions
-        """Returns the node at position i in the path, supporting negative indices."""
+    def __getitem__(self, i: int) -> Node:
+        """Returns the node at position i in the path, supporting negative indices.
+        
+        Important: With edges [AB -> BC -> CD], we have:
+        - 3 edges (node_count = 3)
+        - 4 nodes (A, B, C, D)
+        - Valid indices: 0, 1, 2, 3
+        """
         if not self.path_edges:
             raise MSerror("Path is empty")
 
         if i < 0:
-            i = self.node_count + 1 + i  # Convert negative index to positive (like Python lists)
+            i = self.node_count + 1 + i  # Convert negative index to positive
 
         if i < self.node_count:
             return self.path_edges[i].node1
@@ -183,10 +260,10 @@ class Path:
     def __iadd__(self, other):
         """Allow concatenation of two paths (or an edge to a path)"""
         if isinstance(other, Edge):
-            self.add_edge(other) # If we try to add an edge
+            self.add_edge(other)  # If we try to add an edge
         elif isinstance(other, Path):
             for path_edge in other.path_edges:
-                self.add_edge(path_edge) # If we try to add a path
+                self.add_edge(path_edge)  # If we try to add a path
         else:
             MSerror("cant += this type to a path")
         return self
@@ -277,12 +354,36 @@ class Path:
             # Edges that traverse the nodes [0, end]
             edges_to_duplicate = self.path_edges[start:end]
             
-            # Create the "loop back" edge from node[end] to node[0]
+            # Determine proper orientations for the loop-back edge
+            # We need to exit from node[end] the opposite way we enter it
+            # and enter node[start] the opposite way we exit it
+            if end > 0 and end <= self.node_count:
+                # Get how we enter the end node (from the edge coming into it)
+                if end > 0 and end - 1 < len(self.path_edges):
+                    end_entry_side = self.path_edges[end-1].node2_side
+                    # Exit the opposite way
+                    end_exit_side = not end_entry_side
+                else:
+                    end_exit_side = True  # Default if we can't determine
+                
+                # Get how we exit the start node
+                if len(self.path_edges) > 0:
+                    start_exit_side = self.path_edges[0].node1_side
+                    # Enter the opposite way
+                    start_entry_side = not start_exit_side
+                else:
+                    start_entry_side = False  # Default if we can't determine
+            else:
+                # Use defaults if indices are at boundaries
+                end_exit_side = True
+                start_entry_side = False
+            
+            # Create the "loop back" edge with proper orientations
             loop_back_edge = Edge(
-                self[end],      # From end node
-                True,           # Standard exit orientation
-                self[start],    # To start node (node 0)
-                False           # Standard entry orientation
+                self[end],          # From end node
+                end_exit_side,      # Exit orientation based on how we entered
+                self[start],        # To start node (node 0)
+                start_entry_side    # Entry orientation based on how we exit
             )
             
             # Create copies of the original edges for the second traversal
@@ -301,19 +402,34 @@ class Path:
             self.path_edges[end:end] = complete_loop
             
         else:
-            # FIXED: Normal case now creates proper connectivity
-            # We need to duplicate the INTERNAL edges of the section [start, end]
-            # and add a loop-back edge from end to start
-            
+            # Normal case: determine orientations based on existing edges
             # Internal edges within the duplicated section
-            edges_to_duplicate = self.path_edges[start:end]  # FIXED: was start-1:end
+            edges_to_duplicate = self.path_edges[start:end]
             
-            # Create the "loop back" edge from node[end] to node[start]
+            # Determine proper orientations for the loop-back edge
+            # based on how we're traversing these nodes in the path
+            if end > 0 and end - 1 < len(self.path_edges):
+                # How we enter the end node
+                end_entry_side = self.path_edges[end-1].node2_side
+                # Exit the opposite way for the loop-back
+                end_exit_side = not end_entry_side
+            else:
+                end_exit_side = True  # Default
+            
+            if start > 0 and start < len(self.path_edges):
+                # How we exit the start node  
+                start_exit_side = self.path_edges[start].node1_side
+                # Enter the opposite way for the loop-back
+                start_entry_side = not start_exit_side
+            else:
+                start_entry_side = False  # Default
+            
+            # Create the "loop back" edge with proper orientations
             loop_back_edge = Edge(
-                self[end],      # From end node
-                True,           # Standard exit orientation  
-                self[start],    # To start node
-                False           # Standard entry orientation
+                self[end],          # From end node
+                end_exit_side,      # Proper exit orientation
+                self[start],        # To start node
+                start_entry_side    # Proper entry orientation
             )
             
             # Create copies of the internal edges
@@ -594,54 +710,24 @@ class Path:
         self.node_count = len(self.path_edges)
 
 class Graph:
-    """Represents a directed graph"""
-
-    graph_id_generator = itertools.count(1)  # Unique ID generator for graphs
-
-    def __init__(self, node_id_generator: itertools.count):
-        self.id: int = next(self.graph_id_generator)
-        self.node_id_generator: itertools.count = node_id_generator
-        self.nodes: set[Node] = set()
-        self.paths: dict[int, Path] = {}
-        self.start_node: Node = None
-        self.end_node: Node = None
-
-    def lint(self, ignore_ancestral=False) -> None:
-        """
-        Removes orphan nodes from the graph.
-        
-        Orphan nodes are nodes that exist in self.nodes but are not referenced
-        by any edge in any path. This can happen after graph modifications like
-        deletions, bypasses, or other operations that leave unused nodes behind.
-        
-        Parameters:
-        - ignore_ancestral (bool): If True, nodes used only in the ancestral path
-                                will be considered orphans and removed
-        """
-        # Collect all nodes that are actually used in path edges
-        used_nodes = set()
-        
-        for lineage, path in self.paths.items():
-            # Skip ancestral path if ignore_ancestral is True
-            if ignore_ancestral and lineage == "Ancestral":
-                continue
-                
-            for edge in path.path_edges:
-                # Direct access
-                used_nodes.add(edge.node1)
-                used_nodes.add(edge.node2)
-        
-        # Keep only used nodes (more efficient than removing orphans)
-        self.nodes &= used_nodes
+    """
+    Represents a directed graph
     
-    def __iter__(self):
-        """Make GraphEnsemble iterable."""
-        return iter(self.graphs)
+    This graph holds : 
+        - A set of unique nodes, that have no formal id and how a sequence (1 base for now)
+        - Paths that reference an ordered list of Edges. Paths can share nodes but Edges are deepcopies.
+        - The first and last node of the graph that cant be modified and are shared by all Paths. 
+    """
 
+    def __init__(self): 
+        self.nodes = set()
+        self.paths = {}
+        self.start_node = None
+        self.end_node = None
+    
     def add_new_node(self, dna_sequence: str) -> Node:
-        """
-        Creates and adds a new node to the graph, return it"""
-        node = Node(dna_sequence, next(self.node_id_generator))
+        """Creates and adds a new node to the graph, return it"""
+        node = Node(dna_sequence)
         self.nodes.add(node)
         return node
 
@@ -650,7 +736,7 @@ class Graph:
         self.nodes.add(node)
 
     def __iadd__(self, other: "Graph") -> "Graph":
-        """Merges another graph into this one."""
+        """Merges another graph into this one. This combine the nodes and links similar paths"""
 
         if not self.nodes or not other.nodes:
             raise MSerror("Cannot concatenate empty graphs.")
@@ -682,53 +768,74 @@ class Graph:
                 self.paths[lineage] = copied_path
 
         return self
+    
+    def lint(self, ignore_ancestral=False, visualizer=None) -> None:
+        """
+        Removes orphan nodes from the graph.
+        
+        Orphan nodes are nodes that exist in self.nodes but are not referenced
+        by any Edge in any Path. This can happen after graph modifications like
+        deletions, bypasses, or other operations that leave unused nodes behind.
+        
+        Parameters:
+        - ignore_ancestral (bool): If True, nodes used only in the ancestral path
+                                will be considered orphans and removed
+        """
+        used_nodes = set()
+
+        for lineage, path in self.paths.items():
+            if ignore_ancestral and lineage == "Ancestral":
+                continue
+            for edge in path.path_edges:
+                used_nodes.add(edge.node1)
+                used_nodes.add(edge.node2)
+
+        if visualizer:
+            all_nodes = set(self.nodes)
+            removed_nodes = all_nodes - used_nodes
+            visualizer.record(
+                before=len(all_nodes),
+                after=len(used_nodes),
+                removed=removed_nodes
+            )
+
+        self.nodes &= used_nodes # Use set operation for efficient linting 
 
     def build_from_sequence(self, nucleotide_sequence: str, lineages: set) -> None:
         """Constructs a graph and creates the associated paths from a nucleotide sequence."""
-
         if not nucleotide_sequence:
             raise MSerror("Cannot build a graph from an empty sequence.")
-
-        ancestral_path = Path("Ancestral") # Create the ancestral path
-
-        self.start_node = Node(nucleotide_sequence[0], next(self.node_id_generator)) # Add the first node to the graph
+        
+        ancestral_path = Path("Ancestral")
+        
+        # Create first node without ID
+        self.start_node = Node(nucleotide_sequence[0])
         previous_node = self.start_node
-        self.add_node(self.start_node) # Keep the pointer
-
-        for base in nucleotide_sequence[1:]: # For each base
-            current_node = self.add_new_node(base) # Create a new node
-            ancestral_path += Edge(previous_node, True, current_node, False) # Add an Edge in the ancestral path (+-)
+        self.add_node(self.start_node)
+        
+        for base in nucleotide_sequence[1:]:
+            current_node = self.add_new_node(base)
+            ancestral_path += Edge(previous_node, True, current_node, False)
             previous_node = current_node
-        self.end_node = previous_node # Keep the pointer on the last node
-
+        
+        self.end_node = previous_node
         self.paths[ancestral_path.lineage] = ancestral_path
         
         # Create deep copies of edges for each lineage
         for i in lineages:
             copied_path = Path(i)
-            
-            # Create new Edge objects for each path (deep copy)
             for edge in ancestral_path.path_edges:
                 new_edge = Edge(
-                    edge.node1,      # Same nodes
-                    edge.node1_side, # Same orientation
-                    edge.node2,      # Same nodes
-                    edge.node2_side  # Same orientation
+                    edge.node1,
+                    edge.node1_side,
+                    edge.node2,
+                    edge.node2_side
                 )
                 copied_path.add_edge(new_edge)
-            
             self.paths[i] = copied_path
 
     def __repr__(self) -> str:
         return f"Graph(id={self.id}, Nodes={len(self.nodes)}, Paths={len(self.paths)})"
-
-    @property
-    def details(self):
-        """Show graph details"""
-        print(self)
-        print("Paths :")
-        for path in self.paths.items() :
-            print(path)
 
     def _apply_to_paths(self, affected_lineages, operation_func):
         """
@@ -876,12 +983,14 @@ class Graph:
         self._apply_to_paths(affected_lineages, lambda path: path.cut_paste(a, b, replacement_nodes))
 
 class GraphEnsemble:
+    """
+    This warper class is used to hold multiple Graph class. 
+
+    We do this to handle each subgraph (locus) in paralell. 
+    """
+
     def __init__(self, name: str = None, graph_list: list[Graph] = None):
-        """
-        Manages multiple graphs and allows linking them together.
-        """
         self.graphs: list[Graph] = graph_list if graph_list else []
-        self._node_id_generator: itertools.count = itertools.count(1)
         self.name = name
       
     def __repr__(self) -> str:
@@ -918,268 +1027,83 @@ class GraphEnsemble:
             
             # Concatenate each subsequent graph
             for graph in self.graphs[1:]:
-                concatenated_graph += graph
+                concatenated_graph += graph # We call the __iadd__ method of Graph
             self.graphs = [concatenated_graph]
 
-    def lint(self, ignore_ancestral = False): 
+    def lint(self, ignore_ancestral = False, visualizer=None): 
         """
         Warper method to lint all graphs in self, remove all node not in the paths
         """
         for graph in self: 
-            graph.lint(ignore_ancestral)
+            graph.lint(ignore_ancestral, visualizer=visualizer)
 
-    # Care, method below is NOT AT ALL optimised, we should use node.outgoing_edges instead
-    # But since we dont update them yet, we cant. 
-    def save_to_gfav1_1(self, file_path, ignore_ancestral=False):
-        """
-        Saves the given graph to a GFA V1.1 (Graphical Fragment Assembly) file.
-        The GFA format consists of:
-        - "H" lines defining headers.
-        - "S" lines defining sequence segments (nodes).
-        - "L" lines defining links (edges) between segments.
-        
-        Parameters:
-        - file_path (str): The output GFA file path.
-        - ignore_ancestral (bool): If True, don't include edges from ancestral path
-        
-        Returns:
-        None (writes to a file).
-        """
-        with open(file_path, 'w') as f:
-            # Step 1: Write header with graph name
-            f.write(f"H\t{self.name}\n")
-            
-            # Step 2: Write all nodes as sequence segments
-            # Format: S\t{node_id}\t{sequence}\n
-            for graph in self:
-                for node in graph.nodes:
-                    f.write(f"S\t{node.id}\t{node}\n")
-            
-                # Step 3: Collect all unique edges from paths
-                unique_edges = set()
-                
-                for lineage, path in graph.paths.items():
-                    # Skip ancestral path if ignore_ancestral is True
-                    if ignore_ancestral and lineage == "Ancestral":
-                        continue
-                    
-                    # Add all edges from this path to the set
-                    for edge in path.path_edges:
-                        # Create a tuple that uniquely identifies this edge
-                        # (node1_id, node1_side, node2_id, node2_side)
-                        edge_signature = (
-                            edge.node1.id,
-                            edge.node1_side,
-                            edge.node2.id,
-                            edge.node2_side
-                        )
-                        unique_edges.add(edge_signature)
-                
-                # Step 4: Write all unique edges as links
-                # Format: L\t{node1_id}\t{orientation1}\t{node2_id}\t{orientation2}\t0M\n
-                for node1_id, node1_side, node2_id, node2_side in unique_edges:
-                    # Convert sides to GFA orientation symbols
-                    # True = +, False = - for node1_side
-                    orientation1 = "+" if node1_side else "-"
-                    
-                    # False = +, True = - for node2_side (as specified)
-                    orientation2 = "+" if not node2_side else "-"
-                    
-                    f.write(f"L\t{node1_id}\t{orientation1}\t{node2_id}\t{orientation2}\t0M\n")
-                
-                # Step 5, Write the paths as W-lines
-                for lineage, path in graph.paths.items():
-                    # Skip ancestral path if ignore_ancestral is True
-                    if ignore_ancestral and lineage == "Ancestral":
-                        continue
-                    f.write(f"W\tlineage_{path.lineage}\t0\tlineage_{path.lineage}\t0\t0\t>{repr(path)}\n")
+# ============================================================================
+# PARALLELIZATION FUNCTIONS
+# ============================================================================
 
-    def save_to_gfav1_1_hybrid(self, file_path, ignore_ancestral=False, max_workers=None):
-        """
-        Hybrid approach with progress reporting: parallel data collection + sequential writing.
-        Best balance of performance and simplicity with detailed progress updates.
-        """
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-        from io import StringIO
-        import time
-        
-        if not self.graphs:
-            raise MSerror("No graphs to save")
-        
-        graph = self.graphs[0]
-        start_time = time.time()
-        
-        # Set default max_workers if not provided
-        if max_workers is None:
-            max_workers = 4
-        
-        # Count total items for progress reporting
-        total_nodes = len(graph.nodes)
-        total_paths = sum(1 for lineage in graph.paths.keys() 
-                        if not (ignore_ancestral and lineage == "Ancestral"))
-        print()
-        MScompute(f"Starting GFA export: {total_nodes} nodes, {total_paths} paths to process")
-        
-        def process_nodes_parallel():
-            """Process nodes with chunking if beneficial"""
-            MScompute("Processing nodes...")
-
-            nodes_list = list(graph.nodes)
-
-            chunk_size = max(1, len(nodes_list) // max_workers)
-            
-            def process_chunk(chunk_data):
-                chunk_idx, chunk = chunk_data
-                buffer = StringIO()
-                for node in chunk:
-                    buffer.write(f"S\t{node.id}\t{node}\n")
-                return chunk_idx, buffer.getvalue()
-            
-            # Fixed: Create chunks properly with actual node objects
-            chunks = []
-            for i in range(0, len(nodes_list), chunk_size):
-                chunk_nodes = nodes_list[i:i + chunk_size]
-                chunk_idx = len(chunks)
-                chunks.append((chunk_idx, chunk_nodes))
-            
-            completed_chunks = 0
-            results = [''] * len(chunks)
-            
-            with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                future_to_chunk = {executor.submit(process_chunk, chunk_data): chunk_data 
-                                for chunk_data in chunks}
-                
-                for future in as_completed(future_to_chunk):
-                    chunk_idx, chunk_result = future.result()
-                    results[chunk_idx] = chunk_result
-                    completed_chunks += 1
-            
-            result = ''.join(results)
+def parallel_graph_initialization(sequences, tree_lineages, chromosome, max_workers=4):
+    """Parallelize graph initialization"""
     
-            return result
+    progress = ProgressTracker(len(sequences), f"Initializing chromosome {chromosome} subgraphs")
+    
+    def init_single_graph(args):
+        idx, record, tree_index, lineages = args
         
-        def process_paths_and_edges():
-            """Process paths and collect edges simultaneously"""
-            MScompute("Processing paths and collecting edges...")
-            
-            paths_buffer = StringIO()
-            unique_edges = set()
-            processed_paths = 0
-            
-            for lineage, path in graph.paths.items():
-                if ignore_ancestral and lineage == "Ancestral":
-                    continue
-                
-                # Progress update every 100 paths or for large datasets
-                if processed_paths % max(1, total_paths // 10) == 0 and processed_paths > 0:
-                    progress = (processed_paths / total_paths) * 100
-                
-                # Process path
-                paths_buffer.write(f"W\tlineage_{path.lineage}\t0\tlineage_{path.lineage}\t0\t0\t>{repr(path)}\n")
-                
-                # Collect edges from this path
-                path_edges_count = 0
-                for edge in path.path_edges:
-                    edge_signature = (
-                        edge.node1.id, edge.node1_side,
-                        edge.node2.id, edge.node2_side
-                    )
-                    unique_edges.add(edge_signature)
-                    path_edges_count += 1
-                
-                processed_paths += 1
-            
-            MScompute("Converting edges to GFA format...")
-            
-            # Convert edges to strings
-            edges_buffer = StringIO()
-            processed_edges = 0
-            
-            for edge_data in unique_edges:
+        sequence = str(record.seq)
+        graph = Graph()
+        graph.build_from_sequence(sequence, lineages)
+        
+        progress.update()
+        
+        return GraphInitResult(
+            index=idx,
+            graph=graph,
+            tree_index=tree_index,
+            lineages=lineages,
+            node_count=len(graph.nodes)
+        )
+    
+    # Prepare work items
+    work_items = [(i, record, tree_index, lineages) 
+                  for i, (record, (tree_index, lineages)) in enumerate(zip(sequences, tree_lineages))]
+    
+    graphs = [None] * len(sequences)
+    
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(init_single_graph, args): args[0] 
+                  for args in work_items}
+        
+        for future in as_completed(futures):
+            try:
+                result = future.result()
+                graphs[result.index] = result.graph
+            except Exception as e:
+                idx = futures[future]
+                raise MSerror(f"Failed to initialize graph {idx}: {e}")
+    
+    return graphs
 
-            
-                node1_id, node1_side, node2_id, node2_side = edge_data
-                orientation1 = "+" if node1_side else "-"
-                orientation2 = "+" if not node2_side else "-"
-                edges_buffer.write(f"L\t{node1_id}\t{orientation1}\t{node2_id}\t{orientation2}\t0M\n")
-                processed_edges += 1
-            
-
-            return paths_buffer.getvalue(), edges_buffer.getvalue()
-        
-        # Execute both tasks in parallel
-        MScompute("Starting parallel processing of nodes and paths...")
-        
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            nodes_future = executor.submit(process_nodes_parallel)
-            paths_edges_future = executor.submit(process_paths_and_edges)
-            
-            nodes_str = nodes_future.result()
-            paths_str, edges_str = paths_edges_future.result()
-        
-        # Calculate data sizes for reporting
-        header_size = len(f"H\t{self.name}\n")
-        nodes_size = len(nodes_str)
-        edges_size = len(edges_str)
-        paths_size = len(paths_str)
-        total_size = header_size + nodes_size + edges_size + paths_size
-        
-        MScompute(f"Data prepared: {total_size:,} characters ({nodes_size:,} nodes, {edges_size:,} edges, {paths_size:,} paths)")
-        
-        # Write to file
-        MScompute(f"Writing GFA file to {file_path}...")
-        write_start = time.time()
-        
-        with open(file_path, 'w') as f:
-            print("\t\tWriting header...")
-            f.write(f"H\t{self.name}\n")
-            
-            print("\t\tWriting nodes...")
-            f.write(nodes_str)
-            
-            print("\t\tWriting edges...")
-            f.write(edges_str)
-            
-            print("\t\tWriting paths...")
-            f.write(paths_str)
-        
-        write_time = time.time() - write_start
-        total_time = time.time() - start_time
-        
-        # Final statistics
-        file_size_mb = total_size / (1024 * 1024)
-        write_speed_mb_s = file_size_mb / write_time if write_time > 0 else 0
-        print()
-        MSsuccess(f"GFA export completed successfully!")
-        print(f"\t\tSize: {file_size_mb:.2f} MB")
-        print(f"\t\tWrite speed: {write_speed_mb_s:.2f} MB/s")
-        print()
-
-def apply_mutations_to_graphs(graphs, traversal, recap: MutationRecap, visualizer: VariantSizeVisualizer, chromosome):
+def parallel_apply_mutations(graphs, traversal, chromosome, max_workers=4):
     """
-    Apply mutations from the augmented traversal to the corresponding graphs.
-    
-    This function processes mutations in the order they appear in the traversal,
-    validates them against actual path lengths (not static tree lengths), and
-    tracks all attempts for reporting and visualization.
-    
-    Parameters:
-    - graphs: List of Graph objects, one per tree
-    - traversal: List of tree data dictionaries from augmented traversal JSON
-    - recap: MutationRecap object to track mutation applications
-    - visualizer: VariantSizeVisualizer object to track variant sizes
+    Parallelize mutation application with thread-safe tracking
     """
-    i = 0 
-    # Process each tree and its corresponding graph
-    for tree_idx, (tree_data, graph) in enumerate(zip(traversal, graphs)):
+    MScompute(f"Starting parallel mutation application for chromosome {chromosome}")
+    
+    # Progress tracker
+    progress = ProgressTracker(len(graphs), f"Applying mutations to chromosome {chromosome} subgraphs")
+    
+    # Worker function for applying mutations to a single graph
+    def apply_mutations_to_single_graph(args):
+        graph_idx, graph, tree_data = args
+        
+        # Local tracking for this graph's mutations
+        local_mutations = []
+        local_variants = []
+        
         # Extract tree metadata
         tree_index = tree_data.get("tree_index", "unknown")
         tree_interval = tree_data.get("initial_tree_interval", [0, 0])
         tree_start = tree_interval[0]
-        tree_length = tree_interval[1] - tree_interval[0]
-        
-        if i == 0 or i % 10 == 0 : 
-            MScompute(f"Applying mutations to chromosome {chromosome} subgraphs -> {(tree_index*100)/len(graphs):.0f} %")
         
         # Process each node in the tree
         for node_data in tree_data.get("nodes", []):
@@ -1194,85 +1118,50 @@ def apply_mutations_to_graphs(graphs, traversal, recap: MutationRecap, visualize
             affected_lineages = affected_nodes.intersection(lineages)
             
             if not affected_lineages:
-                MSwarning(f"Node {node_id} has mutations but no affected lineages")
                 continue
             
-            # Apply each mutation for this node
+            # Apply each mutation
             for mutation in mutations:
                 mut_type = mutation.get("type")
                 start = mutation.get("start")
                 length = mutation.get("length")
                 
-                # HANDLE NONE MUTATIONS - Skip mutations that couldn't be placed
+                # Handle None mutations
                 if mut_type is None:
-                    # This mutation was skipped in draw_variants.py due to interval constraints
-                    error_msg = "Mutation skipped beacause the locus is less that 3 bases long"
-                    recap.add_mutation(tree_index, node_id, "SKIPPED", start, length, 
-                                     affected_lineages, False, error_msg)
+                    local_mutations.append({
+                        "tree_index": tree_index,
+                        "node_id": node_id,
+                        "mutation_type": "SKIPPED",
+                        "position": start,
+                        "length": length,
+                        "affected_lineages": affected_lineages,
+                        "success": False,
+                        "error_msg": "Mutation skipped in previous step"
+                    })
                     continue
                 
-                # Check if start position is None (shouldn't happen if mut_type is not None, but be safe)
                 if start is None:
-                    error_msg = "Mutation has no start position"
-                    recap.add_mutation(tree_index, node_id, mut_type, start, length, 
-                                     affected_lineages, False, error_msg)
-                    visualizer.add_variant(mut_type, start, length, False, affected_lineages)
+                    local_mutations.append({
+                        "tree_index": tree_index,
+                        "node_id": node_id,
+                        "mutation_type": mut_type,
+                        "position": start,
+                        "length": length,
+                        "affected_lineages": affected_lineages,
+                        "success": False,
+                        "error_msg": "Mutation has no start position"
+                    })
+                    local_variants.append((mut_type, start, length, False, affected_lineages))
                     continue
                 
+                # Convert to relative position
                 relative_start = start - tree_start
                 
-                # PROTECTION: Check if mutation affects first or last position
-                mutation_affects_boundaries = False
-                boundary_error_msg = ""
+                # Validate and apply mutation
+                success = False
+                error_msg = None
                 
-                if mut_type == "SNP":
-                    # SNP at position 0 or last position
-                    if relative_start == 0:
-                        mutation_affects_boundaries = True
-                        boundary_error_msg = "SNP at first position would break the conectivity"
-                    elif relative_start == tree_length - 1:
-                        mutation_affects_boundaries = True
-                        boundary_error_msg = "SNP at last position would break the conectivity"
-                
-                elif mut_type == "INS":
-                    # Insertion at position 0 would shift the first node
-                    if relative_start == 0:
-                        mutation_affects_boundaries = True
-                        boundary_error_msg = "Insertion at position 0 would break the conectivity"
-                    # Note: Insertion at end is OK - it adds after the last node
-                
-                elif mut_type in ["DEL", "INV", "DUP"]:
-                    # These affect a range - check if range includes first or last position
-                    if length is None:
-                        mutation_affects_boundaries = True
-                        boundary_error_msg = f"{mut_type} has no length specified"
-                    else :    
-                        end_position = relative_start + length
-                        
-                        if relative_start == 0:
-                            mutation_affects_boundaries = True
-                            boundary_error_msg = f"{mut_type} starting at first position would break the conectivity"
-                        elif end_position > tree_length - 1:
-                            mutation_affects_boundaries = True
-                            boundary_error_msg = f"{mut_type} affecting last position would break the conectivity"
-                
-                # If mutation affects boundaries, reject it entirely
-                if mutation_affects_boundaries:
-                    recap.add_mutation(tree_index, node_id, mut_type, start, length, 
-                                     affected_lineages, False, boundary_error_msg)
-                    visualizer.add_variant(mut_type, start, length, False, affected_lineages)
-                    continue
-                
-                # Continue with normal validation...
-                if relative_start < 0:
-                    error_msg = f"Position {start} is before tree start {tree_start}"
-                    recap.add_mutation(tree_index, node_id, mut_type, start, length, 
-                                     affected_lineages, False, error_msg)
-                    visualizer.add_variant(mut_type, start, length, False, affected_lineages)
-                    continue
-                
-                # Second validation: Check position against each affected lineage's path length
-                # Path lengths can vary between lineages due to previous mutations
+                # Validate against each affected lineage's current path length
                 failed_lineages = []
                 error_messages = []
                 
@@ -1284,162 +1173,247 @@ def apply_mutations_to_graphs(graphs, traversal, recap: MutationRecap, visualize
                         error_messages.append(f"Lineage {lineage} not found in graph")
                         continue
                     
-                    # Get current path length (number of nodes)
-                    # node_count is the number of edges, so total nodes = edges + 1
+                    # Get current path length
                     current_path_length = path.node_count + 1
                     
                     # Validate based on mutation type
-                    # Each mutation type has different position requirements
-                    
                     if mut_type == "SNP":
-                        # SNPs modify a single existing position
-                        # Position must be within [0, path_length-1]
-                        if relative_start >= current_path_length:
+                        if relative_start == 0:
+                            failed_lineages.append(lineage)
+                            error_messages.append("SNP at first position would break connectivity")
+                        elif relative_start >= current_path_length - 1:
                             failed_lineages.append(lineage)
                             error_messages.append(
-                                f"SNP position {relative_start} >= path length {current_path_length}"
+                                f"SNP at or beyond last position (pos {relative_start}, path length {current_path_length})"
                             )
                     
                     elif mut_type == "INS":
-                        # Insertions add sequence between two positions
-                        # Can insert after the last position, so [0, path_length] is valid
-                        if relative_start > current_path_length:
+                        if relative_start == 0:
+                            failed_lineages.append(lineage)
+                            error_messages.append("INS at position 0 would break connectivity")
+                        elif relative_start >= current_path_length:
                             failed_lineages.append(lineage)
                             error_messages.append(
-                                f"INS position {relative_start} > path length {current_path_length}"
+                                f"INS position {relative_start} >= path length {current_path_length}"
                             )
                     
-                    elif mut_type in ["DEL", "INV", "DUP"]:
-                        # These mutations affect a range of positions
-                        # The entire range must fit within the current path
+                    elif mut_type == "DEL":
                         if length is None:
                             failed_lineages.append(lineage)
-                            error_messages.append(f"{mut_type} has no length specified")
+                            error_messages.append("DEL has no length specified")
                         else:
-                            end_position = relative_start + length
-                            if end_position > current_path_length:
+                            if relative_start == 0:
+                                failed_lineages.append(lineage)
+                                error_messages.append("DEL at first position would break connectivity")
+                            elif relative_start + length > current_path_length - 1:
                                 failed_lineages.append(lineage)
                                 error_messages.append(
-                                    f"{mut_type} end position {end_position} > path length {current_path_length}"
+                                    f"DEL would affect last position (end {relative_start + length}, path length {current_path_length})"
+                                )
+                            elif length >= current_path_length - 2:
+                                failed_lineages.append(lineage)
+                                error_messages.append(
+                                    f"DEL would leave less than 3 nodes (deleting {length} from {current_path_length} nodes)"
+                                )
+                    
+                    elif mut_type == "INV":
+                        if length is None:
+                            failed_lineages.append(lineage)
+                            error_messages.append("INV has no length specified")
+                        else:
+                            actual_end = relative_start + length - 1
+                            
+                            if relative_start == 0:
+                                failed_lineages.append(lineage)
+                                error_messages.append("INV at first position would break connectivity")
+                            elif actual_end >= current_path_length - 1:
+                                failed_lineages.append(lineage)
+                                error_messages.append(
+                                    f"INV would affect last position (end {actual_end}, path length {current_path_length})"
+                                )
+                    
+                    elif mut_type == "DUP":
+                        if length is None:
+                            failed_lineages.append(lineage)
+                            error_messages.append("DUP has no length specified")
+                        else:
+                            actual_end = relative_start + length - 1
+                            
+                            if relative_start == 0:
+                                failed_lineages.append(lineage)
+                                error_messages.append("DUP at first position would break connectivity")
+                            elif actual_end >= current_path_length - 1:
+                                failed_lineages.append(lineage)
+                                error_messages.append(
+                                    f"DUP would affect last position (end {actual_end}, path length {current_path_length})"
                                 )
                 
                 # Handle validation failures
                 if failed_lineages:
-                    # Some lineages failed validation
                     valid_lineages = affected_lineages - set(failed_lineages)
                     error_msg = f"Invalid for lineages {failed_lineages}: {'; '.join(error_messages)}"
                     
-                    # Record the failure for failed lineages
-                    recap.add_mutation(tree_index, node_id, mut_type, start, length, 
-                                     set(failed_lineages), False, error_msg)
+                    # Record the failure
+                    local_mutations.append({
+                        "tree_index": tree_index,
+                        "node_id": node_id,
+                        "mutation_type": mut_type,
+                        "position": start,
+                        "length": length,
+                        "affected_lineages": set(failed_lineages),
+                        "success": False,
+                        "error_msg": error_msg
+                    })
                     
-                    # If no valid lineages remain, skip this mutation entirely
                     if not valid_lineages:
-                        visualizer.add_variant(mut_type, start, length, False, affected_lineages)
+                        local_variants.append((mut_type, start, length, False, affected_lineages))
                         continue
                     
-                    # Otherwise, continue with valid lineages only
                     affected_lineages = valid_lineages
                 
-                # Try to apply the mutation to valid lineages
-                success = False
+                # Try to apply the mutation
                 try:
-                    # Apply the appropriate mutation type
-                    # Note: Graph methods use 0-based indexing
-                    
+                    # Apply the mutation based on type
                     if mut_type == "SNP":
-                        # Single nucleotide polymorphism at one position
                         graph.add_snp(relative_start, affected_lineages)
-                    
                     elif mut_type == "INS":
-                        # Insertion of new sequence at a position
                         if length is None:
-                            raise MSerror(f"Insertion at position {start} has no length specified")
+                            raise MSerror(f"Insertion has no length")
                         graph.add_ins(relative_start, length, affected_lineages)
-                    
                     elif mut_type == "DEL":
-                        # Deletion from start to start+length (exclusive)
                         if length is None:
-                            raise MSerror(f"Deletion at position {start} has no length specified")
+                            raise MSerror(f"Deletion has no length")
                         graph.add_del(relative_start, relative_start + length, affected_lineages)
-                    
                     elif mut_type == "INV":
-                        # Inversion from start to start+length-1 (inclusive)
                         if length is None:
-                            raise MSerror(f"Inversion at position {start} has no length specified")
+                            raise MSerror(f"Inversion has no length")
                         graph.add_inv(relative_start, relative_start + length - 1, affected_lineages)
-                    
                     elif mut_type == "DUP":
-                        # Tandem duplication from start to start+length-1 (inclusive)
                         if length is None:
-                            raise MSerror(f"Duplication at position {start} has no length specified")
+                            raise MSerror(f"Duplication has no length")
                         graph.add_tdup(relative_start, relative_start + length - 1, affected_lineages)
-                    
                     else:
-                        # Unknown mutation type
                         raise MSerror(f"Unknown mutation type: {mut_type}")
                     
-                    # Mutation applied successfully
                     success = True
                     
-                    # Record success
-                    recap.add_mutation(tree_index, node_id, mut_type, start, length, 
-                                     affected_lineages, True)
-                    
                 except Exception as e:
-                    # Mutation application failed
                     error_msg = str(e)
-                    
-                    # Record failure
-                    recap.add_mutation(tree_index, node_id, mut_type, start, length, 
-                                     affected_lineages, False, error_msg)
+                    success = False
                 
-                # Track variant size for visualization (both success and failure)
-                # SNPs are excluded from visualization as requested
-                visualizer.add_variant(mut_type, start, length, success, affected_lineages)
+                # Track the mutation
+                local_mutations.append({
+                    "tree_index": tree_index,
+                    "node_id": node_id,
+                    "mutation_type": mut_type,
+                    "position": start,
+                    "length": length,
+                    "affected_lineages": affected_lineages,
+                    "success": success,
+                    "error_msg": error_msg
+                })
+                
+                # Track the variant
+                local_variants.append((mut_type, start, length, success, affected_lineages))
         
-        i += 1 
+        # Update progress
+        progress.update()
         
+        return MutationResult(
+            index=graph_idx,
+            mutations_applied=local_mutations,
+            variants_tracked=local_variants,
+            success=True
+        )
+    
+    # Prepare work items
+    work_items = [(i, graph, tree_data) 
+                  for i, (graph, tree_data) in enumerate(zip(graphs, traversal))]
+    
+    # Collect results
+    all_mutations = []
+    all_variants = []
+    
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(apply_mutations_to_single_graph, item): item[0] 
+                  for item in work_items}
+        
+        # Collect results in order
+        results = [None] * len(graphs)
+        for future in as_completed(futures):
+            try:
+                result = future.result()
+                results[result.index] = result
+            except Exception as e:
+                idx = futures[future]
+                raise MSerror(f"Failed to apply mutations to graph {idx}: {e}")
+        
+        # Merge results in order
+        for result in results:
+            if result:
+                all_mutations.extend(result.mutations_applied)
+                all_variants.extend(result.variants_tracked)
+    
+    MScompute(f"Mutation application complete. Total mutations processed: {len(all_mutations)}")
+    return all_mutations, all_variants
+
+def apply_mutations_to_graphs(graphs, traversal, recap: MutationRecap, visualizer: VariantSizeVisualizer, chromosome, threads=4):
+    """
+    Apply mutations from the augmented traversal to the corresponding graphs.
+    Now uses parallel processing by default.
+    """
+    # Use parallel mutation application
+    mutations, variants = parallel_apply_mutations(graphs, traversal, chromosome, max_workers=threads)
+    
+    # Merge tracking results into recap and visualizer
+    for mutation_data in mutations:
+        recap.add_mutation(**mutation_data)
+    
+    for variant_data in variants:
+        visualizer.add_variant(*variant_data)
+
 def main(splited_fasta: str, augmented_traversal: str, output_file: str, 
-         sample: str, chromosome: str, recap_file: str = None, 
+         sample: str, chromosome: str, fasta_folder: str, recap_file: str = None, 
          variant_plot_dir: str = None, threads = 1) -> None:
-    """Main function for graph creation with recap and visualization."""
+    """
+    Main function for graph creation with recap and visualization.
+    Uses parallel processing by default for improved performance.
+    """
     
     # Initialize tracking objects
     recap = MutationRecap(sample, chromosome)
-    visualizer = VariantSizeVisualizer(sample, chromosome)
-    MScompute("Starting to generate the variation graph")
+    lint_visualizer = LintVisualizer()
+    MScompute("Starting parallelized graph generation")
+    
+    # Read input data first to get reference length
+    sequences = MSpangepopDataHandler.read_fasta(splited_fasta)
+    traversal = MSpangepopDataHandler.read_json(augmented_traversal)
+    
+    # Calculate reference length (sum of all original sequence lengths)
+    reference_length = sum(len(str(record.seq)) for record in sequences)
+    
+    # Initialize visualizer with reference length
+    var_visualizer = VariantSizeVisualizer(sample, chromosome, reference_length)
+    
     try:
-        sequences = MSpangepopDataHandler.read_fasta(splited_fasta)
-        traversal = MSpangepopDataHandler.read_json(augmented_traversal)
         tree_lineages = gather_lineages(traversal)
         
         if len(sequences) != len(tree_lineages):
             raise MSerror(f"Mismatch: {len(sequences)} sequences but {len(tree_lineages)} trees")
         
-        node_id_generator = itertools.count(1)
+        # Parallel graph initialization
+        graphs = parallel_graph_initialization(
+            sequences, tree_lineages, chromosome, 
+            max_workers=threads
+        )
         
-        graphs = []
-        y = 0
-        for i, (record, (tree_index, lineages)) in enumerate(zip(sequences, tree_lineages)):
-
-            if y == 0 or y % 10 == 0 :
-                memory = psutil.virtual_memory()
-                available_gb = memory.available / (1024**3)
-                MScompute(f"Initialization of chromosome {chromosome} subgraphs -> {(tree_index*100)/len(sequences):.0f}% | {available_gb:.1f} GB available")
-                            
-            sequence = str(record.seq)
-            new_graph = Graph(node_id_generator)
-            new_graph.build_from_sequence(sequence, lineages)
-            graphs.append(new_graph)
+        # Parallel mutation application
+        apply_mutations_to_graphs(graphs, traversal, recap, var_visualizer, chromosome, threads)
         
-        MSsuccess(f"Initialized {len(graphs)} graphs for chromosome {chromosome}")
-        
-        # Apply mutations with tracking
-        MScompute(f"Starting to integrate mutation to all graphs")
-        apply_mutations_to_graphs(graphs, traversal, recap, visualizer, chromosome)
+        # Continue with concatenation and saving (sequential)
         ensemble = GraphEnsemble(name=f"{sample}_chr_{chromosome}", graph_list=graphs)
-        MScompute(f"Concatenating all graphs")
+
+        MScompute(f"Concatenating and linting graphs")
         ensemble.concatenate
         if ensemble.graphs:  # Should have exactly one graph after concatenation
             final_graph = ensemble.graphs[0]
@@ -1447,13 +1421,25 @@ def main(splited_fasta: str, augmented_traversal: str, output_file: str,
             for lineage, path in final_graph.paths.items():
                 # Calculate the actual sequence length of the path
                 lineage_lengths[lineage] = path.node_count + 1  # edges + 1 = nodes
-            visualizer.set_lineage_lengths(lineage_lengths)
+            var_visualizer.set_lineage_lengths(lineage_lengths)
 
-        MScompute(f"Removing nodes orphaned by the mutations on {chromosome}")
-        ensemble.lint(ignore_ancestral=True)
+        ensemble.lint(ignore_ancestral=True, visualizer=lint_visualizer)
 
-        ensemble.save_to_gfav1_1_hybrid(output_file, ignore_ancestral=True, max_workers=threads)
+        MSpangepopDataHandler.save_to_gfav1_1_hybrid(
+            ensemble,
+            file_path=output_file,
+            ignore_ancestral=True,
+            max_workers=threads
+        )
         
+        MSpangepopDataHandler.write_fasta_multithreaded(
+            graph=final_graph,
+            sample=sample,
+            chromosome=chromosome,
+            fasta_folder=fasta_folder,
+            threads=threads
+        )
+
     except Exception as e:
         recap.summary["fatal_error"] = str(e)
         raise
@@ -1462,38 +1448,38 @@ def main(splited_fasta: str, augmented_traversal: str, output_file: str,
         # Save recap
         if recap_file:
             recap.save_recap(recap_file)
-            MSsuccess(f"Recap saved to {recap_file}")
+            MScompute(f"Saving recap [1/2]")
         
         if variant_plot_dir:
-            import os
+            
             os.makedirs(variant_plot_dir, exist_ok=True)
             
-            # Original plots
             dist_plot_path = os.path.join(variant_plot_dir, 
                                         f"{sample}_chr{chromosome}_graph_variant_sizes.png")
-            visualizer.save_size_distribution_plot(dist_plot_path)
+            var_visualizer.save_size_distribution_plot(dist_plot_path)
             
-            # New density plot instead of scatter
             density_plot_path = os.path.join(variant_plot_dir,
                                             f"{sample}_chr{chromosome}_graph_variant_density.png")
-            visualizer.save_variant_density_plot(density_plot_path)
+            var_visualizer.save_variant_density_plot(density_plot_path)
             
-            # Additional new plots
             shared_plot_path = os.path.join(variant_plot_dir,
                                         f"{sample}_chr{chromosome}_graph_shared_variants.png")
-            visualizer.save_shared_variants_heatmap(shared_plot_path)
+            var_visualizer.save_shared_variants_heatmap(shared_plot_path)
             
             proportions_plot_path = os.path.join(variant_plot_dir,
                                             f"{sample}_chr{chromosome}_graph_variant_proportions.png")
-            visualizer.save_variant_type_proportions_plot(proportions_plot_path)
+            var_visualizer.save_variant_type_proportions_plot(proportions_plot_path)
             
             cumulative_plot_path = os.path.join(variant_plot_dir,
                                             f"{sample}_chr{chromosome}_graph_cumulative_variants.png")
-            visualizer.save_cumulative_variants_plot(cumulative_plot_path)
+            var_visualizer.save_cumulative_variants_plot(cumulative_plot_path)
             
             lengths_plot_path = os.path.join(variant_plot_dir,
                                         f"{sample}_chr{chromosome}_graph_lineage_lengths.png")
-            visualizer.save_lineage_lengths_plot(lengths_plot_path)
+            var_visualizer.save_lineage_lengths_plot(lengths_plot_path)
+
+            lint_visualizer.write_txt_report(recap_file)
+
         
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Create variation graph from mutations")
@@ -1504,8 +1490,11 @@ if __name__ == "__main__":
     parser.add_argument("--chromosome", required=True, help="Chromosome identifier")
     parser.add_argument("--recap_file", help="Path to save recap file")
     parser.add_argument("--variant_plot_dir", help="Directory to save variant size plots")
-    parser.add_argument("--threads", type=int)
+    parser.add_argument("--fasta_folder", help="Directory to save all fasta")
+    parser.add_argument("--threads", type=int, default=4, help="Number of threads for parallel processing (default: 4)")
 
     args = parser.parse_args()
+    
     main(args.splited_fasta, args.augmented_traversal, args.output_file, 
-         args.sample, args.chromosome, args.recap_file, args.variant_plot_dir, args.threads)
+         args.sample, args.chromosome, args.fasta_folder, args.recap_file, 
+         args.variant_plot_dir, args.threads)

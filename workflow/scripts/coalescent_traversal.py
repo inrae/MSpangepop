@@ -161,14 +161,14 @@ if __name__ == "__main__":
         if not isinstance(json_data, list):
             raise MSerror(f"Invalid JSON format in {args.json}: Expected a list of tree objects.")
 
-        MScompute(f"Processing all nodes of chromosome {args.chromosome} with {args.threads} threads")
+        MScompute(f"Starting tree sequence traversal for {args.chromosome} with {args.threads} threads")
 
         with ThreadPoolExecutor(max_workers=args.threads) as executor:
             results = list(filter(None, executor.map(process_tree, json_data)))
 
         if results:
             MSpangepopDataHandler.save_json(results, args.output_file, args.readable_json)
-            MSsuccess(f"Serialized all nodes for chromosome {args.chromosome}")
+            MSsuccess(f"Serialized traversal for chromosome {args.chromosome}")
         else:
             raise MSerror(f"No valid trees processed for chromosome {args.chromosome}. Output file not saved.")
     except FileNotFoundError:
