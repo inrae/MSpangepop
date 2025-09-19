@@ -148,29 +148,47 @@ class MSpangepopDataHandler:
         Reads a FASTA (possibly gzipped) file and returns a list of sequences.
         
         Parameters:
-            fasta_file (str): Path to the FASTA file (compressed or uncompressed).
+        fasta_file (str or Path): Path to the FASTA file (compressed or uncompressed).
+                                Can be either absolute or relative path.
         
         Returns:
-            list: A list of SeqRecord objects from the FASTA file.
+        list: A list of SeqRecord objects from the FASTA file.
         
         Raises:
-            FileReadError: If unable to read the FASTA file.
+        FileReadError: If unable to read the FASTA file.
         """
         import gzip
         from Bio import SeqIO
+        from pathlib import Path
+
+        # Convert to Path object and resolve to absolute path
+        fasta_path = Path(fasta_file).resolve()
+        
+        # Check if file exists
+        if not fasta_path.exists():
+            raise MSerror(f"FASTA file not found: {fasta_path}")
+        
+        if not fasta_path.is_file():
+            raise MSerror(f"Path is not a file: {fasta_path}")
+        
+        # Try reading as compressed file first
         try:
-            with gzip.open(fasta_file, "rt") as handle:
+            with gzip.open(fasta_path, "rt") as handle:
                 return list(SeqIO.parse(handle, "fasta"))
-        except Exception:
-            MSwarning("Unable to read compressed file, trying uncompressed version...")
+        except (gzip.BadGzipFile, UnicodeDecodeError):
+            # Not a gzip file or corrupted gzip, try uncompressed
+            MSwarning("Unable to read as compressed file, trying uncompressed version...")
             try:
-                with open(fasta_file, "r") as handle:
+                with open(fasta_path, "r") as handle:
                     data = list(SeqIO.parse(handle, "fasta"))
                     MSwarning("Consider compressing the fasta file with bgzip for better performance.")
                     return data
             except Exception as e:
-                raise MSerror(f"Unable to read FASTA file: {e}")
-    
+                raise MSerror(f"Unable to read FASTA file '{fasta_path}': {e}")
+        except Exception as e:
+            # Other errors while reading compressed file
+            raise MSerror(f"Error reading FASTA file '{fasta_path}': {e}")
+        
     @staticmethod
     def read_variant_length_file(file_path):
         """
