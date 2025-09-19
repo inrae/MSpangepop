@@ -48,7 +48,7 @@ def extract_intervals(fasta_sequences, json_data, chromosome_number, output_file
                     output_line = f">Chromosome{chromosome_number}_Interval_{start}_{end}\n{extracted_seq}\n"
                     out.write(output_line)  # Write to bgzipped file
                     i+=1
-                    if i % 5 == 0:
+                    if i % 10 == 0:
                         MScompute(f"Chromosome {chromosome_number} split -> {(end*100)/len(chrom_seq):.0f} %")
                 except (KeyError, TypeError, ValueError) as e:
                     raise MSerror(f"Skipping invalid JSON entry {e}")
