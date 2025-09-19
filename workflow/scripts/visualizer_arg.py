@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """
-Simplified ARG Visualization Script
+Author: Lucien Piat
+Institution: INRAe
+Project: PangenOak
 
-Creates specific visualizations for full ARGs without mutations.
-Generates individual plots and consensus tree analysis.
-
-Usage:
-    python visualize_arg.py <input_trees_file> <output_folder>
+Usage : Creates specific visualizations for full ARGs without mutations.
+        Generates individual plots and consensus tree analysis.
 """
 
 import sys
@@ -26,16 +25,10 @@ from scipy.spatial.distance import pdist, squareform
 from scipy.cluster.hierarchy import dendrogram, linkage
 from collections import defaultdict, Counter
 from io_handler import MSerror, MSsuccess, MScompute, MSwarning
-
-# BioPython imports for consensus trees
-try:
-    from Bio import Phylo
-    from Bio.Phylo.BaseTree import Tree, Clade
-    from Bio.Phylo.Consensus import majority_consensus, strict_consensus
-    import io
-except ImportError:
-    MSerror("BioPython not installed. Please install with: pip install biopython")
-    sys.exit(1)
+from Bio import Phylo
+from Bio.Phylo.BaseTree import Tree, Clade
+from Bio.Phylo.Consensus import majority_consensus, strict_consensus
+import io
 
 # Set matplotlib backend for non-interactive environments
 plt.switch_backend('Agg')
