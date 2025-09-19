@@ -669,23 +669,6 @@ class MutationResult:
     success: bool
     error: str = None
 
-class ThreadSafeNodeIDGenerator:
-    """Thread-safe node ID generator using pre-allocation strategy"""
-    def __init__(self):
-        self.lock = threading.Lock()
-        self.current_id = 1
-        
-    def allocate_range(self, count: int) -> range:
-        """Allocate a range of IDs for a graph"""
-        with self.lock:
-            start = self.current_id
-            self.current_id += count
-            return range(start, self.current_id)
-    
-    def create_local_generator(self, start: int):
-        """Create a local generator starting from a specific ID"""
-        return itertools.count(start)
-
 class ProgressTracker:
     """Thread-safe progress tracker with neat output"""
     def __init__(self, total_items: int, task_name: str):
@@ -709,12 +692,3 @@ class ProgressTracker:
                 MScompute(f"{self.task_name} -> {percentage}% | {available_gb:.1f} GB available")
 
 
-def estimate_node_count(sequence: str, lineages: set) -> int:
-    """Estimate the number of nodes needed for a graph"""
-    # Base nodes for the sequence
-    base_nodes = len(sequence)
-
-    buffer = int(base_nodes * 3000) # Increase this in case of duplicates 
-
-    estimated = base_nodes + buffer
-    return estimated
