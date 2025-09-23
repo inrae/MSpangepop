@@ -3,7 +3,7 @@
   "description": "Single panmictic population model with parameter ranges",
   
   "simulation_params": {
-    "fasta_gz": "small_test_genome.fa.gz",
+    "fasta_gz": "simulation_data/small_test_genome.fa.gz",
     "chr_n": 1,
     "sv_distribution": {
       "SNP": 30,
