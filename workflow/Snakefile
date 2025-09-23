@@ -69,7 +69,7 @@ rule setup:
         out=lambda wildcards: os.path.join(output_dir, wildcards.sample, simulation_data),
         chr_n =lambda wildcards: config["samples"][wildcards.sample]["chr_n"]
     resources:
-        mem_mb=lambda wildcards: int(1000 * memory_multiplier),
+        mem_mb=lambda wildcards: int(10000 * memory_multiplier),
         time="00:10:00"
     threads: 1
     container:
@@ -138,7 +138,7 @@ rule visualization:
         out_arg = lambda wc: os.path.join(
             output_dir, wc.sample, plot_dir, f"chr_{wc.chromosome}", "02_arg_plots")
     resources:
-        mem_mb=lambda wc: int(5000 * memory_multiplier),
+        mem_mb=lambda wc: int(50000 * memory_multiplier),
         time="01:00:00"
     threads: 2  
     benchmark:
@@ -250,13 +250,13 @@ rule graph_creation:
         out_dir = lambda wildcards: os.path.join(output_dir, wildcards.sample, plot_dir, f"chr_{wildcards.chromosome}", "03_graph_plots"), 
         fasta_folder = lambda wildcards: os.path.join(output_dir, wildcards.sample, graph,  f"chr_{wildcards.chromosome}", "fasta")
     resources:
-        mem_mb=lambda wildcards: int(200000 * memory_multiplier),
+        mem_mb=lambda wildcards: int(400000 * memory_multiplier),
         time="60:00:00"
     benchmark:
         os.path.join(output_dir, "{sample}", "benchmark", "chr_{chromosome}", "graph_creation_benchmark.txt")
     container:
         "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
-    threads: 20
+    threads: 10
     priority: 7
     shell:
         """
@@ -282,7 +282,7 @@ rule gfa_merge:
         vg_raw = temp(os.path.join(output_dir, "{sample}", temp_dir, "{sample}_chr_{chromosome}_raw.vg")),
         vg_unchoped = temp(os.path.join(output_dir, "{sample}", temp_dir, "{sample}_chr_{chromosome}_unchoped.vg"))
     resources:
-        mem_mb=lambda wildcards: int(200000 * memory_multiplier),
+        mem_mb=lambda wildcards: int(400000 * memory_multiplier),
         time="60:00:00"
     benchmark:
         os.path.join(output_dir, "{sample}", "benchmark", "chr_{chromosome}", "gfa_merge_benchmark.txt")
