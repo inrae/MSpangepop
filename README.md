@@ -2,7 +2,8 @@
 
 MSpangepop is a workflow for simulating pangenome variation graphs from coalescent simulations.
 
-A github mirror can be found on the [INRAE GitHub space](https://github.com/inrae/MSpangepop).
+The official MSpangepop repo can be found at the [INRAE forge](https://forge.inrae.fr/pangepop/MSpangepop).\
+A GitHub mirror can be found at [INRAE GitHub](https://github.com/inrae/MSpangepop).
 
 ### Documentation
 <div align="center">
