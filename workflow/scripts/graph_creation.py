@@ -1044,6 +1044,8 @@ class GraphEnsemble:
 def parallel_graph_initialization(sequences, tree_lineages, chromosome, max_workers=4):
     """Parallelize graph initialization"""
     
+    MScompute(f"Starting graph initialization for chromosome {chromosome}")
+
     progress = ProgressTracker(len(sequences), f"Initializing chromosome {chromosome} subgraphs")
     
     def init_single_graph(args):
@@ -1383,9 +1385,9 @@ def main(splited_fasta: str, augmented_traversal: str, output_file: str,
     # Initialize tracking objects
     recap = MutationRecap(sample, chromosome)
     lint_visualizer = LintVisualizer()
-    MScompute("Starting parallelized graph generation")
     
     # Read input data first to get reference length
+    MScompute("Reading input files")
     sequences = MSpangepopDataHandler.read_fasta(splited_fasta)
     traversal = MSpangepopDataHandler.read_json(augmented_traversal)
     
