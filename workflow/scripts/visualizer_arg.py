@@ -182,8 +182,7 @@ def create_hierarchical_clustering_plot(ts, output_dir, basename, sample_name, c
     Create horizontal hierarchical clustering plot using STEAC with population-based coloring.
     Each branch is colored by the population of its descendants if all are the same.
     """
-    MScompute("Creating STEAC horizontal hierarchical cjobs
-    lustering plot...")
+    MScompute("Creating STEAC horizontal hierarchical clustering plot...")
 
     n = len(samples)
 
