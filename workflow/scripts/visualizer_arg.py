@@ -4,34 +4,40 @@ Author: Lucien Piat
 Institution: INRAe
 Project: PangenOak
 
-Usage : Creates specific visualizations for full ARGs without mutations.
-        Generates individual plots and consensus tree analysis.
+Usage: Creates specific visualizations for full ARGs without mutations.
+       Generates plots with optimized STEAC matrix computation.
 """
 
 import sys
 import os
 import argparse
+import time
+import json
 import tskit
-import msprime
 import numpy as np
-os.environ['MPLCONFIGDIR'] = './.config/matplotlib'
 import matplotlib.pyplot as plt
-import matplotlib.patches as patches
-import networkx as nx
 import pandas as pd
-from pathlib import Path
 import seaborn as sns
-from scipy.spatial.distance import pdist, squareform
+import msprime
 from scipy.cluster.hierarchy import dendrogram, linkage
-from collections import defaultdict, Counter
+from scipy import stats
+from collections import defaultdict
 from io_handler import MSerror, MSsuccess, MScompute, MSwarning
-from Bio import Phylo
-from Bio.Phylo.BaseTree import Tree, Clade
-from Bio.Phylo.Consensus import majority_consensus, strict_consensus
-import io
 
 # Set matplotlib backend for non-interactive environments
+os.environ['MPLCONFIGDIR'] = './.config/matplotlib'
 plt.switch_backend('Agg')
+
+# Consistent color scheme - dark blue theme
+COLOR_SCHEME = {
+    'primary': '#1e3a5f',      # Dark blue
+    'secondary': '#8B0000',     # Dark red
+    'accent': '#FF8C00',        # Dark orange
+    'light': '#4682B4',         # Steel blue
+    'dark': '#0a1929',          # Very dark blue
+    'grid': '#e0e0e0',          # Light gray for grids
+    'background': '#f8f9fa'     # Light background
+}
 
 # Consistent style settings
 FIGURE_STYLE = {
@@ -47,6 +53,58 @@ FIGURE_STYLE = {
 }
 plt.rcParams.update(FIGURE_STYLE)
 
+def compute_STEAC_matrix_original(ts):
+    """
+    O(T × n²) complexity.
+    """
+    samples = list(ts.samples())
+    n_samples = len(samples)
+    coalescence_times = np.zeros((n_samples, n_samples))
+    total_length = 0
+
+    for tree in ts.trees():
+        span = tree.interval.right - tree.interval.left
+        total_length += span
+
+        for i, sample1 in enumerate(samples):
+            for j, sample2 in enumerate(samples):
+                if i != j:
+                    mrca = tree.mrca(sample1, sample2)
+                    if mrca != tskit.NULL:
+                        mrca_time = ts.node(mrca).time
+                        coalescence_times[i, j] += mrca_time * span
+
+    coalescence_times /= total_length
+    return coalescence_times, samples
+
+def compute_STEAC_matrix_vectorized(ts):
+    """
+    Vectorized STEAC computation using numpy operations.
+    More efficient for larger sample sizes.
+    """
+    samples = np.array(ts.samples())
+    n_samples = len(samples)
+    coalescence_times = np.zeros((n_samples, n_samples))
+    
+    for tree in ts.trees():
+        span = tree.interval.right - tree.interval.left
+        
+        # Pre-compute all MRCAs for this tree
+        mrca_matrix = np.zeros((n_samples, n_samples), dtype=np.int32)
+        for i in range(n_samples):
+            for j in range(i + 1, n_samples):
+                mrca = tree.mrca(samples[i], samples[j])
+                if mrca != tskit.NULL:
+                    mrca_matrix[i, j] = mrca_matrix[j, i] = mrca
+        
+        # Vectorized time lookup and accumulation
+        mask = mrca_matrix != 0
+        times = np.zeros_like(mrca_matrix, dtype=np.float64)
+        times[mask] = ts.nodes_time[mrca_matrix[mask]]
+        coalescence_times += times * span
+    
+    coalescence_times /= ts.sequence_length
+    return coalescence_times, list(samples)
 
 def get_node_types(ts):
     """Classify nodes into different types for full ARGs."""
@@ -63,190 +121,70 @@ def get_node_types(ts):
     }
 
 
-def create_local_trees_plot(ts, output_dir, basename):
-    """Create local trees visualization with colored nodes."""
-    MScompute("Creating arg local trees visualization...")
-    
-    # Get node types
-    node_types = get_node_types(ts)
-    
-    # Get recombination times for grid lines
-    re_times = [int(nd.time) for nd in ts.nodes() if nd.flags & msprime.NODE_IS_RE_EVENT]
-    
-    # Create style string for colored nodes with thicker edges
-    style = ".edge {stroke-width: 3px} .y-axis .grid {stroke: #ff000033}"
-    for u in node_types['recombination']:
-        style += f".n{u} > .sym {{fill: red}}"
-    for u in node_types['common_ancestor']:
-        style += f".n{u} > .sym {{fill: orange}}"
-    for u in node_types['coalescent']:
-        style += f".n{u} > .sym {{fill: lightblue}}"
-    
-    # Create node labels for samples and recombination nodes
-    node_labels = {u: str(u) for u in node_types['samples'] | node_types['recombination']}
-    
-    # Generate SVG
-    svg_str = ts.draw_svg(
-        size=(max(1200, ts.num_trees * 200), 500),
-        y_axis=True,
-        y_ticks=re_times if re_times else None,
-        y_gridlines=bool(re_times),
-        style=style,
-        mutation_labels={},
-        node_labels=node_labels
-    )
-    
-    # Save SVG
-    with open(os.path.join(output_dir, f"{basename}_local_trees.svg"), 'w') as f:
-        f.write(svg_str)
-
-def create_networkx_plot(ts, output_dir, basename, sample):
-    """Create NetworkX graph visualization."""
-    MScompute("Creating arg NetworkX graph visualization...")
-    
-    # Convert to NetworkX graph
-    D = dict(source=ts.edges_parent, target=ts.edges_child, 
-             left=ts.edges_left, right=ts.edges_right)
-    G = nx.from_pandas_edgelist(pd.DataFrame(D), edge_attr=True, 
-                               create_using=nx.MultiDiGraph)
-    
-    nx.set_node_attributes(G, {n.id: {'flags': n.flags, 'time': n.time} 
-                              for n in ts.nodes()})
-    
-    # Get node types for coloring
-    node_types = get_node_types(ts)
-    
-    # Create layout using topological ordering
-    for layer, nodes in enumerate(nx.topological_generations(G.reverse())):
-        for node in nodes:
-            G.nodes[node]["layer"] = layer
-    
-    pos = nx.multipartite_layout(G, subset_key="layer", align='horizontal')
-    
-    # Create figure
-    plt.figure(figsize=(16, 10))
-    
-    # Draw edges
-    nx.draw_networkx_edges(G, pos, alpha=0.4, arrows=True, arrowsize=15, width=2)
-    
-    # Draw nodes with different colors - using darker colors
-    if node_types['samples']:
-        nx.draw_networkx_nodes(G, pos, nodelist=list(node_types['samples']), 
-                              node_color='#4682B4', node_size=400, label='Lineages')
-    if node_types['recombination']:
-        nx.draw_networkx_nodes(G, pos, nodelist=list(node_types['recombination']), 
-                              node_color='#8B0000', node_size=300, label='Recombination')
-    if node_types['common_ancestor']:
-        nx.draw_networkx_nodes(G, pos, nodelist=list(node_types['common_ancestor']), 
-                              node_color='#FF8C00', node_size=250, label='Common Ancestor')
-    if node_types['coalescent']:
-        nx.draw_networkx_nodes(G, pos, nodelist=list(node_types['coalescent']), 
-                              node_color='#CD5C5C', node_size=200, label='Coalescent')
-    
-    # Draw labels
-    nx.draw_networkx_labels(G, pos, font_size=8)
-    
-    plt.title(f"ARG Network Graph: {sample} {basename}", fontsize=16, fontweight='bold', pad=20)
-    plt.legend(loc='upper right')
-    plt.axis('off')
-    plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, f"{basename}_networkx.png"), 
-                dpi=200, bbox_inches='tight')
-    plt.close()
-
-
 def create_tree_height_plot(ts, output_dir, basename, sample):
-    """Create tree height along genome plot."""
+    """Create tree height along genome plot as histogram bars."""
     MScompute("Creating tree height plot...")
-    
-    node_types = get_node_types(ts)
     
     plt.figure(figsize=(14, 6))
     
-    positions = []
+    # Collect data for bars AND boundaries in single pass
+    left_positions = []
+    widths = []
     heights = []
-    for tree in ts.trees():
-        positions.append(tree.interval.left)
+    recomb_positions = set()
+    
+    for i, tree in enumerate(ts.trees()):
+        left_positions.append(tree.interval.left)
+        widths.append(tree.interval.right - tree.interval.left)
+        
         if tree.num_roots == 1:
             heights.append(ts.node(tree.root).time)
         else:
             heights.append(max(ts.node(root).time for root in tree.roots))
+        
+        # Add tree boundaries (except for first and last)
+        if i > 0:  # Not the first tree
+            recomb_positions.add(tree.interval.left)
     
-    plt.plot(positions, heights, 'b-', linewidth=3, label='Tree height', alpha=0.8)
-    plt.fill_between(positions, heights, alpha=0.3, color='blue')
+    # Create bar plot with dark blue color
+    plt.bar(left_positions, heights, width=widths, 
+            align='edge',
+            color='#1e3a5f',
+            edgecolor='#0a1929',
+            linewidth=0.3,
+            alpha=0.9,
+            label='Tree height')
     
-    # Add recombination events
-    re_positions = []
-    for re_node in node_types['recombination']:
-        for tree in ts.trees():
-            if re_node in tree.nodes():
-                re_positions.append(tree.interval.left)
-                break
-    
-    if re_positions:
-        for pos in re_positions:
-            plt.axvline(x=pos, color='red', linestyle='--', alpha=0.7, linewidth=2)
-        plt.plot([], [], 'r--', label='Recombination events', linewidth=2)
+    # Add recombination breakpoints
+    if recomb_positions:
+        for pos in sorted(recomb_positions):
+            plt.axvline(x=pos, color='#8b0000', linestyle='--', alpha=0.8, linewidth=.5)
+        plt.plot([], [], color='#8b0000', linestyle='--', linewidth=2, label='Recombination breakpoints')
     
     plt.title(f'Tree Height Along Genome: {sample} {basename}', fontsize=16, fontweight='bold')
     plt.xlabel('Genomic Position (bp)', fontsize=14)
     plt.ylabel('Height (generations)', fontsize=14)
-    plt.legend()
-    plt.grid(True, alpha=0.3)
+    plt.legend(loc='best', frameon=True, fancybox=True, shadow=True)
+    plt.grid(True, alpha=0.3, linestyle=':', linewidth=0.5)
+    
+    plt.ylim(bottom=0)
+    
+    ax = plt.gca()
+    ax.set_facecolor('#f8f9fa')
+    
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, f"{basename}_tree_height.png"), 
-                dpi=300, bbox_inches='tight')
+                dpi=300, bbox_inches='tight', facecolor='white')
     plt.close()
 
-
-def compute_STEAC_matrix(ts):
-    """
-    Based on the Species Tree Estimation using Average Coalescence times method
-
-    Compute average MRCA times between all pairs of samples in a tree sequence.
-
-    This functions adjust the score based on the size of the locus.
-
-    Parameters:
-        ts (tskit.TreeSequence): A tree sequence with all genealogies.
-    """
-    samples = list(ts.samples())
-    n_samples = len(samples)
-    
-    # Initialize an empty matrix to store coalescence times between each pair of samples
-    coalescence_times = np.zeros((n_samples, n_samples))
-    
-    total_length = 0 
-
-    for tree in ts.trees():
-        span = tree.interval.right - tree.interval.left  # Locus length
-        total_length += span  # Add to total genome length
-
-        # Compare each pair of samples
-        for i, sample1 in enumerate(samples):
-            for j, sample2 in enumerate(samples):
-                if i != j:  # Don't compare a sample to itself
-                    # Find the MRCA of this pair in this tree
-                    mrca = tree.mrca(sample1, sample2)
-                    if mrca != tskit.NULL:
-                        # Get the time of the MRCA
-                        mrca_time = ts.node(mrca).time
-                        # Add the time * span to the coalescence matrix
-                        coalescence_times[i, j] += mrca_time * span
-
-    # Average the coalescence times by dividing by the total genome length
-    coalescence_times /= total_length
-
-    return coalescence_times, samples
-
-def create_hierarchical_clustering_plot(ts, output_dir, basename, sample_name):
+def create_hierarchical_clustering_plot(ts, output_dir, basename, sample_name, coalescence_times, samples):
     """
     Create horizontal hierarchical clustering plot using STEAC with population-based coloring.
     Each branch is colored by the population of its descendants if all are the same.
     """
-    MScompute("Creating STEAC horizontal hierarchical clustering plot...")
+    MScompute("Creating STEAC horizontal hierarchical cjobs
+    lustering plot...")
 
-    coalescence_times, samples = compute_STEAC_matrix(ts)
     n = len(samples)
 
     if n > 2:
@@ -259,7 +197,6 @@ def create_hierarchical_clustering_plot(ts, output_dir, basename, sample_name):
             for i in range(len(demography)):
                 if demography[i].metadata:
                     try:
-                        import json
                         metadata = json.loads(demography[i].metadata.decode('utf-8'))
                         if 'name' in metadata:
                             population_names[i] = metadata['name']
@@ -491,20 +428,16 @@ def create_hierarchical_clustering_plot(ts, output_dir, basename, sample_name):
         plt.savefig(os.path.join(output_dir, f"{basename}_STEAC_hierarchical_clustering.png"),
                     dpi=1000, bbox_inches='tight')
         plt.close()
-        
-def create_clustermap_with_dendrogram(ts, output_dir, basename, sample_name):
-    """
-    Create a clustered heatmap (clustermap) using STEAC coalescence times.
-    Only shows left-side dendrogram; annotations are rounded to integers.
-    Suitable for large sample sizes.
-    """
-    MScompute("Creating STEAC clustermap with left dendrogram...")
 
-    coalescence_times, samples = compute_STEAC_matrix(ts)
+def create_clustermap_with_dendrogram(ts, output_dir, basename, sample_name, coalescence_times, samples):
+    """
+    Create a clustered heatmap using STEAC coalescence times.
+    """
+    MScompute("Creating STEAC clustermap...")
+
     n = len(samples)
 
     if n > 2:
-        # Use L instead of Sample for labels
         sample_labels = [f"L{s}" for s in samples]
 
         # Compute condensed distance matrix
@@ -515,93 +448,181 @@ def create_clustermap_with_dendrogram(ts, output_dir, basename, sample_name):
         ]
 
         row_linkage = linkage(condensed_dist, method='average')
-
         df = pd.DataFrame(coalescence_times, index=sample_labels, columns=sample_labels)
+
+        # Create custom colormap using our color scheme
+        cmap = plt.cm.colors.LinearSegmentedColormap.from_list(
+            'custom', 
+            ['white', COLOR_SCHEME['light'], COLOR_SCHEME['primary'], COLOR_SCHEME['dark']]
+        )
 
         g = sns.clustermap(
             df,
             row_linkage=row_linkage,
-            col_cluster=False,  # Only cluster rows
-            cmap="coolwarm",
+            col_cluster=False,
+            cmap=cmap,
             figsize=(max(12, n * 0.35), max(10, n * 0.3)),
             annot=True,
-            fmt=".0f",  # Round to integer
+            fmt=".0f",
             annot_kws={"size": 6},
-            dendrogram_ratio=(0.25, 0.01),  # Hide top dendrogram
+            dendrogram_ratio=(0.25, 0.01),
             cbar_pos=(0.02, 0.8, 0.03, 0.18),
             linewidths=0.4,
             xticklabels=True,
             yticklabels=True,
-            tree_kws={"linewidths": 1.5}
+            tree_kws={"linewidths": 1.5, "colors": COLOR_SCHEME['dark']}
         )
 
-        g.cax.set_visible(False)  # Hide colorbar
-
-        plt.suptitle(f"STEAC Clustering (Left Tree Only): {sample_name} {basename}", fontsize=16, y=0.98)
+        g.cax.set_visible(False)
+        
+        plt.suptitle(f"STEAC Clustering: {sample_name} {basename}", 
+                     fontsize=16, fontweight='bold', y=0.98)
         g.figure.subplots_adjust(top=0.93)
         g.savefig(os.path.join(output_dir, f"{basename}_STEAC_clustermap.png"),
-                  dpi=1000, bbox_inches='tight')
+                  dpi=300, bbox_inches='tight')
         plt.close()
     else:
         MSwarning("Not enough samples for clustering heatmap")
 
 
+def plot_tree_age_vs_width(ts, output_dir, basename, sample):
+    """Plot tree age versus tree width."""
+    MScompute("Creating tree age vs width plot...")
+    
+    # Collect data
+    widths = []
+    ages = []
+    
+    for tree in ts.trees():
+        width = tree.interval.right - tree.interval.left
+        widths.append(width)
+        
+        if tree.num_roots == 1:
+            age = ts.node(tree.root).time
+        else:
+            age = max(ts.node(root).time for root in tree.roots)
+        ages.append(age)
+    
+    widths = np.array(widths)
+    ages = np.array(ages)
+    
+    # Create figure
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+    
+    # Scatter plot
+    scatter = ax1.scatter(widths, ages,
+                         alpha=0.6,
+                         s=50,
+                         c=ages,
+                         cmap='viridis',
+                         edgecolors=COLOR_SCHEME['dark'],
+                         linewidth=0.5)
+    
+    cbar = plt.colorbar(scatter, ax=ax1)
+    cbar.set_label('Tree Age (generations)', fontsize=11)
+    
+    # Calculate correlation
+    correlation, p_value = stats.pearsonr(widths, ages)
+    ax1.text(0.05, 0.95, f'Pearson r = {correlation:.3f}\np-value = {p_value:.2e}',
+             transform=ax1.transAxes,
+             bbox=dict(boxstyle='round', facecolor=COLOR_SCHEME['background'], 
+                      edgecolor=COLOR_SCHEME['primary'], alpha=0.9),
+             verticalalignment='top',
+             fontsize=10)
+    
+    # Add trend line
+    z = np.polyfit(widths, ages, 1)
+    p = np.poly1d(z)
+    x_trend = np.linspace(widths.min(), widths.max(), 100)
+    ax1.plot(x_trend, p(x_trend), color=COLOR_SCHEME['secondary'], 
+             linestyle='--', alpha=0.7, linewidth=2, label='Linear trend')
+    
+    ax1.set_xlabel('Tree Width (bp)', fontsize=12, fontweight='bold')
+    ax1.set_ylabel('Tree Age (generations)', fontsize=12, fontweight='bold')
+    ax1.set_title('Tree Age vs Genomic Width', fontsize=14, fontweight='bold')
+    ax1.grid(True, alpha=0.3, linestyle=':', color=COLOR_SCHEME['grid'])
+    ax1.set_facecolor(COLOR_SCHEME['background'])
+    ax1.legend()
+    
+    # Hexbin density plot with custom colormap
+    cmap_hex = plt.cm.colors.LinearSegmentedColormap.from_list(
+        'custom_hex', 
+        ['white', COLOR_SCHEME['light'], COLOR_SCHEME['accent'], COLOR_SCHEME['secondary']]
+    )
+    hexbin = ax2.hexbin(widths, ages, gridsize=30, cmap=cmap_hex, mincnt=1)
+    
+    cbar2 = plt.colorbar(hexbin, ax=ax2)
+    cbar2.set_label('Count', fontsize=11)
+    
+    ax2.set_xlabel('Tree Width (bp)', fontsize=12, fontweight='bold')
+    ax2.set_ylabel('Tree Age (generations)', fontsize=12, fontweight='bold')
+    ax2.set_title('Density Plot: Tree Age vs Width', fontsize=14, fontweight='bold')
+    ax2.grid(True, alpha=0.3, linestyle=':', color=COLOR_SCHEME['grid'])
+    ax2.set_facecolor(COLOR_SCHEME['background'])
+    
+    fig.suptitle(f'Tree Age-Width Relationship: {sample} {basename}',
+                 fontsize=16, fontweight='bold', y=1.02)
+    
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, f"{basename}_tree_age_vs_width.png"),
+                dpi=300, bbox_inches='tight', facecolor='white')
+    plt.close()
+    
+    # Print summary statistics
+    MScompute(f"Tree statistics:")
+    MScompute(f"  - Number of trees: {len(widths)}")
+    MScompute(f"  - Mean tree width: {np.mean(widths):.2f} bp")
+    MScompute(f"  - Mean tree age: {np.mean(ages):.2f} generations")
+    MScompute(f"  - Correlation (age vs width): {correlation:.3f}")
+
+
 def main():
-    parser = argparse.ArgumentParser(description="ARG visualization script")
+    parser = argparse.ArgumentParser(description="ARG visualization script with vectorized STEAC computation")
     parser.add_argument("input_file", help="Input .trees file")
     parser.add_argument("output_dir", help="Output directory for visualizations")
-    parser.add_argument("chromosome")
-    parser.add_argument("sample")
+    parser.add_argument("chromosome", help="Chromosome identifier")
+    parser.add_argument("sample", help="Sample identifier")
     args = parser.parse_args()
-    sample = args.sample
+
     # Validate input file
     if not os.path.exists(args.input_file):
         MSerror(f"Input file {args.input_file} not found")
         sys.exit(1)
-    
+
     # Create output directory
     os.makedirs(args.output_dir, exist_ok=True)
-    
+
     # Load tree sequence
     try:
         ts = tskit.load(args.input_file)
+        MScompute(f"Loaded tree sequence: {ts.num_trees} trees, {ts.num_samples} samples")
     except Exception as e:
         MSerror(f"Error loading tree sequence: {e}")
         sys.exit(1)
-    
+
     basename = f"chromosome_{args.chromosome}"
-    
+    sample = args.sample
+
     try:
-        create_local_trees_plot(ts, args.output_dir, basename)
-        create_networkx_plot(ts, args.output_dir, basename, sample)
+        # Compute STEAC matrix using vectorized method
+        MScompute("Computing STEAC matrix")
+        coalescence_times, samples = compute_STEAC_matrix_vectorized(ts)
+
+        # Create all original visualizations
         create_tree_height_plot(ts, args.output_dir, basename, sample)
-        
-        # STEAC method - hierarchical clustering based on average coalescence times
-        create_hierarchical_clustering_plot(ts, args.output_dir, basename, sample)
-        create_clustermap_with_dendrogram(ts, args.output_dir, basename, sample)
-        
-        expected_files = [
-            f"{basename}_local_trees.svg",
-            f"{basename}_networkx.png",
-            f"{basename}_tree_height.png",
-            f"{basename}_STEAC_hierarchical_clustering.png",
-            f"{basename}_STEAC_clustermap.png"
-        ]
-        
-        for file in expected_files:
-            full_path = os.path.join(args.output_dir, file)
-            if os.path.exists(full_path):
-                pass
-            else:
-                MSwarning(f"{file} (not created)")
-    
+        plot_tree_age_vs_width(ts, args.output_dir, basename, sample)
+        create_hierarchical_clustering_plot(ts, args.output_dir, basename, sample, 
+                                            coalescence_times, samples)
+        create_clustermap_with_dendrogram(ts, args.output_dir, basename, sample, 
+                                          coalescence_times, samples)
+
     except Exception as e:
         MSerror(f"Error creating visualizations: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)
-    
-    MSsuccess("Arg visualizations done!")
+
+    MSsuccess("All ARG visualizations complete!")
 
 
 if __name__ == "__main__":
