@@ -68,10 +68,14 @@ class TreeVisualizer:
             f.write(self.ancestry_ts.draw_svg(style=self.base_style))
         self.progress.update_subtask()
     
-    def save_individual_trees(self, chromosome_name="chr1"):
-        """Save ALL individual tree visualizations"""
-        total_trees = self.mutated_ts.num_trees + self.ancestry_ts.num_trees
-        self.progress.start_task(f"Saving {total_trees} individual trees", total_trees)
+    def save_individual_trees(self, chromosome_name="chr1", max=100):
+        """Save individual tree visualizations up to max limit"""
+        # Calculate actual number of trees to process
+        actual_mutated = min(self.mutated_ts.num_trees, max)
+        actual_ancestry = min(self.ancestry_ts.num_trees, max)
+        total_trees = actual_mutated + actual_ancestry
+         
+        self.progress.start_task(f"Saving individual trees ({max} out of {total_trees} total)", total_trees)
         
         # Create subdirectories
         mutated_dir = os.path.join(self.output_dir, "individual_trees", "mutated")
@@ -79,33 +83,42 @@ class TreeVisualizer:
         os.makedirs(mutated_dir, exist_ok=True)
         os.makedirs(ancestry_dir, exist_ok=True)
         
-        # Save ALL mutated trees
+        # Save mutated trees up to max
         for i, tree in enumerate(self.mutated_ts.trees()):
+            if i >= max:  
+                break
+                
             filename = f"chr_{chromosome_name}_mutated_tree_{i}.svg"
             path = os.path.join(mutated_dir, filename)
             
             with open(path, "w") as f:
                 f.write(tree.draw_svg(time_scale="rank", style=self.base_style))
+
             self.progress.update_subtask()
-        
-        # Save ALL ancestry trees
+
+        # Save ancestry trees up to max
         for i, tree in enumerate(self.ancestry_ts.trees()):
+            if i >= max:  
+                break
+                
             filename = f"chr_{chromosome_name}_ancestry_tree_{i}.svg"
             path = os.path.join(ancestry_dir, filename)
             
             with open(path, "w") as f:
                 f.write(tree.draw_svg(time_scale="rank", style=self.base_style))
+
             self.progress.update_subtask()
-    
-    def save_highlighted_trees_same_branch(self, num_occasions=5):
+        
+    def save_highlighted_trees_same_branch(self, num_occasions=5, max=100):
         """Save highlighted trees where the same branch is highlighted across all trees in each occasion"""
-        total_operations = num_occasions * self.ancestry_ts.num_trees
-        self.progress.start_task(f"Creating highlighted trees ({num_occasions} occasions)", total_operations)
+        # Calculate actual number of trees to process
+        actual_trees = min(self.ancestry_ts.num_trees, max)
+        total_operations = num_occasions * actual_trees
+        self.progress.start_task(f"Creating highlighted trees ({num_occasions} occasions, up to {max} trees each)", total_operations)
         
         highlight_base_dir = os.path.join(self.output_dir, "highlighted_trees")
         os.makedirs(highlight_base_dir, exist_ok=True)
         
-        total_trees = self.ancestry_ts.num_trees
         highlight_width = self.edge_width + 3
         
         for occasion in range(num_occasions):
@@ -136,9 +149,15 @@ class TreeVisualizer:
                 color, dash, description = styles[occasion % len(styles)]
                 
                 trees_saved = 0
+                trees_processed = 0
                 
-                # Go through all trees and highlight the same node if it exists
+                # Go through trees up to max limit and highlight the same node if it exists
                 for tree_idx, tree in enumerate(self.ancestry_ts.trees()):
+                    if tree_idx >= max:  # Stop at max limit
+                        break
+                        
+                    trees_processed += 1
+                    
                     try:
                         # Check if the target node exists in this tree
                         if target_node in tree.nodes():
@@ -173,12 +192,13 @@ class TreeVisualizer:
                         self.progress.update_subtask()
                         continue
                 
-                # Save occasion info
+                # Save occasion info with corrected numbers
                 info_content = f"Occasion {occasion + 1}: Highlighting node {target_node}\n"
                 info_content += f"Style: {description}\n"
-                info_content += f"Total trees processed: {total_trees}\n"
+                info_content += f"Max trees limit: {max}\n"
+                info_content += f"Trees processed: {trees_processed}\n"
                 info_content += f"Trees with node highlighted: {trees_saved}\n"
-                info_content += f"Trees without node: {total_trees - trees_saved}\n"
+                info_content += f"Trees without node: {trees_processed - trees_saved}\n"
                 
                 with open(os.path.join(occasion_dir, "occasion_info.txt"), "w") as f:
                     f.write(info_content)
