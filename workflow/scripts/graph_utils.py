@@ -685,7 +685,7 @@ class ProgressTracker:
             percentage = int((self.completed * 100) / self.total)
             
             # Print at 0%, 10%, 20%, etc.
-            if percentage >= self.last_print_percentage + 10 or percentage == 100:
+            if percentage >= self.last_print_percentage + 2 or percentage == 100:
                 self.last_print_percentage = (percentage // 10) * 10
                 memory = psutil.virtual_memory()
                 available_gb = memory.available / (1024**3)
