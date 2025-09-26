@@ -608,12 +608,27 @@ def main():
         coalescence_times, samples = compute_STEAC_matrix_vectorized(ts)
 
         # Create all original visualizations
-        create_tree_height_plot(ts, args.output_dir, basename, sample)
-        plot_tree_age_vs_width(ts, args.output_dir, basename, sample)
-        create_hierarchical_clustering_plot(ts, args.output_dir, basename, sample, 
+        try: 
+            create_tree_height_plot(ts, args.output_dir, basename, sample)
+        except Exception as e:
+            MSwarning("Fail to create tree_height_plot")
+
+        try: 
+            plot_tree_age_vs_width(ts, args.output_dir, basename, sample)
+        except Exception as e:
+            MSwarning("Fail to create tree_age_vs_width")
+        
+        try: 
+            create_hierarchical_clustering_plot(ts, args.output_dir, basename, sample, 
                                             coalescence_times, samples)
-        create_clustermap_with_dendrogram(ts, args.output_dir, basename, sample, 
+        except Exception as e:
+            MSwarning("Fail to create hierarchical_clustering_plot")
+
+        try: 
+            create_clustermap_with_dendrogram(ts, args.output_dir, basename, sample, 
                                           coalescence_times, samples)
+        except Exception as e:
+            MSwarning("Fail to create clustermap_with_dendrogram")
 
     except Exception as e:
         MSerror(f"Error creating visualizations: {e}")
