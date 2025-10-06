@@ -1431,7 +1431,9 @@ def main(splited_fasta: str, augmented_traversal: str, output_file: str,
             ensemble,
             file_path=output_file,
             ignore_ancestral=True,
-            max_workers=threads
+            max_workers=threads,
+            sample=sample,
+            chromosome=chromosome
         )
         
         MSpangepopDataHandler.write_fasta_multithreaded(
