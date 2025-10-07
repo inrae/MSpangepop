@@ -347,14 +347,31 @@ def main():
     # Load and process configuration
     config = load_config(config_path)
     expanded_samples = expand_simulations(config)
-    
-    # Write output
-    if expanded_samples:
-        output_path = write_expanded_config(config, expanded_samples)
+
+    # Build the expanded config in memory
+    expanded_config = copy.deepcopy(config)
+    expanded_config["samples"] = expanded_samples
+
+    output_path = ".config/expanded_config.yaml"
+
+    # --- Only write if content changed ---
+    new_yaml = yaml.dump(expanded_config, default_flow_style=False, sort_keys=False)
+    if os.path.exists(output_path):
+        with open(output_path, "r") as f:
+            old_yaml = f.read()
     else:
-        output_path = config_path
-    
+        old_yaml = None
+
+    if old_yaml == new_yaml:
+        MSsuccess(f"{output_path} is already up-to-date. No rewrite needed.")
+    else:
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        with open(output_path, "w") as f:
+            f.write(new_yaml)
+        MSsuccess(f"Wrote updated expanded config to {output_path}.")
+
     return output_path
+
 
 if __name__ == "__main__":
     main()
