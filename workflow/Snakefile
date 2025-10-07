@@ -233,6 +233,7 @@ rule draw_variants:
             --chromosome {wildcards.chromosome} \
             --threads {threads} \
             --minimal_sv_length {params.minimal_sv_length} \
+            --batch_size 1000 \
             --readable_json {params.readable_json} \
             --seed {params.seed} 
         """

@@ -240,63 +240,79 @@ def augment_length_and_position(tree, length_files, minimal_sv_length):
                 mutation["length"] = length
                 mutation["start"] = start_pos
 
-        if fails != 0:
-            MSwarning(f"{fails} mutations skipped due to intervals < 3 bases")
-        if boundary_fails != 0:
-            MSwarning(f"{boundary_fails} mutations rejected due to boundary constraints")
-        
-        return tree
+        return tree, fails, boundary_fails
         
     except Exception as e:
         raise MSerror(f"Error augmenting mutations with length and position: {e}")
 
-def process_single_tree(tree, length_files, variant_probabilities, minimal_sv_length, seed_offset):
+def process_single_tree(tree, variant_probabilities, minimal_sv_length, seed_offset):
     """
-    Processes a single tree, augmenting mutation types, positions, and lengths.
-    A deterministic seed is set here so each tree gets reproducible random results
-    regardless of which process executes it.
+    Processes a single tree. Loads length files inside worker to avoid pickling.
     """
-    random.seed(seed_offset)  # <-- NEW: Set deterministic seed per tree for reproducibility
+    random.seed(seed_offset)
+    
+    # Load length files inside worker (avoid pickling large dataframes)
+    length_files = {}
+    for var_type, file_path in {
+        'DEL': 'simulation_data/size_distribDEL.tsv',
+        'INS': 'simulation_data/size_distribINS.tsv',
+        'INV': 'simulation_data/size_distribINV.tsv',
+        'DUP': 'simulation_data/size_distribDUP.tsv'
+    }.items():
+        if os.path.exists(file_path):
+            length_files[var_type] = MSpangepopDataHandler.read_variant_length_file(file_path)
+    
     try:
-        # First augment with mutation types
         augmented_tree = augment_type(tree, variant_probabilities)
-        
-        # Now augment with lengths and positions
-        augmented_tree = augment_length_and_position(augmented_tree, length_files, minimal_sv_length)
-        
-        return augmented_tree
+        augmented_tree, fails, boundary_fails = augment_length_and_position(
+            augmented_tree, length_files, minimal_sv_length
+        )
+        return augmented_tree, fails, boundary_fails
     except MSerror as e:
         raise MSerror(f"Error processing the tree: {e}")
 
-def process_trees_in_parallel(tree_list, length_files, variant_probabilities, num_threads, minimal_sv_length, base_seed):
-    """
-    Parallel processing of trees, passing a unique deterministic seed to each worker.
-    If base_seed is None, seeds are generated randomly for non-deterministic runs.
-    """
-    if base_seed is None:
-        # Generate a fresh random seed for each tree (non-deterministic)
-        seed_list = [random.randint(0, 2**32 - 1) for _ in range(len(tree_list))]
+def process_batch(batch, variant_probabilities, num_threads, minimal_sv_length, seed_offset_start):
+    """Process a batch of trees in parallel."""
+    if seed_offset_start is None:
+        # Non-deterministic: generate random seeds
+        seed_list = [random.randint(0, 2**32 - 1) for _ in range(len(batch))]
     else:
-        # Deterministic: base_seed + index
-        seed_list = [base_seed + i for i in range(len(tree_list))]
-
+        # Deterministic: use sequential seeds
+        seed_list = [seed_offset_start + i for i in range(len(batch))]
+    
     with concurrent.futures.ProcessPoolExecutor(max_workers=num_threads) as executor:
         results = list(executor.map(
             process_single_tree, 
-            tree_list, 
-            [length_files] * len(tree_list), 
-            [variant_probabilities] * len(tree_list), 
-            [minimal_sv_length] * len(tree_list),
+            batch,
+            [variant_probabilities] * len(batch), 
+            [minimal_sv_length] * len(batch),
             seed_list
         ))
     return results
+    
+def stream_json_trees(json_file):
+    """Generator that yields trees one at a time from JSON array."""
+    with open(json_file, 'r') as f:
+        # Skip opening bracket
+        content = f.read().strip()
+        if content.startswith('['):
+            content = content[1:]
+        if content.endswith(']'):
+            content = content[:-1]
+        
+        # Split by top-level objects (simple approach)
+        # For production, use ijson for proper streaming
+        trees = json.loads('[' + content + ']')
+        for tree in trees:
+            yield tree
 
-
-def main(json_file, output_json_file, sv_distribution, chromosome, num_threads, minimal_sv_length, readable_json, seed):
-    """Processes a JSON list of trees, augmenting mutations with variant type and size."""
+def main(json_file, output_json_file, sv_distribution, chromosome, num_threads, 
+         minimal_sv_length, readable_json, seed, batch_size=1000):
+    """Processes trees in batches to handle millions of trees efficiently."""
     try:
         start_time = time.time()
         MScompute(f"Generating variants for chromosome {chromosome} using {num_threads} threads")
+        MScompute(f"Processing in batches of {batch_size} trees")
         
         # Parse and validate SV distribution
         if isinstance(sv_distribution, str):
@@ -309,57 +325,113 @@ def main(json_file, output_json_file, sv_distribution, chromosome, num_threads, 
             
         variant_probabilities = validate_sv_distribution(variant_probabilities)
         
-        # Log the distribution being used
         sv_summary = ", ".join([f"{k}:{v}%" for k, v in variant_probabilities.items()])
         MScompute(f"Using SV distribution: {sv_summary}")
 
-        # Set deterministic seed for the main process
+        # Set deterministic seed (can be None for non-deterministic)
         seed = process_seed(seed)
-        random.seed(seed)
+        if seed is not None:
+            random.seed(seed)
 
-        # Read tree data (only once)
-        tree_list = MSpangepopDataHandler.read_json(json_file)
-        if not isinstance(tree_list, list) or not tree_list:
-            raise MSerror('Tree JSON file is empty or improperly formatted.')
-
-        # Read length distribution files (only once)
-        length_files = {}
-        for var_type, file_path in {
-            'DEL': 'simulation_data/size_distribDEL.tsv',
-            'INS': 'simulation_data/size_distribINS.tsv',
-            'INV': 'simulation_data/size_distribINV.tsv',
-            'DUP': 'simulation_data/size_distribDUP.tsv'
-        }.items():
-            if not os.path.exists(file_path):
-                MSwarning(f"Length distribution file missing for {var_type}")
-            else:
-                length_files[var_type] = MSpangepopDataHandler.read_variant_length_file(file_path)
-
-        # Process and augment mutations in parallel with reproducible seeds
-        tree_list = process_trees_in_parallel(tree_list, length_files, variant_probabilities, num_threads, minimal_sv_length, seed)
-
-        # Count total mutations by type
+        # Initialize counters
         mutation_counts = {sv_type: 0 for sv_type in variant_probabilities.keys()}
         total_mutations = 0
+        total_trees = 0
+        total_fails = 0
+        total_boundary_fails = 0
         
-        for tree in tree_list:
-            for node in tree.get("nodes", []):
-                for mutation in node.get("mutations", []):
-                    if mutation.get("type"):
-                        mutation_counts[mutation["type"]] += 1
-                        total_mutations += 1
-        
-        # Save output
-        MSpangepopDataHandler.save_json(tree_list, output_json_file, readable_json=readable_json)
+        # Open output file and write opening bracket
+        with open(output_json_file, 'w') as outfile:
+            outfile.write('[\n' if readable_json else '[')
+            
+            first_batch = True
+            batch = []
+            tree_index = 0
+            
+            # Stream and process trees in batches
+            for tree in stream_json_trees(json_file):
+                batch.append(tree)
+                tree_index += 1
+                
+                if len(batch) >= batch_size:
+                    # Process batch
+                    # Handle None seed case
+                    if seed is None:
+                        seed_offset = None
+                    else:
+                        seed_offset = seed + total_trees
+                    
+                    results = process_batch(batch, variant_probabilities, num_threads, 
+                                          minimal_sv_length, seed_offset)
+                    
+                    # Write results and update counts
+                    for augmented_tree, fails, boundary_fails in results:
+                        if not first_batch:
+                            outfile.write(',\n' if readable_json else ',')
+                        else:
+                            first_batch = False
+                        
+                        json.dump(augmented_tree, outfile, indent=2 if readable_json else None)
+                        
+                        # Update counters
+                        total_fails += fails
+                        total_boundary_fails += boundary_fails
+                        total_trees += 1
+                        
+                        for node in augmented_tree.get("nodes", []):
+                            for mutation in node.get("mutations", []):
+                                if mutation.get("type"):
+                                    mutation_counts[mutation["type"]] += 1
+                                    total_mutations += 1
+                    
+                    MScompute(f"Processed {total_trees} trees...")
+                    batch = []
+            
+            # Process remaining trees in last batch
+            if batch:
+                # Handle None seed case
+                if seed is None:
+                    seed_offset = None
+                else:
+                    seed_offset = seed + total_trees
+                
+                results = process_batch(batch, variant_probabilities, num_threads, 
+                                      minimal_sv_length, seed_offset)
+                
+                for augmented_tree, fails, boundary_fails in results:
+                    if not first_batch:
+                        outfile.write(',\n' if readable_json else ',')
+                    else:
+                        first_batch = False
+                    
+                    json.dump(augmented_tree, outfile, indent=2 if readable_json else None)
+                    
+                    total_fails += fails
+                    total_boundary_fails += boundary_fails
+                    total_trees += 1
+                    
+                    for node in augmented_tree.get("nodes", []):
+                        for mutation in node.get("mutations", []):
+                            if mutation.get("type"):
+                                mutation_counts[mutation["type"]] += 1
+                                total_mutations += 1
+            
+            # Close JSON array
+            outfile.write('\n]' if readable_json else ']')
 
         # Print summary
         end_time = time.time()
         elapsed_time = end_time - start_time
         
+        if total_fails > 0:
+            MSwarning(f"{total_fails} mutations skipped due to intervals < 3 bases")
+        if total_boundary_fails > 0:
+            MSwarning(f"{total_boundary_fails} mutations rejected due to boundary constraints")
         
+        MScompute(f"Total trees processed: {total_trees}")
         MScompute(f"Total mutations: {total_mutations}")
         MScompute(f"Mutation breakdown: {', '.join([f'{k}:{v}' for k, v in mutation_counts.items()])}")
-        MSsuccess(f"Processing time: {elapsed_time:.2f} seconds")
+        MSsuccess(f"Processing time: {elapsed_time:.2f} seconds ({total_trees/elapsed_time:.1f} trees/sec)")
         
 
     except Exception as e:
@@ -370,10 +442,11 @@ if __name__ == "__main__":
     parser.add_argument("--json", required=True, help="Path to the JSON file containing tree and mutation data.")
     parser.add_argument("--output", required=True, help="Path to the output JSON file where augmented data will be saved.")
     parser.add_argument("--sv_distribution", required=True, 
-                        help="SV type distribution as JSON string, e.g., '{\"SNP\": 50, \"DEL\": 20, \"INS\": 20, \"INV\": 10, \"DUP\": 0}'")
+                        help="SV type distribution as JSON string")
     parser.add_argument("--chromosome", required=True, help="Chromosome name")
     parser.add_argument("--threads", type=int, default=4, help="Number of threads for parallel processing")
     parser.add_argument("--minimal_sv_length", type=int, default=1, help="Minimal size for variants generated")
+    parser.add_argument("--batch_size", type=int, default=1000, help="Number of trees to process per batch")
     parser.add_argument("--readable_json", type=lambda x: x.lower() == 'true',
                         choices=[True, False], default=False,
                         help="Save JSON in a human-readable format (True/False, default: False).")
@@ -383,4 +456,5 @@ if __name__ == "__main__":
     if args.minimal_sv_length < 1:
         raise MSerror('minimal_sv_length cant be less than 1')
 
-    main(args.json, args.output, args.sv_distribution, args.chromosome, args.threads, args.minimal_sv_length, args.readable_json, args.seed)
+    main(args.json, args.output, args.sv_distribution, args.chromosome, args.threads, 
+         args.minimal_sv_length, args.readable_json, args.seed, args.batch_size)
