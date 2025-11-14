@@ -1,8 +1,12 @@
 #  Creating a Demographic Model JSON for MSpangepop
 
+**Warning:** Parameters defined in this config file are parsed and fed to MSprime. Describing all of them **exceeds** the scope of this documentation so please refer **directly** to MSprime documentation for further reference: [https://tskit.dev/msprime/docs/stable/demography.html](https://tskit.dev/msprime/docs/stable/demography.html)
+
+If you **don't** want **to** delve into the **lengthy** MSprime documentation, please stick with the default **Panmictic** Model, **adapt** mutation rate, recombination_rate and sample_size with your values.
+
 ## 📝 1. File Structure Overview
 
-A complete demographic model now contains:
+A complete demographic model contains:
 - **Simulation parameters** (genome file, chromosomes, SV distribution)
 - **Evolutionary parameters** (mutation rate, recombination rate)
 - **Population structure** (populations, samples, events)
@@ -45,7 +49,6 @@ A complete demographic model now contains:
   ]
 }
 ```
-
 
 ## 🎲 2. Using Parameter Ranges
 
