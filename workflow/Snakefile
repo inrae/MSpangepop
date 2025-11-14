@@ -307,7 +307,7 @@ rule gfa_merge:
         vg stats -z {output.vg_unchoped} -t {threads} >> {output.polished_gfa_stats}
         cat {output.polished_gfa_stats}
         echo "[gfa_merge] Saving final GFA"
-        vg view {output.vg_unchoped} > {output.polished_gfa}
+        vg convert -fW {output.vg_unchoped} > {output.polished_gfa}
         echo "✅ Final GFA @ {output.polished_gfa}"
         """
 
