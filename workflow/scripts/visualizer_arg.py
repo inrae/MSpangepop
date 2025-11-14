@@ -567,13 +567,6 @@ def plot_tree_age_vs_width(ts, output_dir, basename, sample):
                 dpi=300, bbox_inches='tight', facecolor='white')
     plt.close()
     
-    # Print summary statistics
-    MScompute(f"Tree statistics:")
-    MScompute(f"  - Number of trees: {len(widths)}")
-    MScompute(f"  - Mean tree width: {np.mean(widths):.2f} bp")
-    MScompute(f"  - Mean tree age: {np.mean(ages):.2f} generations")
-    MScompute(f"  - Correlation (age vs width): {correlation:.3f}")
-
 
 def main():
     parser = argparse.ArgumentParser(description="ARG visualization script with vectorized STEAC computation")
