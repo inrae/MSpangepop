@@ -262,7 +262,7 @@ class MSpangepopDataHandler:
                 return None  # Skip "Ancestral" lineage
             try:
                 sequence_str = str(path)
-                record_id = f"sample_{sample}#lineage_{lineage}#chr_{chromosome}"
+                record_id = f"{sample}#{lineage}#chr_{chromosome}"
                 return SeqRecord(Seq(sequence_str), id=record_id, description="")
             except Exception as e:
                 MSwarning(f"Failed to convert path for lineage '{lineage}': {e}")
@@ -364,7 +364,7 @@ class MSpangepopDataHandler:
                         orientation = '+' if not edge.node2_side else '-'
                         path_repr += f",{edge.node2.id}{orientation}"
                 
-                paths_buffer.write(f"P\tsample_{sample}#lineage_{path.lineage}#chr_{chromosome}\t{path_repr}\t*\n")
+                paths_buffer.write(f"P\t{sample}#{path.lineage}#chr_{chromosome}\t{path_repr}\t*\n")
                 # Collect edges
                 for edge in path.path_edges:
                     edge_signature = (
