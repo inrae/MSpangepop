@@ -12,3 +12,4 @@ samples:
 # Global settings
 output_dir: "results/"              # Base directory for all simulation outputs
 memory_multiplier: 1                # Memory scaling factor (increase if OOM errors)
+succinct: False                     # If set to True skip, visualizations 

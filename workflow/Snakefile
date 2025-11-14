@@ -136,9 +136,10 @@ rule visualization:
         out_tree = lambda wc: os.path.join(
             output_dir, wc.sample, plot_dir, f"chr_{wc.chromosome}", "01_tree_plots"),
         out_arg = lambda wc: os.path.join(
-            output_dir, wc.sample, plot_dir, f"chr_{wc.chromosome}", "02_arg_plots")
+            output_dir, wc.sample, plot_dir, f"chr_{wc.chromosome}", "02_arg_plots"),
+        succinct = config.get("succinct", False)  # Get succinct parameter from config
     resources:
-        mem_mb=lambda wc: int(50000 * memory_multiplier),
+        mem_mb=lambda wc: int(50000 * memory_multiplier) if not config.get("succinct", False) else 1000,
         time="01:00:00"
     threads: 2  
     benchmark:
@@ -148,10 +149,13 @@ rule visualization:
     priority: 2
     shell:
         """
-        python3 -u workflow/scripts/visualizer_tree.py {input.mutated_ts} {input.ancestry_ts} -o {params.out_tree} -c {wildcards.chromosome} --occasions 5 --edge-width 4
-        python3 -u workflow/scripts/visualizer_arg.py {input.full_ancestry_ts} {params.out_arg} {wildcards.chromosome} {wildcards.sample}
-
-        echo "Visualization completed at $(date)" > {output.completion_flag}
+        if [ "{params.succinct}" = "True" ]; then
+            echo "Visualization skipped (succinct mode) at $(date)" > {output.completion_flag}
+        else
+            python3 -u workflow/scripts/visualizer_tree.py {input.mutated_ts} {input.ancestry_ts} -o {params.out_tree} -c {wildcards.chromosome} --edge-width 4
+            python3 -u workflow/scripts/visualizer_arg.py {input.full_ancestry_ts} {params.out_arg} {wildcards.chromosome} {wildcards.sample}
+            echo "Visualization completed at $(date)" > {output.completion_flag}
+        fi
         """
 
 # Use the preorder traversal to get the order in which the mutations should be handled, save a json
