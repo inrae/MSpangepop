@@ -77,10 +77,7 @@ class Node:
             self.dna_bases.frombytes(dna_sequence.encode("utf-8"))  # Encode string as bitarray
         else:
             self.dna_bases: bitarray = dna_sequence  # Store bitarray directly
-
-        self.false_side: set["Edge"] = set()  # We use this for merging
-        self.true_side: set["Edge"] = set()
-
+            
     @property
     def __decode(self) -> str:
         """Decodes the bitarray back into a DNA sequence string."""
