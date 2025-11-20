@@ -59,7 +59,7 @@ class TreeVisualizer:
             path = os.path.join(mutated_dir, filename)
             
             with open(path, "w") as f:
-                f.write(tree.draw_svg(time_scale="rank", style=self.base_style))
+                f.write(tree.draw_svg(time_scale="time", style=self.base_style))
 
         # Save ancestry trees
         for i, tree in enumerate(self.ancestry_ts.trees()):
@@ -70,7 +70,7 @@ class TreeVisualizer:
             path = os.path.join(ancestry_dir, filename)
             
             with open(path, "w") as f:
-                f.write(tree.draw_svg(time_scale="rank", style=self.base_style))
+                f.write(tree.draw_svg(time_scale="time", style=self.base_style))
     
     def save_tree_sequence_overview(self):
         """Tree sequence overview plot"""
