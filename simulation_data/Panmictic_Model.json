@@ -2,7 +2,7 @@
   "name": "low_mem",
   
   "simulation_params": {
-    "fasta_gz": "staphylococcus_aureus_genome.fasta.gz",
+    "fasta_gz": "simulation_data/small_test_genome.fa.gz",
     "chr_n": 1,
     "sv_distribution": {
       "SNP": 50,
