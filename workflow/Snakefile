@@ -261,7 +261,7 @@ rule graph_creation:
         os.path.join(output_dir, "{sample}", "benchmark", "chr_{chromosome}", "graph_creation_benchmark.txt")
     container:
         "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
-    threads: 10
+    threads: 20
     priority: 7
     shell:
         """
