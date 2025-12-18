@@ -798,7 +798,7 @@ class Graph:
             self.paths[i] = copied_path
 
     def __repr__(self) -> str:
-        return f"Graph(id={self.id}, Nodes={len(self.nodes)}, Paths={len(self.paths)})"
+        return f"Graph(Nodes={len(self.nodes)}, Paths={len(self.paths)})"
 
     def _apply_to_paths(self, affected_lineages, operation_func):
         """
