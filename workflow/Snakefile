@@ -252,7 +252,8 @@ rule graph_creation:
         recap = os.path.join(output_dir, "{sample}", simulation_data, "chr_{chromosome}","{sample}_chr_{chromosome}_graph_creation_recap.txt")
     params:
         out_dir = lambda wildcards: os.path.join(output_dir, wildcards.sample, plot_dir, f"chr_{wildcards.chromosome}", "03_graph_plots"), 
-        fasta_folder = lambda wildcards: os.path.join(output_dir, wildcards.sample, graph,  f"chr_{wildcards.chromosome}", "fasta")
+        fasta_folder = lambda wildcards: os.path.join(output_dir, wildcards.sample, graph,  f"chr_{wildcards.chromosome}", "fasta"),
+        tmp_folder = lambda wildcards: os.path.join(output_dir, f"{wildcards.sample}", temp_dir,f"chr_{wildcards.chromosome}")
     resources:
         mem_mb=lambda wildcards: int(400000 * memory_multiplier),
         time="60:00:00"
@@ -273,6 +274,7 @@ rule graph_creation:
             --recap_file {output.recap} \
             --variant_plot_dir {params.out_dir} \
             --fasta_folder {params.fasta_folder} \
+            --tmp_folder {params.tmp_folder} \
             --threads {threads}
         """
 
