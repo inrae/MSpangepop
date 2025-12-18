@@ -139,9 +139,10 @@ class MutationRecap:
             f.write("-"*120+"\n")
             # Summary by type
             f.write("By Mutation Type:\n")
-            for mut_type, stats in sorted(self.summary["by_type"].items()):
+            for mut_type, stats in sorted(self.summary["by_type"].items(), key=lambda x: (x[0] is None, x[0] or "")):
                 success_rate = stats['successful'] / max(1, stats['attempted']) * 100
-                f.write(f"{mut_type:8} - Attempted: {stats['attempted']:4d}, "
+                type_display = mut_type if mut_type is not None else "SKIPPED"
+                f.write(f"{type_display:8} - Attempted: {stats['attempted']:4d}, "
                        f"Successful: {stats['successful']:4d}, "
                        f"Failed: {stats['failed']:4d} "
                        f"(Success Rate: {success_rate:6.2f}%)\n")
