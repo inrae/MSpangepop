@@ -255,7 +255,7 @@ class MSpangepopDataHandler:
 
         # For small graphs, use simple single-threaded approach
         if node_count < 1000 or max_workers <= 1:
-            MSpangepopDataHandler._save_subgraph_temp_simple(graph, temp_path, sample, chromosome)
+            MSpangepopDataHandler.save_subgraph_temp_simple(graph, temp_path, sample, chromosome)
             return
 
         # Multithreaded approach for larger graphs
@@ -384,71 +384,88 @@ class MSpangepopDataHandler:
                 f.write(f"P\t{sample}#{lineage}#chr_{chromosome}\t{path_str}\t*\n")
 
     @staticmethod
-    def merge_temp_files_to_gfa( temp_files: list, output_path: str,sample: str,chromosome: str) -> dict:
-        """
-        Merge all temp GFA fragments into final GFA.
-        Since node IDs are already global, just concatenate and add connecting edges.
-        Returns lineage_lengths dict.
-        """
-        MScompute(f"Merging {len(temp_files)} temp files into final GFA")
-
-        # Collect connecting edges between subgraphs
+    def merge_temp_files_to_gfa(temp_files: list, id_offsets: list, output_path: str, 
+                            sample: str, chromosome: str) -> dict:
+        """Optimized merge with buffered I/O."""
+        MScompute(f"Merging {len(temp_files)} temp files with ID remapping")
+        
+        BUFFER_SIZE = 100_000  # Lines before flush
+        
+        def remap_id(local_id: int, subgraph_idx: int) -> int:
+            return local_id + id_offsets[subgraph_idx]
+        
+        paths_by_lineage = {}
+        prev_global_end_id = None
         connecting_edges = []
-        prev_end_id = None
-
-        for tf in temp_files:
-            if prev_end_id is not None:
-                # Connect previous subgraph's end to this subgraph's start
-                connecting_edges.append(f"L\t{prev_end_id}\t+\t{tf.start_node_id}\t+\t0M\n")
-            prev_end_id = tf.end_node_id
-
-        # Track path segments for lineage length calculation
-        lineage_segments = {}
-
-        with open(output_path, 'w') as out_f:
-            # First pass: write all S and L lines, collect P lines
-            all_path_lines = []
-
-            for tf in temp_files:
-                with open(tf.path, 'r') as in_f:
+        
+        with open(output_path, 'w', buffering=8*1024*1024) as out_f:  # 8MB buffer
+            write_buffer = []
+            
+            def flush_buffer():
+                nonlocal write_buffer
+                if write_buffer:
+                    out_f.write(''.join(write_buffer))
+                    write_buffer = []
+            
+            for tf_idx, tf in enumerate(temp_files):
+                subgraph_idx = tf.index
+                
+                global_start_id = remap_id(tf.local_start_id, subgraph_idx)
+                global_end_id = remap_id(tf.local_end_id, subgraph_idx)
+                
+                if prev_global_end_id is not None:
+                    connecting_edges.append(
+                        f"L\t{prev_global_end_id}\t+\t{global_start_id}\t+\t0M\n"
+                    )
+                prev_global_end_id = global_end_id
+                
+                with open(tf.path, 'r', buffering=4*1024*1024) as in_f:  # 4MB read buffer
                     for line in in_f:
-                        if line.startswith('S\t') or line.startswith('L\t'):
-                            out_f.write(line)
+                        if line.startswith('S\t'):
+                            parts = line.split('\t', 2)  # Limit splits for speed
+                            local_id = int(parts[1])
+                            global_id = remap_id(local_id, subgraph_idx)
+                            write_buffer.append(f"S\t{global_id}\t{parts[2]}")
+                            
+                        elif line.startswith('L\t'):
+                            parts = line.split('\t')
+                            global_n1 = remap_id(int(parts[1]), subgraph_idx)
+                            global_n2 = remap_id(int(parts[3]), subgraph_idx)
+                            write_buffer.append(
+                                f"L\t{global_n1}\t{parts[2]}\t{global_n2}\t{parts[4]}\t{parts[5]}"
+                            )
+                            
                         elif line.startswith('P\t'):
-                            all_path_lines.append(line.strip())
-
+                            parts = line.split('\t')
+                            lineage = parts[1].split('#')[1]
+                            segments = parts[2].split(',')
+                            # Use list comprehension for speed
+                            remapped = [f"{int(s[:-1]) + id_offsets[subgraph_idx]}{s[-1]}" 
+                                    for s in segments]
+                            
+                            if lineage not in paths_by_lineage:
+                                paths_by_lineage[lineage] = []
+                            paths_by_lineage[lineage].extend(remapped)
+                        
+                        if len(write_buffer) >= BUFFER_SIZE:
+                            flush_buffer()
+                
+                # Progress for merge phase
+                if (tf_idx + 1) % 100 == 0 or tf_idx == len(temp_files) - 1:
+                    MScompute(f"  Phase 2: merged {tf_idx + 1}/{len(temp_files)} subgraphs")
+            
+            flush_buffer()
+            
             # Write connecting edges
-            for edge_line in connecting_edges:
-                out_f.write(edge_line)
-
-            # Merge paths: same lineage across files should be concatenated
-            # Parse: P\tsample#lineage#chr_X\tsegments\t*
-            paths_by_lineage = {}
-
-            for pline in all_path_lines:
-                parts = pline.split('\t')
-                path_name = parts[1]  # sample#lineage#chr_X
-                segments = parts[2]  # node1+,node2-,...
-
-                # Extract lineage from path name
-                lineage = path_name.split('#')[1]
-
-                if lineage not in paths_by_lineage:
-                    paths_by_lineage[lineage] = []
-                paths_by_lineage[lineage].append(segments)
-
+            out_f.write(''.join(connecting_edges))
+            
             # Write merged paths
-            for lineage, segment_lists in paths_by_lineage.items():
-                # Join segments from consecutive subgraphs
-                merged_segments = ",".join(segment_lists)
+            for lineage, segments in paths_by_lineage.items():
                 path_name = f"{sample}#{lineage}#chr_{chromosome}"
-                out_f.write(f"P\t{path_name}\t{merged_segments}\t*\n")
-
-                # Count nodes for lineage length
-                lineage_segments[lineage] = merged_segments.count(',') + 1
-
+                out_f.write(f"P\t{path_name}\t{','.join(segments)}\t*\n")
+        
         MSsuccess(f"Final GFA written: {output_path}")
-        return lineage_segments
+        return {lineage: len(segs) for lineage, segs in paths_by_lineage.items()}
 
     @staticmethod
     def write_fasta_from_gfa(gfa_path: str,sample: str,chromosome: str,fasta_folder: str,compress: bool = True):
