@@ -4,12 +4,24 @@
 
 If you **don't** want **to** delve into the **lengthy** MSprime documentation, please stick with the default **Panmictic** Model, **adapt** mutation rate, recombination_rate and sample_size with your values.
 
-## 📝 1. File Structure Overview
+
+
+## 📁 1. File Structure Overview
 
 A complete demographic model contains:
 - **Simulation parameters** (genome file, chromosomes, SV distribution)
 - **Evolutionary parameters** (mutation rate, recombination rate)
 - **Population structure** (populations, samples, events)
+
+## Evolutionary Parameters for Common Model Organisms
+
+| Organism | Mutation Rate (per bp per gen) | Recombination Rate (per bp per gen) | Key References |
+|----------|-------------------------------|-------------------------------------|----------------|
+| **Human** | 1.0–1.5 × 10⁻⁸ | ~1 × 10⁻⁸ | Kong et al. 2012 *Nature*; Narasimhan et al. 2017 *Nat Commun* |
+| **Drosophila melanogaster** | 2–5 × 10⁻⁹ | ~2.5 × 10⁻⁸ | Wang et al. 2023 *Genome Res*; Comeron et al. 2012 *PLOS Genet* |
+| **Oak (*Quercus*)** | ~1 × 10⁻⁸ | ~1 × 10⁻⁸ | Sork et al. 2022 *Nat Commun*; Plomion et al. 2018 *Nat Plants* |
+| **Yeast (*S. cerevisiae*)** | 1–4 × 10⁻¹⁰ * | ~3 × 10⁻⁶ * | Lang & Murray 2008 *Genetics* |
+| **E. coli** | ~5 × 10⁻¹⁰ * | N/A (rare) | Drake 1991 *PNAS*; Lee et al. 2012 *PNAS* |
 
 ###  Basic Template
 
@@ -52,399 +64,248 @@ A complete demographic model contains:
 
 ## 🎲 2. Using Parameter Ranges
 
-Any numeric parameter can be either fixed or specified as a range. When using ranges, each replicate will randomly sample values.
+Any numeric parameter can be specified as a range. Each replicate will randomly sample values.
 
 ### Fixed vs Range Parameters
 
 ```json
 {
   "evolutionary_params": {
-    "mutation_rate": 1e-7,                        // Fixed value
-    "recombination_rate": {"min": 1e-9, "max": 1e-7},  // Range with auto distribution
-    "generation_time": 25                         // Fixed value
+    "mutation_rate": 1e-7,                              // Fixed value
+    "recombination_rate": {"min": 1e-9, "max": 1e-7}   // Range
   }
-}
-```
-
-### Range Syntax with Distribution Control
-
-Use `{"min": value, "max": value, "distribution": "type"}` to specify both range and distribution:
-
-```json
-{
-  "evolutionary_params": {
-    "mutation_rate": {
-      "min": 1e-8,
-      "max": 1e-6,
-      "distribution": "log_uniform"  // Explicitly use log-uniform
-    },
-    "recombination_rate": {
-      "min": 1e-9,
-      "max": 1e-7,
-      "distribution": "normal"  // Sample from truncated normal
-    }
-  },
-  
-  "populations": [
-    {
-      "id": "pop1",
-      "initial_size": {
-        "min": 1000,
-        "max": 10000,
-        "distribution": "truncated_normal",  // Exponential distribution
-        "mean": 2000,  // Optional parameter
-        "std": 200
-      }
-    }
-  ]
 }
 ```
 
 ### Available Distributions
 
-| Distribution | Keywords | Description | Extra Parameters |
-|-------------|----------|-------------|------------------|
-| **Uniform** | `"uniform"`, `"unif"` | Equal probability across range | None |
-| **Log-uniform** | `"log_uniform"`, `"loguniform"`, `"log"` | Uniform in log space (good for rates) | None |
-| **Normal** | `"normal"`, `"gaussian"`, `"norm"` | Bell curve, truncated to range | None |
-| **Truncated Normal** | `"truncated_normal"`, `"truncnorm"` | Normal with custom mean/std | `mean`, `std` |
-| **Auto** | `"auto"` or omitted | Auto-selects based on parameter type | None |
+| Distribution | Keywords | Description |
+|-------------|----------|-------------|
+| **Uniform** | `"uniform"` | Equal probability across range |
+| **Log-uniform** | `"log_uniform"`, `"log"` | Uniform in log space (good for rates) |
+| **Normal** | `"normal"` | Bell curve, truncated to range |
+| **Auto** | `"auto"` or omitted | Log-uniform for rates < 0.01, else uniform |
 
-### Distribution Examples
-
-#### Log-uniform for mutation rates (spans orders of magnitude)
 ```json
 "mutation_rate": {
-  "min": 1e-9,
+  "min": 1e-8,
   "max": 1e-6,
   "distribution": "log_uniform"
 }
 ```
 
-#### Normal distribution for population sizes
-```json
-"initial_size": {
-  "min": 1000,
-  "max": 10000,
-  "distribution": "normal"  // Mean=(min+max)/2, truncated to range
-}
-```
-
-#### Custom truncated normal
-```json
-"initial_size": {
-  "min": 1000,
-  "max": 10000,
-  "distribution": "truncated_normal",
-  "mean": 3000,  // Custom mean (closer to min)
-  "std": 1500    // Custom standard deviation
-}
-```
-
-### Auto Distribution Selection
-
-When `"distribution"` is omitted or set to `"auto"`:
-- **Mutation/recombination rates** (< 0.01): Uses `log_uniform`
-- **All other parameters**: Uses `uniform`
-
-### SV Distribution Ranges
-
-Each SV type can have a range with distribution. The values are normalized to 100% after sampling:
-
-```json
-"sv_distribution": {
-  "SNP": {
-    "min": 30,
-    "max": 50,
-    "distribution": "normal"  // More likely to be near 40
-  },
-  "DEL": {"min": 15, "max": 25},  // Auto = uniform
-  "INS": {"min": 10, "max": 20},
-  "INV": {"min": 10, "max": 20},
-  "DUP": {"min": 5, "max": 15}
-}
-```
-
 ---
 
-## 📦 3. Parameter Sections
-
-### Simulation Parameters
-
-Located in `"simulation_params"`:
+## 📦 3. Simulation Parameters
 
 | Parameter | Type | Description | Example |
 |-----------|------|-------------|---------|
 | `fasta_gz` | string | Compressed reference genome | `"genome.fa.gz"` |
-| `chr_n` | integer | Number of chromosomes to simulate (cant be greater than the number fo contigs present in `fasta_gz`)| `1` |
-| `sv_distribution` | dict | Structural variant percentages | See above |
+| `chr_n` | integer | Number of chromosomes to simulate | `1` |
+| `sv_distribution` | dict | Structural variant percentages (normalized to 100%) | See below |
+| `max_sv` | dict | **Maximum count per SV type (global limit)** | See below |
+| `sv_length_files` | dict | **Custom length distribution TSV files** | See below |
 | `seed` | string/int | Random seed (optional) | `"myseed"` or `12345` |
-| `readable_json` | boolean | Human-readable output | `false` |
+| `minimal_sv_length` | int | Minimum SV length in bp | `1` |
+| `readable_json` | boolean | Human-readable JSON output | `false` |
 
-### Evolutionary Parameters
+### SV Distribution
 
-Located in `"evolutionary_params"`:
+Controls the **proportion** of each variant type (normalized to 100%):
 
-| Parameter | Type | Description | Range Example |
-|-----------|------|-------------|---------------|
-| `mutation_rate` | float | Per-base mutation rate | `{"min": 1e-8, "max": 1e-6}` |
-| `recombination_rate` | float | Per-base recombination rate | `{"min": 1e-9, "max": 1e-7}` |
-| `generation_time` | integer | Years per generation | `25` |
+```json
+"sv_distribution": {
+  "SNP": 50,
+  "DEL": 20,
+  "INS": 15,
+  "INV": 10,
+  "DUP": 5
+}
+```
+
+With ranges:
+```json
+"sv_distribution": {
+  "SNP": {"min": 40, "max": 60},
+  "DEL": {"min": 15, "max": 25},
+  "INS": {"min": 10, "max": 20},
+  "INV": {"min": 5, "max": 15},
+  "DUP": {"min": 2, "max": 8}
+}
+```
+
+### Max SV (Global Limits)
+
+Limits the **total number** of each variant type across all trees. Mutations are randomly selected up to these limits:
+
+```json
+"max_sv": {
+  "SNP": 100,
+  "DEL": 20,
+  "INS": 20,
+  "INV": 20,
+  "DUP": 20
+}
+```
+
+With ranges:
+```json
+"max_sv": {
+  "SNP": {"min": 50, "max": 200},
+  "DEL": {"min": 10, "max": 50},
+  "INS": {"min": 10, "max": 50},
+  "INV": {"min": 5, "max": 30},
+  "DUP": {"min": 5, "max": 30}
+}
+```
+
+**Note:** If `max_sv` is specified, mutations exceeding the limits are deleted. Selection is randomized across all trees to avoid bias.
+
+### SV Length Files
+
+Custom TSV files for length distributions (defaults used if omitted):
+
+```json
+"sv_length_files": {
+  "DEL": "my_data/del_lengths.tsv",
+  "INS": "my_data/ins_lengths.tsv",
+  "INV": "my_data/inv_lengths.tsv",
+  "DUP": "my_data/dup_lengths.tsv"
+}
+```
+
+Default files are in `simulation_data/size_distrib{TYPE}.tsv`.
 
 ---
 
-## 4. Demographic Events
+## 🧬 4. Evolutionary Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `mutation_rate` | float | Per-base mutation rate |
+| `recombination_rate` | float | Per-base recombination rate |
+| `generation_time` | integer | Years per generation |
+
+```json
+"evolutionary_params": {
+  "mutation_rate": {"min": 1e-8, "max": 1e-6},
+  "recombination_rate": 1e-8,
+  "generation_time": 25
+}
+```
+
+---
+
+## 👥 5. Populations and Samples
+
+```json
+"populations": [
+  {"id": "pop1", "initial_size": 5000},
+  {"id": "pop2", "initial_size": {"min": 1000, "max": 3000}}
+],
+
+"samples": [
+  {"population": "pop1", "sample_size": 10},
+  {"population": "pop2", "sample_size": 5}
+]
+```
+
+---
+
+## 📅 6. Demographic Events
 
 ### Population Size Change
-
 ```json
 {
   "type": "population_parameters_change",
   "time": 1000,
   "population": "pop1",
-  "size": {"min": 5000, "max": 15000},  // Size range
-  "growth_rate": {"min": 0.001, "max": 0.01}  // Growth rate range
+  "size": {"min": 5000, "max": 15000}
 }
 ```
 
-### Migration Events
-
+### Migration
 ```json
 {
   "type": "add_migration_rate_change",
-  "time": {"min": 500, "max": 1500},  // Time range
+  "time": 500,
   "source": "pop1",
   "dest": "pop2",
-  "rate": {"min": 1e-5, "max": 1e-3}  // Rate range
-}
-```
-
-### Population Split
-
-```json
-{
-  "type": "split",
-  "time": 2000,
-  "source": "ancestral",
-  "derived": ["pop1", "pop2"],
-  "proportions": [0.5, 0.5]
+  "rate": {"min": 1e-5, "max": 1e-3}
 }
 ```
 
 ### Mass Migration
-
 ```json
 {
   "type": "mass_migration",
   "time": 1500,
   "source": "pop1",
   "dest": "pop2",
-  "proportion": {"min": 0.1, "max": 0.3}  // Proportion range
+  "proportion": 0.2
 }
 ```
 
 ---
 
-## 📋 5. Complete Examples
-
-### Example 1: Simple Model with Distribution Control
+## 📋 7. Complete Example
 
 ```json
 {
-  "name": "Simple_Distribution_Example",
-  "description": "Basic model showing distribution specifications",
-  
-  "simulation_params": {
-    "fasta_gz": "small_test_genome.fa.gz",
-    "chr_n": 1,
-    "sv_distribution": {
-      "SNP": 50, "DEL": 20, "INS": 15, "INV": 10, "DUP": 5
-    },
-    "seed": "baseline"
-  },
-  
-  "evolutionary_params": {
-    "mutation_rate": {
-      "min": 1e-8,
-      "max": 1e-6,
-      "distribution": "log_uniform"  // Good for rates
-    },
-    "recombination_rate": 1e-8,  // Fixed
-    "generation_time": 25
-  },
-  
-  "populations": [
-    {
-      "id": "pop1",
-      "initial_size": {
-        "min": 3000,
-        "max": 7000,
-        "distribution": "normal"  // Bell curve around 5000
-      }
-    }
-  ],
-  
-  "samples": [
-    {"population": "pop1", "sample_size": 10}
-  ]
-}
-```
-
-### Example 2: Parameter Uncertainty with Custom Distributions
-
-```json
-{
-  "name": "Advanced_Uncertainty_Model",
-  "description": "Model demonstrating different distribution types",
-  
-  "simulation_params": {
-    "fasta_gz": "genome.fa.gz",
-    "chr_n": 2,
-    "sv_distribution": {
-      "SNP": {
-        "min": 40,
-        "max": 60,
-        "distribution": "normal"  // Peak around 50%
-      },
-      "DEL": {"min": 15, "max": 25},  // Uniform (default)
-      "INS": {"min": 10, "max": 20},
-      "INV": {
-        "min": 5,
-        "max": 15,
-        "distribution": "normal"
-      },
-      "DUP": {"min": 0, "max": 10}
-    }
-  },
-  
-  "evolutionary_params": {
-    "mutation_rate": {
-      "min": 1e-9,
-      "max": 1e-6,
-      "distribution": "log_uniform"  
-    },
-    "recombination_rate": {
-      "min": 1e-9,
-      "max": 1e-7,
-      "distribution": "truncated_normal",
-      "mean": 5e-8,  // Peak around this value
-      "std": 2e-8
-    },
-    "generation_time": 25  // Fixed
-  },
-  
-  "populations": [
-    {
-      "id": "pop1",
-      "initial_size": {
-        "min": 1000,
-        "max": 10000
-      }
-    },
-    {
-      "id": "pop2",
-      "initial_size": {
-        "min": 500,
-        "max": 5000,
-        "distribution": "normal"
-      }
-    }
-  ],
-  
-  "samples": [
-    {"population": "pop1", "sample_size": 10},
-    {"population": "pop2", "sample_size": 10}
-  ],
-  
-  "demographic_events": [
-    {
-      "type": "mass_migration",
-      "time": 1000,
-      "source": "pop2",
-      "dest": "pop1",
-      "proportion": {
-        "min": 0.1,
-        "max": 0.5
-      }
-    }
-  ]
-}
-```
-
-### Example 3: Island Model with Migration
-
-```json
-{
-  "name": "Island_Model",
-  "description": "Five islands with migration",
+  "name": "Example_Model",
   
   "simulation_params": {
     "fasta_gz": "genome.fa.gz",
     "chr_n": 1,
     "sv_distribution": {
-      "SNP": 40, "DEL": 20, "INS": 20, "INV": 15, "DUP": 5
-    }
+      "SNP": 50,
+      "DEL": 20,
+      "INS": 15,
+      "INV": 10,
+      "DUP": 5
+    },
+    "max_sv": {
+      "SNP": 100,
+      "DEL": 20,
+      "INS": 20,
+      "INV": 20,
+      "DUP": 20
+    },
+    "sv_length_files": {
+      "DEL": "simulation_data/size_distribDEL.tsv",
+      "INS": "simulation_data/size_distribINS.tsv",
+      "INV": "simulation_data/size_distribINV.tsv",
+      "DUP": "simulation_data/size_distribDUP.tsv"
+    },
+    "minimal_sv_length": 1,
+    "seed": 42
   },
   
   "evolutionary_params": {
-    "mutation_rate": {"min": 1e-8, "max": 1e-6},
+    "mutation_rate": 1e-6,
     "recombination_rate": 1e-8,
     "generation_time": 25
   },
   
   "populations": [
-    {"id": "island1", "initial_size": 1000},
-    {"id": "island2", "initial_size": {"min": 800, "max": 1200}},
-    {"id": "island3", "initial_size": {"min": 800, "max": 1200}},
-    {"id": "island4", "initial_size": 1000},
-    {"id": "island5", "initial_size": {"min": 1500, "max": 2000}}
+    {"id": "pop1", "initial_size": 5000}
   ],
   
   "samples": [
-    {"population": "island1", "sample_size": 5},
-    {"population": "island2", "sample_size": 5},
-    {"population": "island3", "sample_size": 5},
-    {"population": "island4", "sample_size": 5},
-    {"population": "island5", "sample_size": 5}
-  ],
-  
-  "demographic_events": [
-    {
-      "type": "add_migration_rate_change",
-      "time": 1000,
-      "source": "island1",
-      "dest": "island2",
-      "rate": {"min": 5e-5, "max": 2e-4}
-    }
+    {"population": "pop1", "sample_size": 3}
   ]
 }
 ```
 
-### SV Distribution Normalization
-After sampling all SV types, percentages are automatically normalized to sum to 100%:
-
-1. Sample each type according to its distribution
-2. Sum all sampled values
-3. Scale each value by (100 / sum)
-
-Example:
-- SNP samples 45 (from normal distribution)
-- DEL samples 22 (from uniform)
-- INS samples 18 (from uniform)
-- INV samples 20 (from uniform)
-- DUP samples 10 (from uniform)
-- Total: 115 → Each scaled by 100/115
-
 ---
 
-## ✅ 7. Validation Checklist
-
-Before using your model:
+## ✅ 8. Validation Checklist
 
 - ✔ All populations have `id` and `initial_size`
 - ✔ Every sample references an existing population
 - ✔ `simulation_params` includes `fasta_gz`, `chr_n`, and `sv_distribution`
 - ✔ `evolutionary_params` includes `mutation_rate` and `recombination_rate`
 - ✔ SV distributions sum to approximately 100% (will be normalized)
-- ✔ All ranges have `min` < `max`
-- ✔ Event times are non-negative
+- ✔ All ranges have `min` ≤ `max`
+- ✔ If using `max_sv`, values are positive integers
+- ✔ If using `sv_length_files`, paths exist and are valid TSV files
