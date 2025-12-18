@@ -732,40 +732,6 @@ class Graph:
         """Adds a new node to the graph."""
         self.nodes.add(node)
 
-    def __iadd__(self, other: "Graph") -> "Graph":
-        """Merges another graph into this one. This combine the nodes and links similar paths"""
-
-        if not self.nodes or not other.nodes:
-            raise MSerror("Cannot concatenate empty graphs.")
-
-        # Merge all nodes
-        self.nodes.update(other.nodes)
-
-        # Create connecting edge between self.end_node and other.start_node
-        connecting_edge = Edge(self.end_node, True, other.start_node, False)
-
-        # Update end node pointer
-        self.end_node = other.end_node
-
-        # Merge paths
-        for lineage, other_path in other.paths.items():
-            if lineage in self.paths:
-                # Get the current path
-                current_path = self.paths[lineage]
-                if current_path[-1] != connecting_edge.node1:
-                    raise MSerror(f"Path discontinuity for lineage {lineage}")
-
-                # Extend the path
-                current_path += connecting_edge
-                current_path += other_path
-            else:
-                # If lineage doesn't exist, copy the path and prepend the connecting edge
-                copied_path = Path(lineage)
-                copied_path += other_path
-                self.paths[lineage] = copied_path
-
-        return self
-    
     def lint(self, ignore_ancestral=False, visualizer=None) -> None:
         """
         Removes orphan nodes from the graph.
