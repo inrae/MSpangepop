@@ -337,7 +337,7 @@ class MSpangepopDataHandler:
             f.write(paths_str)
 
     @staticmethod
-    def _save_subgraph_temp_simple(graph, temp_path: str, sample: str, chromosome: str):
+    def save_subgraph_temp_simple(graph, temp_path: str, sample: str, chromosome: str):
         """
         Simple single-threaded save for small graphs.
         
@@ -383,3 +383,125 @@ class MSpangepopDataHandler:
 
                 f.write(f"P\t{sample}#{lineage}#chr_{chromosome}\t{path_str}\t*\n")
 
+    @staticmethod
+    def merge_temp_files_to_gfa( temp_files: list, output_path: str,sample: str,chromosome: str) -> dict:
+        """
+        Merge all temp GFA fragments into final GFA.
+        Since node IDs are already global, just concatenate and add connecting edges.
+        Returns lineage_lengths dict.
+        """
+        MScompute(f"Merging {len(temp_files)} temp files into final GFA")
+
+        # Collect connecting edges between subgraphs
+        connecting_edges = []
+        prev_end_id = None
+
+        for tf in temp_files:
+            if prev_end_id is not None:
+                # Connect previous subgraph's end to this subgraph's start
+                connecting_edges.append(f"L\t{prev_end_id}\t+\t{tf.start_node_id}\t+\t0M\n")
+            prev_end_id = tf.end_node_id
+
+        # Track path segments for lineage length calculation
+        lineage_segments = {}
+
+        with open(output_path, 'w') as out_f:
+            # First pass: write all S and L lines, collect P lines
+            all_path_lines = []
+
+            for tf in temp_files:
+                with open(tf.path, 'r') as in_f:
+                    for line in in_f:
+                        if line.startswith('S\t') or line.startswith('L\t'):
+                            out_f.write(line)
+                        elif line.startswith('P\t'):
+                            all_path_lines.append(line.strip())
+
+            # Write connecting edges
+            for edge_line in connecting_edges:
+                out_f.write(edge_line)
+
+            # Merge paths: same lineage across files should be concatenated
+            # Parse: P\tsample#lineage#chr_X\tsegments\t*
+            paths_by_lineage = {}
+
+            for pline in all_path_lines:
+                parts = pline.split('\t')
+                path_name = parts[1]  # sample#lineage#chr_X
+                segments = parts[2]  # node1+,node2-,...
+
+                # Extract lineage from path name
+                lineage = path_name.split('#')[1]
+
+                if lineage not in paths_by_lineage:
+                    paths_by_lineage[lineage] = []
+                paths_by_lineage[lineage].append(segments)
+
+            # Write merged paths
+            for lineage, segment_lists in paths_by_lineage.items():
+                # Join segments from consecutive subgraphs
+                merged_segments = ",".join(segment_lists)
+                path_name = f"{sample}#{lineage}#chr_{chromosome}"
+                out_f.write(f"P\t{path_name}\t{merged_segments}\t*\n")
+
+                # Count nodes for lineage length
+                lineage_segments[lineage] = merged_segments.count(',') + 1
+
+        MSsuccess(f"Final GFA written: {output_path}")
+        return lineage_segments
+
+    @staticmethod
+    def write_fasta_from_gfa(gfa_path: str,sample: str,chromosome: str,fasta_folder: str,compress: bool = True):
+        """Read the final GFA and write FASTA sequences."""
+        import gzip
+        from Bio import SeqIO
+        from Bio.SeqRecord import SeqRecord
+        from Bio.Seq import Seq
+
+        os.makedirs(fasta_folder, exist_ok=True)
+        ext = ".fasta.gz" if compress else ".fasta"
+        fasta_path = os.path.join(fasta_folder, f"{sample}_chr{chromosome}{ext}")
+
+        MScompute("Building FASTA from GFA")
+
+        # Read node sequences
+        node_seqs = {}
+        paths = {}  # path_name -> segments string
+
+        with open(gfa_path, 'r') as f:
+            for line in f:
+                if line.startswith('S\t'):
+                    parts = line.strip().split('\t')
+                    node_id = int(parts[1])
+                    seq = parts[2]
+                    node_seqs[node_id] = seq
+                elif line.startswith('P\t'):
+                    parts = line.strip().split('\t')
+                    path_name = parts[1]
+                    segments = parts[2]
+                    paths[path_name] = segments
+
+        # Reverse complement helper
+        comp = {'A': 'T', 'T': 'A', 'G': 'C', 'C': 'G'}
+
+        def rev_comp(s):
+            return ''.join(comp.get(b, b) for b in reversed(s))
+
+        # Write FASTA
+        open_func = gzip.open if compress else open
+        with open_func(fasta_path, 'wt') as out_f:
+            for path_name, segments in paths.items():
+                seq_parts = []
+                for seg in segments.split(','):
+                    node_id = int(seg[:-1])
+                    orient = seg[-1]
+                    node_seq = node_seqs.get(node_id, "")
+                    if orient == '-':
+                        node_seq = rev_comp(node_seq)
+                    seq_parts.append(node_seq)
+
+                full_seq = ''.join(seq_parts)
+                record = SeqRecord(Seq(full_seq), id=path_name, description="")
+                SeqIO.write(record, out_f, "fasta")
+
+        MSsuccess(f"FASTA written: {fasta_path}")
