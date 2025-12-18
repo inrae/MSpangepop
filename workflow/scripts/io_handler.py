@@ -234,3 +234,104 @@ class MSpangepopDataHandler:
             return pd.read_table(fai_file, header=None, usecols=[1], names=["length"])["length"].values
         except Exception as e:
             raise MSerror(f"Error reading FAI file {fai_file}: {e}")      
+
+    @staticmethod
+    def save_subgraph_temp(graph, temp_path: str, sample: str, chromosome: str, max_workers: int = 4):
+        """
+        Save subgraph to temp file as GFA fragment (S, L, P lines).
+        Uses multithreading for larger graphs.
+        
+        Parameters:
+            graph: Graph object to save
+            temp_path (str): Path to temp file
+            sample (str): Sample name
+            chromosome (str): Chromosome identifier
+            max_workers (int): Number of threads for parallel processing
+        """
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from io import StringIO
+        
+        node_count = len(graph.nodes)
+
+        # For small graphs, use simple single-threaded approach
+        if node_count < 1000 or max_workers <= 1:
+            MSpangepopDataHandler._save_subgraph_temp_simple(graph, temp_path, sample, chromosome)
+            return
+
+        # Multithreaded approach for larger graphs
+        def process_nodes_parallel():
+            """Process nodes with chunking"""
+            nodes_list = sorted(graph.nodes, key=lambda n: n.id)
+            chunk_size = max(1, len(nodes_list) // max_workers)
+
+            def process_chunk(chunk_data):
+                chunk_idx, chunk = chunk_data
+                buffer = StringIO()
+                for node in chunk:
+                    buffer.write(f"S\t{node.id}\t{node}\n")
+                return chunk_idx, buffer.getvalue()
+
+            chunks = []
+            for i in range(0, len(nodes_list), chunk_size):
+                chunk_nodes = nodes_list[i:i + chunk_size]
+                chunks.append((len(chunks), chunk_nodes))
+
+            results = [''] * len(chunks)
+
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = {executor.submit(process_chunk, chunk): chunk[0] for chunk in chunks}
+                for future in as_completed(futures):
+                    chunk_idx, chunk_result = future.result()
+                    results[chunk_idx] = chunk_result
+
+            return ''.join(results)
+
+        def process_paths_and_edges():
+            """Process paths and collect edges"""
+            paths_buffer = StringIO()
+            unique_edges = set()
+
+            for lineage, path in graph.paths.items():
+                if lineage == "Ancestral":
+                    continue
+                if not path.path_edges:
+                    continue
+
+                # Build path string
+                path_str = f"{path.path_edges[0].node1.id}+"
+                for edge in path.path_edges:
+                    orient = "+" if not edge.node2_side else "-"
+                    path_str += f",{edge.node2.id}{orient}"
+
+                paths_buffer.write(f"P\t{sample}#{lineage}#chr_{chromosome}\t{path_str}\t*\n")
+
+                # Collect edges
+                for edge in path.path_edges:
+                    edge_key = (
+                        edge.node1.id,
+                        "+" if edge.node1_side else "-",
+                        edge.node2.id,
+                        "+" if not edge.node2_side else "-"
+                    )
+                    unique_edges.add(edge_key)
+
+            # Convert edges to strings
+            edges_buffer = StringIO()
+            for n1_id, o1, n2_id, o2 in sorted(unique_edges):
+                edges_buffer.write(f"L\t{n1_id}\t{o1}\t{n2_id}\t{o2}\t0M\n")
+
+            return paths_buffer.getvalue(), edges_buffer.getvalue()
+
+        # Execute both tasks in parallel
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            nodes_future = executor.submit(process_nodes_parallel)
+            paths_edges_future = executor.submit(process_paths_and_edges)
+
+            nodes_str = nodes_future.result()
+            paths_str, edges_str = paths_edges_future.result()
+
+        # Write to file
+        with open(temp_path, 'w') as f:
+            f.write(nodes_str)
+            f.write(edges_str)
+            f.write(paths_str)
