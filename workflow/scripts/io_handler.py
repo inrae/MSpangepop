@@ -87,15 +87,17 @@ def get_indent(readable_json):
         return None
     
 def process_seed(seed):
-    if isinstance(seed, str):
-        if seed.lower() == "none":
-            return None
+    if seed:
+        if isinstance(seed, str):
+            if seed.lower() == "none":
+                return None
+            else:
+                return min(int.from_bytes(seed.encode(), 'big'), 2**32 - 1)
+        elif isinstance(seed, int):
+            return max(1, min(seed, 2**32 - 1))
         else:
-            return min(int.from_bytes(seed.encode(), 'big'), 2**32 - 1)
-    elif isinstance(seed, int):
-        return max(1, min(seed, 2**32 - 1))
-    else:
-        raise ValueError("Seed must be either a string or an integer")
+            raise ValueError("Seed must be either a string or an integer")
+    return None
 
 class MSpangepopDataHandler:
     """
