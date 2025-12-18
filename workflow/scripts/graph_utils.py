@@ -647,28 +647,6 @@ class LintVisualizer:
         except Exception as e:
             MSwarning(f"Could not write lint report: {e}")
 
-# ============================================================================
-# PARALLELIZATION SUPPORT CLASSES
-# ============================================================================
-
-@dataclass
-class GraphInitResult:
-    """Container for graph initialization results"""
-    index: int
-    graph: Any  # Graph type
-    tree_index: int
-    lineages: set
-    node_count: int
-
-@dataclass
-class MutationResult:
-    """Container for mutation application results"""
-    index: int
-    mutations_applied: List[Dict]
-    variants_tracked: List[Tuple]
-    success: bool
-    error: str = None
-
 class ProgressTracker:
     """Thread-safe progress tracker with neat output"""
     def __init__(self, total_items: int, task_name: str):
