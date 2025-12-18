@@ -335,3 +335,51 @@ class MSpangepopDataHandler:
             f.write(nodes_str)
             f.write(edges_str)
             f.write(paths_str)
+
+    @staticmethod
+    def _save_subgraph_temp_simple(graph, temp_path: str, sample: str, chromosome: str):
+        """
+        Simple single-threaded save for small graphs.
+        
+        Parameters:
+            graph: Graph object to save
+            temp_path (str): Path to temp file
+            sample (str): Sample name
+            chromosome (str): Chromosome identifier
+        """
+        with open(temp_path, 'w') as f:
+            # Nodes (S lines)
+            for node in sorted(graph.nodes, key=lambda n: n.id):
+                f.write(f"S\t{node.id}\t{node}\n")
+
+            # Edges (L lines) - collect unique edges
+            unique_edges = set()
+            for lineage, path in graph.paths.items():
+                if lineage == "Ancestral":
+                    continue
+                for edge in path.path_edges:
+                    edge_key = (
+                        edge.node1.id,
+                        "+" if edge.node1_side else "-",
+                        edge.node2.id,
+                        "+" if not edge.node2_side else "-"
+                    )
+                    unique_edges.add(edge_key)
+
+            for n1_id, o1, n2_id, o2 in sorted(unique_edges):
+                f.write(f"L\t{n1_id}\t{o1}\t{n2_id}\t{o2}\t0M\n")
+
+            # Paths (P lines)
+            for lineage, path in graph.paths.items():
+                if lineage == "Ancestral":
+                    continue
+                if not path.path_edges:
+                    continue
+
+                path_str = f"{path.path_edges[0].node1.id}+"
+                for edge in path.path_edges:
+                    orient = "+" if not edge.node2_side else "-"
+                    path_str += f",{edge.node2.id}{orient}"
+
+                f.write(f"P\t{sample}#{lineage}#chr_{chromosome}\t{path_str}\t*\n")
+
