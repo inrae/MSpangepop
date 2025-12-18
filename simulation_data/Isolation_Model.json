@@ -11,6 +11,12 @@
       "INS": 15,
       "INV": 10,
       "DUP": 5
+    },
+    "sv_length_files": {
+      "DEL": "simulation_data/size_distribDEL.tsv",
+      "INS": "simulation_data/size_distribINS.tsv",
+      "INV": "simulation_data/size_distribINV.tsv",
+      "DUP": "simulation_data/size_distribDUP.tsv"
     }
   },
   

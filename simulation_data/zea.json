@@ -2,7 +2,7 @@
   "name": "low_mem",
   
   "simulation_params": {
-    "fasta_gz": "simulation_data/small_test_genome.fa.gz",
+    "fasta_gz": "zea_mays_chr1.fasta.gz",
     "chr_n": 1,
     "sv_distribution": {
       "SNP": 50,
@@ -10,13 +10,6 @@
       "INS": 15,
       "INV": 10,
       "DUP": 5
-    },
-    "max_sv": {
-      "SNP": 100,
-      "DEL": 20,
-      "INS": 20,
-      "INV": 20,
-      "DUP": 20
     },
     "sv_length_files": {
       "DEL": "simulation_data/size_distribDEL.tsv",
@@ -28,7 +21,7 @@
   },
   
   "evolutionary_params": {
-    "mutation_rate": 1e-10,
+    "mutation_rate": 1e-7,
     "recombination_rate": 1e-8,
     "generation_time": 25
   },

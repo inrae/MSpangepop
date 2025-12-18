@@ -211,14 +211,10 @@ rule split_recombination:
 # Script to augment the traversal json file with mutations position type and length
 rule draw_variants:
     input:
-        traversal_json = rules.coalescent_traversal.output.traversal
+        traversal_json = rules.coalescent_traversal.output.traversal,
+        demographic = lambda wildcards: config["samples"][wildcards.sample]["demographic_file"]
     output:
         augmented_traversal = os.path.join(output_dir, "{sample}", graph, "chr_{chromosome}", "traversal", "{sample}_chr_{chromosome}_augmented_traversal.json")
-    params:
-        sv_distribution = lambda wildcards: json.dumps(config["samples"][wildcards.sample].get("sv_distribution")),
-        minimal_sv_length = lambda wildcards: config["samples"][wildcards.sample].get("minimal_sv_length", 1),
-        readable_json = lambda wildcards: config["samples"][wildcards.sample].get("readable_json", False), 
-        seed=lambda wildcards: config["samples"][wildcards.sample].get("seed", None)
     threads: 5
     priority: 8
     resources:
@@ -232,16 +228,13 @@ rule draw_variants:
         """
         python3 workflow/scripts/draw_variants.py \
             --json {input.traversal_json} \
-            --sv_distribution '{params.sv_distribution}' \
+            --demographic {input.demographic} \
             --output {output.augmented_traversal} \
             --chromosome {wildcards.chromosome} \
             --threads {threads} \
-            --minimal_sv_length {params.minimal_sv_length} \
-            --batch_size 1000 \
-            --readable_json {params.readable_json} \
-            --seed {params.seed} 
+            --batch_size 1000
         """
-
+        
 # Create the graph from the augmented traversal
 rule graph_creation:
     input:
@@ -252,7 +245,8 @@ rule graph_creation:
         recap = os.path.join(output_dir, "{sample}", simulation_data, "chr_{chromosome}","{sample}_chr_{chromosome}_graph_creation_recap.txt")
     params:
         out_dir = lambda wildcards: os.path.join(output_dir, wildcards.sample, plot_dir, f"chr_{wildcards.chromosome}", "03_graph_plots"), 
-        fasta_folder = lambda wildcards: os.path.join(output_dir, wildcards.sample, graph,  f"chr_{wildcards.chromosome}", "fasta")
+        fasta_folder = lambda wildcards: os.path.join(output_dir, wildcards.sample, graph,  f"chr_{wildcards.chromosome}", "fasta"),
+        tmp_folder = lambda wildcards: os.path.join(output_dir, f"{wildcards.sample}", temp_dir,f"chr_{wildcards.chromosome}")
     resources:
         mem_mb=lambda wildcards: int(400000 * memory_multiplier),
         time="60:00:00"
@@ -260,7 +254,7 @@ rule graph_creation:
         os.path.join(output_dir, "{sample}", "benchmark", "chr_{chromosome}", "graph_creation_benchmark.txt")
     container:
         "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
-    threads: 10
+    threads: 20
     priority: 7
     shell:
         """
@@ -273,6 +267,7 @@ rule graph_creation:
             --recap_file {output.recap} \
             --variant_plot_dir {params.out_dir} \
             --fasta_folder {params.fasta_folder} \
+            --tmp_folder {params.tmp_folder} \
             --threads {threads}
         """
 
