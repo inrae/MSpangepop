@@ -2,11 +2,11 @@
 
 **Warning:** Parameters defined in this config file are parsed and fed to MSprime. Describing all of them **exceeds** the scope of this documentation so please refer **directly** to MSprime documentation for further reference: [https://tskit.dev/msprime/docs/stable/demography.html](https://tskit.dev/msprime/docs/stable/demography.html)
 
-If you **don't** want **to** delve into the **lengthy** MSprime documentation, please stick with the default **Panmictic** Model, **adapt** mutation rate, recombination_rate and sample_size with your values.
+If you don't want to delve into the **lengthy** MSprime documentation, please stick with the default **Panmictic** Model, adapt mutation rate, recombination_rate and sample_size with your values.
 
 
 
-## 📁 1. File Structure Overview
+## 1. File Structure Overview
 
 A complete demographic model contains:
 - **Simulation parameters** (genome file, chromosomes, SV distribution)
@@ -41,9 +41,7 @@ A complete demographic model contains:
       "DUP": 5
     },
     "seed": "optional_seed",
-    "model": "binary",
-    "minimal_sv_length": 1,
-    "readable_json": false
+    "minimal_sv_length": 1
   },
   
   "evolutionary_params": {
@@ -62,7 +60,7 @@ A complete demographic model contains:
 }
 ```
 
-## 🎲 2. Using Parameter Ranges
+## 2. Using Parameter Ranges
 
 Any numeric parameter can be specified as a range. Each replicate will randomly sample values.
 
@@ -96,7 +94,7 @@ Any numeric parameter can be specified as a range. Each replicate will randomly 
 
 ---
 
-## 📦 3. Simulation Parameters
+## 3. Simulation Parameters
 
 | Parameter | Type | Description | Example |
 |-----------|------|-------------|---------|
@@ -106,7 +104,6 @@ Any numeric parameter can be specified as a range. Each replicate will randomly 
 | `max_sv` | dict | **Maximum count per SV type (global limit)** | See below |
 | `sv_length_files` | dict | **Custom length distribution TSV files** | See below |
 | `seed` | string/int | Random seed (optional) | `"myseed"` or `12345` |
-| `minimal_sv_length` | int | Minimum SV length in bp | `1` |
 | `readable_json` | boolean | Human-readable JSON output | `false` |
 
 ### SV Distribution
@@ -161,6 +158,7 @@ With ranges:
 
 **Note:** If `max_sv` is specified, mutations exceeding the limits are deleted. Selection is randomized across all trees to avoid bias.
 
+**Note:** If `max_sv` is specified, mutations and `mutation_rate` is low, the maximum number of SVs may not be reached.
 ### SV Length Files
 
 Custom TSV files for length distributions (defaults used if omitted):
@@ -174,29 +172,35 @@ Custom TSV files for length distributions (defaults used if omitted):
 }
 ```
 
-Default files are in `simulation_data/size_distrib{TYPE}.tsv`.
+Default files are in `simulation_data/size_distrib{TYPE}.tsv`. 
 
 ---
 
-## 🧬 4. Evolutionary Parameters
+## 4. Evolutionary Parameters
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `mutation_rate` | float | Per-base mutation rate |
-| `recombination_rate` | float | Per-base recombination rate |
+| `mutation_rate` | float | Per-base mutation rate per-generation|
+| `recombination_rate` | float | Per-base recombination rate per-generation |
 | `generation_time` | integer | Years per generation |
 
 ```json
 "evolutionary_params": {
-  "mutation_rate": {"min": 1e-8, "max": 1e-6},
+  "mutation_rate": 1e-8,
   "recombination_rate": 1e-8,
   "generation_time": 25
 }
 ```
 
+**Note:** Be carefull with the `mutation_rate` parameter, the simulation may be realy heavy if this number is to high (1e-6 for example)
+
+**Note:** SV length for inversions, duplications and deletions cannot exceed the the current locus size, a high `recombination_rate` will truncate most SV. Lower the `recombination_rate` if you want large variations to appear.  
+
 ---
 
-## 👥 5. Populations and Samples
+## 5. Populations and Samples
+
+Here you can specify each population you want to simulate. Keep in mind that all individuals must coalesce to a common ancestor at some point.
 
 ```json
 "populations": [
@@ -209,10 +213,11 @@ Default files are in `simulation_data/size_distrib{TYPE}.tsv`.
   {"population": "pop2", "sample_size": 5}
 ]
 ```
-
 ---
 
-## 📅 6. Demographic Events
+## 6. Demographic Events
+
+Here you can add events that will affect your population
 
 ### Population Size Change
 ```json
@@ -248,8 +253,9 @@ Default files are in `simulation_data/size_distrib{TYPE}.tsv`.
 
 ---
 
-## 📋 7. Complete Example
+## 7. Complete Example
 
+Below a complete model, you can find additional exampkles in the `./simulation_data` folder. You can try them on your genome and 
 ```json
 {
   "name": "Example_Model",
@@ -277,7 +283,6 @@ Default files are in `simulation_data/size_distrib{TYPE}.tsv`.
       "INV": "simulation_data/size_distribINV.tsv",
       "DUP": "simulation_data/size_distribDUP.tsv"
     },
-    "minimal_sv_length": 1,
     "seed": 42
   },
   
@@ -296,6 +301,33 @@ Default files are in `simulation_data/size_distrib{TYPE}.tsv`.
   ]
 }
 ```
+
+Graphical example :   
+```json
+"populations": [
+    { "id": "POP_A", "initial_size": 5000 },
+    { "id": "POP_B", "initial_size": 1000 }
+  ],
+
+  "samples": [
+    { "population": "POP_1", "sample_size": 8 },
+    { "population": "POP_2", "sample_size": 3 }
+  ],
+  
+  "migration_matrix": [],
+
+  "demographic_events": [
+    {
+      "type": "mass_migration",
+      "time": 3000,
+      "source": "POP_B",
+      "dest": "POP_A",
+      "proportion": 1.0,
+      "_comment": "Population split (backward in time: POP_B merges into POP_A)"
+    }
+  ]
+```
+<img src="demo.png">
 
 ---
 
