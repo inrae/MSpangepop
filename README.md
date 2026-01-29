@@ -10,10 +10,6 @@ The mirror is especially useful for people with no Renater account to submit iss
 <img src="doc/pipe.png">
 
 ### Documentation
-<div align="center">
-<table>
-<tr>
-<td>
 
 |  |  |
 |-------|-------------|
@@ -21,14 +17,6 @@ The mirror is especially useful for people with no Renater account to submit iss
 | **[Demographic model](doc/configuration_model.md)** | Adapt or create a model |
 | **[Output Files](doc/output_files.md)** | Description of generated results and outputs |
 | **[Advanced Topics](doc/go_even_deeper.md)** | In-depth information for power users |
-
-</td>
-<td>
-<img src="doc/logo_ms_round.png" width="200">
-</td>
-</tr>
-</table>
-</div>
 
 ### Workflow Stages
 
