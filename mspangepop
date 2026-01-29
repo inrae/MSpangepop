@@ -1,10 +1,10 @@
 #!/bin/bash
-#SBATCH --cpus-per-task=5
+#SBATCH --cpus-per-task=2
 #SBATCH -o slurm_logs/mspangepop_slurm_log_%j.log
 #SBATCH -e slurm_logs/mspangepop_slurm_log_%j.log
 #SBATCH --time=80:00:00
 #SBATCH -J MSpangepop
-#SBATCH --mem=10G
+#SBATCH --mem=5G
 #SBATCH --ntasks=1
 
 # Written by Lucien Piat at INRAe
