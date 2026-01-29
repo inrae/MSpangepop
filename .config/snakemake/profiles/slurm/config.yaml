@@ -1,11 +1,11 @@
 executor: slurm
-jobs: 10
+jobs: 30 #Reduce on small HPC, increace if you can run more jobs at a time 
 use-singularity: true
 singularity-args: "--bind $(pwd)"
 keep-going: True
 
 default-resources:
-  #slurm_account: add if needed on your hpc
+  #slurm_account: add if needed on your HPC
   runtime: 4800
   time: 80:00:00
   mem_mb: 25000

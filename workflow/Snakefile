@@ -101,7 +101,7 @@ rule msprime_simulation:
         readable_json=lambda wildcards: config["samples"][wildcards.sample].get("readable_json", False), 
         seed=lambda wildcards: config["samples"][wildcards.sample].get("seed", None)
     resources:
-        mem_mb=lambda wildcards: int(10000 * memory_multiplier),
+        mem_mb=lambda wildcards: int(20000 * memory_multiplier),
         time="60:00:00"
     threads: 1
     benchmark:

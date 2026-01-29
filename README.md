@@ -7,29 +7,16 @@ The official MSpangepop repository can be found at the [INRAE forge](https://for
 A GitHub mirror can be found at [INRAE GitHub](https://github.com/inrae/MSpangepop).\
 The mirror is especially useful for people with no Renater account to submit issues.
 
+<img src="doc/pipe.png">
 
 ### Documentation
-<div align="center">
-<table>
-<tr>
-<td>
 
 |  |  |
 |-------|-------------|
-| **[Input Files](doc/input_file.md)** | Requirements and specifications for input data |
 | **[Master Configuration](doc/configuration_master.md)** | How to set up configuration files and parameters |
 | **[Demographic model](doc/configuration_model.md)** | Adapt or create a model |
 | **[Output Files](doc/output_files.md)** | Description of generated results and outputs |
-| **[Visualizations](doc/visualisations.md)** | Understanding the generated plots and charts |
 | **[Advanced Topics](doc/go_even_deeper.md)** | In-depth information for power users |
-
-</td>
-<td>
-<img src="doc/logo_ms_round.png" width="200">
-</td>
-</tr>
-</table>
-</div>
 
 ### Workflow Stages
 
@@ -42,7 +29,7 @@ The mirror is especially useful for people with no Renater account to submit iss
 | **5. Unchop** | VG unchop command | - | graph_merging |
 
 ---
-## 🚀 How to Use 🚀
+## How to Use 
 ### 1. Set up
 
 Clone the Git repository
@@ -55,13 +42,12 @@ git clone https://forge.inrae.fr/pangepop/MSpangepop
 conda env create -n wf_env -f dependencies/wf_env.yaml
 ```  
 
-
-
 ### 2. Configure the pipeline for your data
 
-Two elements are needed to run the simulation : 
+Three elements are needed to run the simulation : 
 - The `masterconfig` -> **[Master Configuration](doc/configuration_master.md)**
 - The `demographic_file`  -> **[Demographic model configuration](doc/configuration_model.md)**
+- A reference genome "`fasta_gz`" (must be telomere to telomere, you can run on 1 chromosome only, to test the configuration)
 
 #### To do a quick test : 
 
@@ -81,7 +67,7 @@ samples:
 - `model` is the demographic scenario the simulation will run on. You can create your own or tailor the ones in `./simulation_data` (**[Demographic model configuration](doc/configuration_model.md)**)
 
 
-- **⚠️ Don't want to create your own model?⚠️** Use the provided `Panmictic_Model.json` - simply edit it to specify your genome, then adjust `mutation_rate` and `recombination_rate` (start with low values)
+- **⚠️ Don't want to create your own model?⚠️** Use the provided `Panmictic_Model.json` - simply edit it to specify your genome (`fasta_gz`), then adjust `mutation_rate` and `recombination_rate` (start with low values)
 
 
 
@@ -103,7 +89,7 @@ sbatch mspangepop run # Then
 ./mspangepop local-run # Then
 ```
 
-## ⚙️ Other running options
+## Other running options
 ```
 mspangepop [dry|run|local-run|dag|rulegraph|unlock|touch] [additional snakemake args]
     dry - run in dry-run mode
