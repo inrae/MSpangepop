@@ -12,13 +12,10 @@ from datetime import datetime
 import os
 os.environ['MPLCONFIGDIR'] = './.config/matplotlib'
 import matplotlib.pyplot as plt # type: ignore
-import matplotlib.patches as mpatches # type: ignore
 import numpy as np
 from collections import defaultdict
 from scipy.stats import gaussian_kde
-from scipy.interpolate import interp1d
 import threading
-import itertools
 import psutil
 from dataclasses import dataclass
 from typing import List, Tuple, Dict, Any
@@ -142,9 +139,10 @@ class MutationRecap:
             f.write("-"*120+"\n")
             # Summary by type
             f.write("By Mutation Type:\n")
-            for mut_type, stats in sorted(self.summary["by_type"].items()):
+            for mut_type, stats in sorted(self.summary["by_type"].items(), key=lambda x: (x[0] is None, x[0] or "")):
                 success_rate = stats['successful'] / max(1, stats['attempted']) * 100
-                f.write(f"{mut_type:8} - Attempted: {stats['attempted']:4d}, "
+                type_display = mut_type if mut_type is not None else "SKIPPED"
+                f.write(f"{type_display:8} - Attempted: {stats['attempted']:4d}, "
                        f"Successful: {stats['successful']:4d}, "
                        f"Failed: {stats['failed']:4d} "
                        f"(Success Rate: {success_rate:6.2f}%)\n")
@@ -616,79 +614,15 @@ class VariantSizeVisualizer:
         plt.savefig(output_path, dpi=300, bbox_inches='tight')
         plt.close()
         
-class LintVisualizer:
-    def __init__(self):
-        self.total_nodes_before = 0
-        self.total_nodes_after = 0
-        self.removed_nodes = set()  # Names of removed nodes
 
-    def record(self, before: int, after: int, removed: set):
-        self.total_nodes_before = before
-        self.total_nodes_after = after
-        self.removed_nodes = removed
+class NodeIDAllocator:
+    """Maintains a global node ID counter across subgraph processing."""
 
-    def write_txt_report(self, output_path: str):
-        try:
-            num_removed = len(self.removed_nodes)
-            percent_removed = (
-                (num_removed / self.total_nodes_before) * 100
-                if self.total_nodes_before else 0
-            )
+    def __init__(self, start_id: int = 1):
+        self.current_id = start_id
 
-            with open(output_path, "a") as f:
-                f.write("\n"+"-"*120+"\n")
-                f.write("Lint Summary Report\n")
-                f.write(f"Total nodes: {self.total_nodes_before}\n")
-                f.write(f"Remaining nodes after linting: {self.total_nodes_after}\n")
-                f.write(f"Orphan nodes removed by linting: {num_removed}\n")
-                f.write(f"Percent removed: {percent_removed:.2f}%\n\n")
-            
-            MSsuccess(f"Saved recap [2/2]")
-        except Exception as e:
-            MSwarning(f"Could not write lint report: {e}")
-
-# ============================================================================
-# PARALLELIZATION SUPPORT CLASSES
-# ============================================================================
-
-@dataclass
-class GraphInitResult:
-    """Container for graph initialization results"""
-    index: int
-    graph: Any  # Graph type
-    tree_index: int
-    lineages: set
-    node_count: int
-
-@dataclass
-class MutationResult:
-    """Container for mutation application results"""
-    index: int
-    mutations_applied: List[Dict]
-    variants_tracked: List[Tuple]
-    success: bool
-    error: str = None
-
-class ProgressTracker:
-    """Thread-safe progress tracker with neat output"""
-    def __init__(self, total_items: int, task_name: str):
-        self.total = total_items
-        self.completed = 0
-        self.task_name = task_name
-        self.lock = threading.Lock()
-        self.last_print_percentage = -1
-        
-    def update(self, increment: int = 1) -> None:
-        """Update progress and print if milestone reached"""
-        with self.lock:
-            self.completed += increment
-            percentage = int((self.completed * 100) / self.total)
-            
-            # Print at 0%, 10%, 20%, etc.
-            if percentage >= self.last_print_percentage + 10 or percentage == 100:
-                self.last_print_percentage = (percentage // 10) * 10
-                memory = psutil.virtual_memory()
-                available_gb = memory.available / (1024**3)
-                MScompute(f"{self.task_name} -> {percentage}% | {available_gb:.1f} GB available")
-
-
+    def allocate(self, node) -> int:
+        """Assign the next available ID to a node and return it."""
+        node.id = self.current_id
+        self.current_id += 1
+        return node.id

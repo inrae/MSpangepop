@@ -87,15 +87,17 @@ def get_indent(readable_json):
         return None
     
 def process_seed(seed):
-    if isinstance(seed, str):
-        if seed.lower() == "none":
-            return None
+    if seed:
+        if isinstance(seed, str):
+            if seed.lower() == "none":
+                return None
+            else:
+                return min(int.from_bytes(seed.encode(), 'big'), 2**32 - 1)
+        elif isinstance(seed, int):
+            return max(1, min(seed, 2**32 - 1))
         else:
-            return min(int.from_bytes(seed.encode(), 'big'), 2**32 - 1)
-    elif isinstance(seed, int):
-        return max(1, min(seed, 2**32 - 1))
-    else:
-        raise ValueError("Seed must be either a string or an integer")
+            raise ValueError("Seed must be either a string or an integer")
+    return None
 
 class MSpangepopDataHandler:
     """
@@ -236,177 +238,289 @@ class MSpangepopDataHandler:
             raise MSerror(f"Error reading FAI file {fai_file}: {e}")      
 
     @staticmethod
-    def write_fasta_multithreaded(graph, sample, chromosome, fasta_folder, threads=4, compress=True):
+    def save_subgraph_temp(graph, temp_path: str, sample: str, chromosome: str, max_workers: int = 4):
         """
-        Writes lineage sequences from a graph to a FASTA file using multithreading.
-
+        Save subgraph to temp file as GFA fragment (S, L, P lines).
+        Uses multithreading for larger graphs.
+        
         Parameters:
-            graph (object): A graph object with a `paths` dictionary of {lineage: Path}.
-            sample (str): Sample name for FASTA header.
-            chromosome (str): Chromosome identifier.
-            fasta_folder (str): Directory to write the output FASTA file.
-            threads (int): Number of worker threads to use for record generation.
-            compress (bool): Whether to gzip compress the output file. Default: True
-        """
-        import gzip
-        from Bio import SeqIO
-        from concurrent.futures import ThreadPoolExecutor
-        from Bio.SeqRecord import SeqRecord
-        from Bio.Seq import Seq
-        os.makedirs(fasta_folder, exist_ok=True)
-        ext = ".fasta.gz" if compress else ".fasta"
-        fasta_output_path = os.path.join(fasta_folder, f"{sample}_chr{chromosome}{ext}")
-        MScompute(f"Starting to write fasta file with {threads} threads")
-        def generate_seqrecord(lineage, path):
-            if lineage == "Ancestral":
-                return None  # Skip "Ancestral" lineage
-            try:
-                sequence_str = str(path)
-                record_id = f"sample_{sample}#lineage_{lineage}#chr_{chromosome}"
-                return SeqRecord(Seq(sequence_str), id=record_id, description="")
-            except Exception as e:
-                MSwarning(f"Failed to convert path for lineage '{lineage}': {e}")
-                return None
-
-        with ThreadPoolExecutor(max_workers=threads) as executor:
-            futures = [
-                executor.submit(generate_seqrecord, lineage, path)
-                for lineage, path in graph.paths.items()
-                if lineage != "Ancestral"
-            ]
-
-            # Open gzipped or plain text output file
-            open_func = gzip.open if compress else open
-            with open_func(fasta_output_path, "wt") as out_handle:
-                count = 0
-                for future in futures:
-                    record = future.result()
-                    if record:
-                        SeqIO.write(record, out_handle, "fasta")
-                        count += 1
-
-        MSsuccess(f"Wrote {count} lineage FASTA sequences to {fasta_output_path}")
-
-    @staticmethod
-    def save_to_gfav1_1_hybrid(ensemble, file_path, ignore_ancestral=False, max_workers=None):
-        """
-        Hybrid approach with just-in-time ID assignment during save.
+            graph: Graph object to save
+            temp_path (str): Path to temp file
+            sample (str): Sample name
+            chromosome (str): Chromosome identifier
+            max_workers (int): Number of threads for parallel processing
         """
         from concurrent.futures import ThreadPoolExecutor, as_completed
         from io import StringIO
         
-        if not ensemble.graphs:
-            raise MSerror("No graphs to save")
-        
-        graph = ensemble.graphs[0]
-        
-        if max_workers is None:
-            max_workers = 4
-        
-        # ASSIGN IDs 
-        MScompute("Assigning node IDs for GFA export...")
-        node_to_id = {}
-        for idx, node in enumerate(graph.nodes, start=1):
-            node.id = idx
-            node_to_id[node] = idx
-        
-        total_nodes = len(graph.nodes)
-        total_paths = sum(1 for lineage in graph.paths.keys() 
-                        if not (ignore_ancestral and lineage == "Ancestral"))
-        MScompute(f"Starting GFA export: {total_nodes} nodes, {total_paths} paths to process")
-        
+        node_count = len(graph.nodes)
+
+        # For small graphs, use simple single-threaded approach
+        if node_count < 1000 or max_workers <= 1:
+            MSpangepopDataHandler.save_subgraph_temp_simple(graph, temp_path, sample, chromosome)
+            return
+
+        # Multithreaded approach for larger graphs
         def process_nodes_parallel():
             """Process nodes with chunking"""
-            nodes_list = list(graph.nodes)
+            nodes_list = sorted(graph.nodes, key=lambda n: n.id)
             chunk_size = max(1, len(nodes_list) // max_workers)
-            
+
             def process_chunk(chunk_data):
                 chunk_idx, chunk = chunk_data
                 buffer = StringIO()
                 for node in chunk:
                     buffer.write(f"S\t{node.id}\t{node}\n")
                 return chunk_idx, buffer.getvalue()
-            
+
             chunks = []
             for i in range(0, len(nodes_list), chunk_size):
                 chunk_nodes = nodes_list[i:i + chunk_size]
-                chunk_idx = len(chunks)
-                chunks.append((chunk_idx, chunk_nodes))
-            
+                chunks.append((len(chunks), chunk_nodes))
+
             results = [''] * len(chunks)
-            
+
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                future_to_chunk = {executor.submit(process_chunk, chunk_data): chunk_data 
-                                for chunk_data in chunks}
-                
-                for future in as_completed(future_to_chunk):
+                futures = {executor.submit(process_chunk, chunk): chunk[0] for chunk in chunks}
+                for future in as_completed(futures):
                     chunk_idx, chunk_result = future.result()
                     results[chunk_idx] = chunk_result
-            
+
             return ''.join(results)
-        
+
         def process_paths_and_edges():
             """Process paths and collect edges"""
             paths_buffer = StringIO()
             unique_edges = set()
-            
+
             for lineage, path in graph.paths.items():
-                if ignore_ancestral and lineage == "Ancestral":
+                if lineage == "Ancestral":
                     continue
-                
-                # Build path representation using node IDs
-                path_repr = ""
-                if path.path_edges:
-                    # Start with first node
-                    path_repr = f"{path.path_edges[0].node1.id}+"
-                    # Add subsequent nodes
-                    for edge in path.path_edges:
-                        orientation = '+' if not edge.node2_side else '-'
-                        path_repr += f",{edge.node2.id}{orientation}"
-                
-                paths_buffer.write(f"P\tlineage_{path.lineage}\t{path_repr}\t*\n")
-                
+                if not path.path_edges:
+                    continue
+
+                # Build path string
+                path_str = f"{path.path_edges[0].node1.id}+"
+                for edge in path.path_edges:
+                    orient = "+" if not edge.node2_side else "-"
+                    path_str += f",{edge.node2.id}{orient}"
+
+                paths_buffer.write(f"P\t{sample}#{lineage}#chr_{chromosome}\t{path_str}\t*\n")
+
                 # Collect edges
                 for edge in path.path_edges:
-                    edge_signature = (
-                        edge.node1.id, edge.node1_side,
-                        edge.node2.id, edge.node2_side
+                    edge_key = (
+                        edge.node1.id,
+                        "+" if edge.node1_side else "-",
+                        edge.node2.id,
+                        "+" if not edge.node2_side else "-"
                     )
-                    unique_edges.add(edge_signature)
-            
+                    unique_edges.add(edge_key)
+
             # Convert edges to strings
             edges_buffer = StringIO()
-            for edge_data in unique_edges:
-                node1_id, node1_side, node2_id, node2_side = edge_data
-                orientation1 = "+" if node1_side else "-"
-                orientation2 = "+" if not node2_side else "-"
-                edges_buffer.write(f"L\t{node1_id}\t{orientation1}\t{node2_id}\t{orientation2}\t0M\n")
-            
+            for n1_id, o1, n2_id, o2 in sorted(unique_edges):
+                edges_buffer.write(f"L\t{n1_id}\t{o1}\t{n2_id}\t{o2}\t0M\n")
+
             return paths_buffer.getvalue(), edges_buffer.getvalue()
-        
+
         # Execute both tasks in parallel
-        MScompute(f"Starting to create buffer with {max_workers} threads")
-        
         with ThreadPoolExecutor(max_workers=2) as executor:
             nodes_future = executor.submit(process_nodes_parallel)
             paths_edges_future = executor.submit(process_paths_and_edges)
-            
+
             nodes_str = nodes_future.result()
             paths_str, edges_str = paths_edges_future.result()
-        
-        # Calculate data sizes
-        nodes_size = len(nodes_str)
-        edges_size = len(edges_str)
-        paths_size = len(paths_str)
-        total_size = nodes_size + edges_size + paths_size
-        
-        MScompute(f"Buffer ready: {total_size:,} characters to save. ({nodes_size:,} S, {edges_size:,} L, {paths_size:,} P)")
-        
+
         # Write to file
-        MScompute(f"Writing GFA file...")
-        with open(file_path, 'w') as f:
+        with open(temp_path, 'w') as f:
             f.write(nodes_str)
             f.write(edges_str)
             f.write(paths_str)
+
+    @staticmethod
+    def save_subgraph_temp_simple(graph, temp_path: str, sample: str, chromosome: str):
+        """
+        Simple single-threaded save for small graphs.
         
-        MSsuccess(f"GFA export completed successfully!")
+        Parameters:
+            graph: Graph object to save
+            temp_path (str): Path to temp file
+            sample (str): Sample name
+            chromosome (str): Chromosome identifier
+        """
+        with open(temp_path, 'w') as f:
+            # Nodes (S lines)
+            for node in sorted(graph.nodes, key=lambda n: n.id):
+                f.write(f"S\t{node.id}\t{node}\n")
+
+            # Edges (L lines) - collect unique edges
+            unique_edges = set()
+            for lineage, path in graph.paths.items():
+                if lineage == "Ancestral":
+                    continue
+                for edge in path.path_edges:
+                    edge_key = (
+                        edge.node1.id,
+                        "+" if edge.node1_side else "-",
+                        edge.node2.id,
+                        "+" if not edge.node2_side else "-"
+                    )
+                    unique_edges.add(edge_key)
+
+            for n1_id, o1, n2_id, o2 in sorted(unique_edges):
+                f.write(f"L\t{n1_id}\t{o1}\t{n2_id}\t{o2}\t0M\n")
+
+            # Paths (P lines)
+            for lineage, path in graph.paths.items():
+                if lineage == "Ancestral":
+                    continue
+                if not path.path_edges:
+                    continue
+
+                path_str = f"{path.path_edges[0].node1.id}+"
+                for edge in path.path_edges:
+                    orient = "+" if not edge.node2_side else "-"
+                    path_str += f",{edge.node2.id}{orient}"
+
+                f.write(f"P\t{sample}#{lineage}#chr_{chromosome}\t{path_str}\t*\n")
+
+    @staticmethod
+    def merge_temp_files_to_gfa(temp_files: list, id_offsets: list, output_path: str, 
+                            sample: str, chromosome: str) -> dict:
+        """Optimized merge with buffered I/O."""
+        MScompute(f"Merging {len(temp_files)} temp files with ID remapping")
+        
+        BUFFER_SIZE = 100_000  # Lines before flush
+        
+        def remap_id(local_id: int, subgraph_idx: int) -> int:
+            return local_id + id_offsets[subgraph_idx]
+        
+        paths_by_lineage = {}
+        prev_global_end_id = None
+        connecting_edges = []
+        
+        with open(output_path, 'w', buffering=8*1024*1024) as out_f:  # 8MB buffer
+            write_buffer = []
+            
+            def flush_buffer():
+                nonlocal write_buffer
+                if write_buffer:
+                    out_f.write(''.join(write_buffer))
+                    write_buffer = []
+            
+            for tf_idx, tf in enumerate(temp_files):
+                subgraph_idx = tf.index
+                
+                global_start_id = remap_id(tf.local_start_id, subgraph_idx)
+                global_end_id = remap_id(tf.local_end_id, subgraph_idx)
+                
+                if prev_global_end_id is not None:
+                    connecting_edges.append(
+                        f"L\t{prev_global_end_id}\t+\t{global_start_id}\t+\t0M\n"
+                    )
+                prev_global_end_id = global_end_id
+                
+                with open(tf.path, 'r', buffering=4*1024*1024) as in_f:  # 4MB read buffer
+                    for line in in_f:
+                        if line.startswith('S\t'):
+                            parts = line.split('\t', 2)  # Limit splits for speed
+                            local_id = int(parts[1])
+                            global_id = remap_id(local_id, subgraph_idx)
+                            write_buffer.append(f"S\t{global_id}\t{parts[2]}")
+                            
+                        elif line.startswith('L\t'):
+                            parts = line.split('\t')
+                            global_n1 = remap_id(int(parts[1]), subgraph_idx)
+                            global_n2 = remap_id(int(parts[3]), subgraph_idx)
+                            write_buffer.append(
+                                f"L\t{global_n1}\t{parts[2]}\t{global_n2}\t{parts[4]}\t{parts[5]}"
+                            )
+                            
+                        elif line.startswith('P\t'):
+                            parts = line.split('\t')
+                            lineage = parts[1].split('#')[1]
+                            segments = parts[2].split(',')
+                            # Use list comprehension for speed
+                            remapped = [f"{int(s[:-1]) + id_offsets[subgraph_idx]}{s[-1]}" 
+                                    for s in segments]
+                            
+                            if lineage not in paths_by_lineage:
+                                paths_by_lineage[lineage] = []
+                            paths_by_lineage[lineage].extend(remapped)
+                        
+                        if len(write_buffer) >= BUFFER_SIZE:
+                            flush_buffer()
+                
+                # Progress for merge phase
+                if (tf_idx + 1) % 100 == 0 or tf_idx == len(temp_files) - 1:
+                    MScompute(f"  Phase 2: merged {tf_idx + 1}/{len(temp_files)} subgraphs")
+            
+            flush_buffer()
+            
+            # Write connecting edges
+            out_f.write(''.join(connecting_edges))
+            
+            # Write merged paths
+            for lineage, segments in paths_by_lineage.items():
+                path_name = f"{sample}#{lineage}#chr_{chromosome}"
+                out_f.write(f"P\t{path_name}\t{','.join(segments)}\t*\n")
+        
+        MSsuccess(f"Final GFA written: {output_path}")
+        return {lineage: len(segs) for lineage, segs in paths_by_lineage.items()}
+
+    @staticmethod
+    def write_fasta_from_gfa(gfa_path: str,sample: str,chromosome: str,fasta_folder: str,compress: bool = True):
+        """Read the final GFA and write FASTA sequences."""
+        import gzip
+        from Bio import SeqIO
+        from Bio.SeqRecord import SeqRecord
+        from Bio.Seq import Seq
+
+        os.makedirs(fasta_folder, exist_ok=True)
+        ext = ".fasta.gz" if compress else ".fasta"
+        fasta_path = os.path.join(fasta_folder, f"{sample}_chr{chromosome}{ext}")
+
+        MScompute("Building FASTA from GFA")
+
+        # Read node sequences
+        node_seqs = {}
+        paths = {}  # path_name -> segments string
+
+        with open(gfa_path, 'r') as f:
+            for line in f:
+                if line.startswith('S\t'):
+                    parts = line.strip().split('\t')
+                    node_id = int(parts[1])
+                    seq = parts[2]
+                    node_seqs[node_id] = seq
+                elif line.startswith('P\t'):
+                    parts = line.strip().split('\t')
+                    path_name = parts[1]
+                    segments = parts[2]
+                    paths[path_name] = segments
+
+        # Reverse complement helper
+        comp = {'A': 'T', 'T': 'A', 'G': 'C', 'C': 'G'}
+
+        def rev_comp(s):
+            return ''.join(comp.get(b, b) for b in reversed(s))
+
+        # Write FASTA
+        open_func = gzip.open if compress else open
+        with open_func(fasta_path, 'wt') as out_f:
+            for path_name, segments in paths.items():
+                seq_parts = []
+                for seg in segments.split(','):
+                    node_id = int(seg[:-1])
+                    orient = seg[-1]
+                    node_seq = node_seqs.get(node_id, "")
+                    if orient == '-':
+                        node_seq = rev_comp(node_seq)
+                    seq_parts.append(node_seq)
+
+                full_seq = ''.join(seq_parts)
+                record = SeqRecord(Seq(full_seq), id=path_name, description="")
+                SeqIO.write(record, out_f, "fasta")
+
+        MSsuccess(f"FASTA written: {fasta_path}")

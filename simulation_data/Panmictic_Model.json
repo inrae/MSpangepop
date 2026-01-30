@@ -1,21 +1,34 @@
 {
-  "name": "Panmictic_Model",
-  "description": "Single panmictic population model with parameter ranges",
+  "name": "low_mem",
   
   "simulation_params": {
-    "fasta_gz": "small_test_genome.fa.gz",
+    "fasta_gz": "simulation_data/small_test_genome.fa.gz",
     "chr_n": 1,
     "sv_distribution": {
-      "SNP": 30,
+      "SNP": 50,
+      "DEL": 20,
+      "INS": 15,
+      "INV": 10,
+      "DUP": 5
+    },
+    "max_sv": {
+      "SNP": 100,
       "DEL": 20,
       "INS": 20,
       "INV": 20,
-      "DUP": 10
-    }
+      "DUP": 20
+    },
+    "sv_length_files": {
+      "DEL": "simulation_data/size_distribDEL.tsv",
+      "INS": "simulation_data/size_distribINS.tsv",
+      "INV": "simulation_data/size_distribINV.tsv",
+      "DUP": "simulation_data/size_distribDUP.tsv"
+    },
+    "seed":1
   },
   
   "evolutionary_params": {
-    "mutation_rate": 1e-7,
+    "mutation_rate": 1e-10,
     "recombination_rate": 1e-8,
     "generation_time": 25
   },
@@ -33,4 +46,4 @@
       "sample_size": 3
     }
   ]
-} 
+}

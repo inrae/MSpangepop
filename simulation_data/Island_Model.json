@@ -3,7 +3,7 @@
   "description": "Island model with both fixed and range parameters",
   
   "simulation_params": {
-    "fasta_gz": "small_test_genome.fa.gz",
+    "fasta_gz": "simulation_data/small_test_genome.fa.gz",
     "chr_n": 1,
     "sv_distribution": {
       "SNP": 30,
@@ -11,6 +11,19 @@
       "INS": 15,
       "INV": 20,
       "DUP": 15
+    }, 
+    "max_sv": {
+      "SNP": {"min": 50, "max": 200},
+      "DEL": {"min": 10, "max": 50},
+      "INS": {"min": 10, "max": 50},
+      "INV": {"min": 5, "max": 30},
+      "DUP": {"min": 5, "max": 30}
+    },
+    "sv_length_files": {
+      "DEL": "simulation_data/size_distribDEL.tsv",
+      "INS": "simulation_data/size_distribINS.tsv",
+      "INV": "simulation_data/size_distribINV.tsv",
+      "DUP": "simulation_data/size_distribDUP.tsv"
     },
     "seed": "Pangenome"
   },
