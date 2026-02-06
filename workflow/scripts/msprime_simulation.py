@@ -17,7 +17,7 @@ from collections import defaultdict
 os.environ['MPLCONFIGDIR'] = './.config/matplotlib'
 import matplotlib.pyplot as plt
 import demesdraw
-from io_handler import MSpangepopDataHandler, MSerror, MSsuccess, MScompute, get_indent, process_seed
+from io_handler import MSpangepopDataHandler, MSerror, MSsuccess, MScompute, MSwarning, get_indent, process_seed
 
 def get_chromosome_bounds(chrom_length: int) -> tuple:
     """Define the chromosome boundaries based on length."""
@@ -176,7 +176,7 @@ def load_demographic_model(demographic_file: str, verbose = True):
 
 def plot_demographic(demographic_file: str, output_file: str, log_time: bool = True):
     """
-    Plot demographic model using demes visualization.
+    Plot demographic model using demes visualization with improved readability.
     
     Args:
         demographic_file: Path to demographic JSON file
@@ -185,23 +185,62 @@ def plot_demographic(demographic_file: str, output_file: str, log_time: bool = T
     """
     try:
         # Load the demographic model
-        demography, _, _, _, _, demo_data = load_demographic_model(demographic_file, verbose = False)
+        demography, _, _, _, _, demo_data = load_demographic_model(demographic_file, verbose=False)
         
-        # Create figure and plot
-        fig, ax = plt.subplots(figsize=(10, 8))
+        # Create figure with larger size for better visibility
+        fig, ax = plt.subplots(figsize=(12, 10))
         
-        # Convert to demes and draw
+        # Convert to demes and draw with basic parameters
         graph = demography.to_demes()
         demesdraw.tubes(graph, ax=ax, log_time=log_time)
-        ax.set_title(f"{demo_data.get('name', 'Demographic Model')}\n{demo_data.get('description', '')}")
         
-        # Save
+        # Post-process the plot to improve readability
+        # Make all lines thicker (borders)
+        for line in ax.lines:
+            line.set_linewidth(6)
+            line.set_color('black')
+        
+        # Make patches opaque (remove transparency)
+        for patch in ax.patches:
+            patch.set_alpha(1.0)
+            patch.set_edgecolor('black')
+            patch.set_linewidth(2.5)
+        
+        # Make arrows bigger and bolder
+        for artist in ax.artists:
+            if hasattr(artist, 'set_linewidth'):
+                artist.set_linewidth(4)
+        
+        # Improve title
+        title_text = demo_data.get('name', 'Demographic Model')
+        description = demo_data.get('description', '')
+        if description:
+            ax.set_title(f"{title_text}\n{description}", fontsize=14, fontweight='bold', pad=20)
+        else:
+            ax.set_title(title_text, fontsize=14, fontweight='bold', pad=20)
+        
+        # Improve axis labels
+        ax.set_ylabel('Time (generations ago)', fontsize=12, fontweight='bold')
+        ax.set_xlabel('Effective population size', fontsize=12, fontweight='bold')
+        
+        # Make frame thicker
+        for spine in ax.spines.values():
+            spine.set_linewidth(2)
+            spine.set_edgecolor('black')
+        
+        # Increase tick label size
+        ax.tick_params(axis='both', which='major', labelsize=11, width=2, length=6)
+        
+        # Add grid for better readability
+        ax.grid(True, alpha=0.3, linestyle='--', linewidth=0.5)
+        
+        # Save with high quality and white background
         plt.tight_layout()
-        plt.savefig(output_file, dpi=300, bbox_inches='tight')
+        plt.savefig(output_file, dpi=300, bbox_inches='tight', facecolor='white', edgecolor='none')
         plt.close()
+        
     except Exception as e:
-        MScompute(f"Warning: Could not generate demographic plot: {e}")
-    
+        MSwarning(f"Could not generate demographic plot: {e}")
 
 def save_output(mutated_ts, chromosome_name: str, json_file: str, readable_json: bool):
     """

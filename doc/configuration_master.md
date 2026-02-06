@@ -84,6 +84,8 @@ samples:
 |-----------|------|-------------|---------|
 | `output_dir` | string | Base directory for all simulation outputs | `"results/"` |
 | `memory_multiplier` | float | Memory scaling factor for cluster jobs (increase if OOM errors) | `1` |
+| `succint` | bool | If True, skip visialization rule | `False` |
+
 
 ## Complete Example
 
@@ -118,7 +120,8 @@ samples:
 
 # Global settings
 output_dir: "results/"
-memory_multiplier: 1.5  # Increase if jobs fail due to memory
+memory_multiplier: 1.5  
+succint: False
 ```
 
 ## How Replicates Work with Parameter Ranges
