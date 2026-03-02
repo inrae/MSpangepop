@@ -18,9 +18,7 @@ Note:
 """
 
 import argparse
-from pathlib import Path
-from Bio import SeqIO
-from io_handler import MSpangepopDataHandler, MSerror, MSsuccess, MScompute, MSwarning
+from io_handler import MSpangepopDataHandler, MSerror, MSsuccess, MSwarning
 
 def validate_fasta(fasta_records, min_contigs):
     """
