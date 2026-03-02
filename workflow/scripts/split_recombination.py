@@ -7,7 +7,6 @@ Usage : This script will split the sequence between recombination events simulat
 """
 
 import argparse
-import sys
 import gzip
 from io_handler import MSpangepopDataHandler, MSsuccess, MSerror, MScompute, MSwarning
 

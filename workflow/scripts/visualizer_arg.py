@@ -11,7 +11,6 @@ Usage: Creates specific visualizations for full ARGs without mutations.
 import sys
 import os
 import argparse
-import time
 import json
 import tskit
 import numpy as np
@@ -21,7 +20,6 @@ import seaborn as sns
 import msprime
 from scipy.cluster.hierarchy import dendrogram, linkage
 from scipy import stats
-from collections import defaultdict
 from io_handler import MSerror, MSsuccess, MScompute, MSwarning
 
 # Set matplotlib backend for non-interactive environments

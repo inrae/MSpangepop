@@ -7,7 +7,7 @@ This scripts holds usefull function for the graph creation step
 """
 
 import random
-from io_handler import MSerror, MSsuccess, MSwarning, MScompute
+from io_handler import MSwarning, MScompute
 from datetime import datetime
 import os
 os.environ['MPLCONFIGDIR'] = './.config/matplotlib'
@@ -15,10 +15,6 @@ import matplotlib.pyplot as plt # type: ignore
 import numpy as np
 from collections import defaultdict
 from scipy.stats import gaussian_kde
-import threading
-import psutil
-from dataclasses import dataclass
-from typing import List, Tuple, Dict, Any
 
 def mutate_base(original_base: str, traition_matrix: dict) -> str:
     """Uses the provided transition matrix to determine the mutated base."""

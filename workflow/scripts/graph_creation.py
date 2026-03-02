@@ -68,16 +68,11 @@ REQUIRED INPUTS:
 
 import argparse
 import os
-import tempfile
 import shutil
 from dataclasses import dataclass
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
-from io import StringIO
-import multiprocessing as mp
-
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from typing import List
 from bitarray import bitarray  # type: ignore
-
 from io_handler import MSpangepopDataHandler, MSerror, MSsuccess, MScompute, MSwarning
 from graph_utils import (
     mutate_base, generate_sequence, gather_lineages,

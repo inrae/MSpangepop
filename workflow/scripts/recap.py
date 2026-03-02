@@ -15,7 +15,7 @@ import argparse
 import socket
 import datetime
 import platform
-from io_handler import MSsuccess, MScompute
+from io_handler import MScompute
 
 os.environ['MPLCONFIGDIR'] = './.config/matplotlib'
 
