@@ -471,6 +471,7 @@ class MSpangepopDataHandler:
         from Bio import SeqIO  # type: ignore
         from Bio.SeqRecord import SeqRecord  # type: ignore
         from Bio.Seq import Seq  # type: ignore
+        from graph_utils import reverse_complement
 
         os.makedirs(fasta_folder, exist_ok=True)
         ext = ".fasta.gz" if compress else ".fasta"
@@ -495,12 +496,6 @@ class MSpangepopDataHandler:
                     segments = parts[2]
                     paths[path_name] = segments
 
-        # Reverse complement helper
-        comp = {'A': 'T', 'T': 'A', 'G': 'C', 'C': 'G'}
-
-        def rev_comp(s):
-            return ''.join(comp.get(b, b) for b in reversed(s))
-
         # Write FASTA
         open_func = gzip.open if compress else open
         with open_func(fasta_path, 'wt') as out_f:
@@ -511,7 +506,7 @@ class MSpangepopDataHandler:
                     orient = seg[-1]
                     node_seq = node_seqs.get(node_id, "")
                     if orient == '-':
-                        node_seq = rev_comp(node_seq)
+                        node_seq = reverse_complement(node_seq)
                     seq_parts.append(node_seq)
 
                 full_seq = ''.join(seq_parts)

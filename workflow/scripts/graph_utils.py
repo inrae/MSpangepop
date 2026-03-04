@@ -7,7 +7,7 @@ This scripts holds usefull function for the graph creation step
 """
 
 import random
-from io_handler import MSwarning, MScompute
+from io_handler import MSwarning, MScompute, MSerror
 from datetime import datetime
 import os
 os.environ['MPLCONFIGDIR'] = './.config/matplotlib'
@@ -15,6 +15,20 @@ import matplotlib.pyplot as plt # type: ignore
 import numpy as np
 from collections import defaultdict
 from scipy.stats import gaussian_kde
+
+_COMPLEMENT_MAP = {
+    'A': 'T', 'T': 'A', 'G': 'C', 'C': 'G',
+    'a': 't', 't': 'a', 'g': 'c', 'c': 'g'
+}
+
+def reverse_complement(sequence: str) -> str:
+    """Returns the reverse complement of a DNA sequence string."""
+    rev_comp = []
+    for base in reversed(sequence):
+        if base not in _COMPLEMENT_MAP:
+            raise MSerror(f"Invalid DNA base encountered: '{base}'")
+        rev_comp.append(_COMPLEMENT_MAP[base])
+    return ''.join(rev_comp)
 
 def mutate_base(original_base: str, traition_matrix: dict) -> str:
     """Uses the provided transition matrix to determine the mutated base."""
