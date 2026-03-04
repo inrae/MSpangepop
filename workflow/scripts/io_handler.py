@@ -396,14 +396,14 @@ class MSpangepopDataHandler:
         prev_global_end_id = None
         connecting_edges = []
         
+        write_buffer = []
+        
+        def flush_buffer(write_buffer, out_f):
+            if write_buffer:
+                out_f.write(''.join(write_buffer))
+                write_buffer.clear()
+        
         with open(output_path, 'w', buffering=8*1024*1024) as out_f:  # 8MB buffer
-            write_buffer = []
-            
-            def flush_buffer():
-                nonlocal write_buffer
-                if write_buffer:
-                    out_f.write(''.join(write_buffer))
-                    write_buffer = []
             
             for tf_idx, tf in enumerate(temp_files):
                 subgraph_idx = tf.index
@@ -446,13 +446,13 @@ class MSpangepopDataHandler:
                             paths_by_lineage[lineage].extend(remapped)
                         
                         if len(write_buffer) >= BUFFER_SIZE:
-                            flush_buffer()
+                            flush_buffer(write_buffer, out_f)
                 
                 # Progress for merge phase
                 if (tf_idx + 1) % 100 == 0 or tf_idx == len(temp_files) - 1:
                     MScompute(f"  Phase 2: merged {tf_idx + 1}/{len(temp_files)} subgraphs")
             
-            flush_buffer()
+            flush_buffer(write_buffer, out_f)
             
             # Write connecting edges
             out_f.write(''.join(connecting_edges))
