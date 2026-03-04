@@ -468,9 +468,6 @@ class MSpangepopDataHandler:
     @staticmethod
     def write_fasta_from_gfa(gfa_path: str,sample: str,chromosome: str,fasta_folder: str,compress: bool = True):
         """Read the final GFA and write FASTA sequences."""
-        from Bio import SeqIO  # type: ignore
-        from Bio.SeqRecord import SeqRecord  # type: ignore
-        from Bio.Seq import Seq  # type: ignore
         from graph_utils import reverse_complement
 
         os.makedirs(fasta_folder, exist_ok=True)
@@ -496,21 +493,38 @@ class MSpangepopDataHandler:
                     segments = parts[2]
                     paths[path_name] = segments
 
-        # Write FASTA
+        FASTA_LINE_WIDTH = 60
+
+        # Write FASTA incrementally without building full sequence in memory
         open_func = gzip.open if compress else open
         with open_func(fasta_path, 'wt') as out_f:
             for path_name, segments in paths.items():
-                seq_parts = []
+                out_f.write(f">{path_name}\n")
+                
+                line_pos = 0  # Current position in the FASTA line
+                
                 for seg in segments.split(','):
                     node_id = int(seg[:-1])
                     orient = seg[-1]
                     node_seq = node_seqs.get(node_id, "")
                     if orient == '-':
                         node_seq = reverse_complement(node_seq)
-                    seq_parts.append(node_seq)
-
-                full_seq = ''.join(seq_parts)
-                record = SeqRecord(Seq(full_seq), id=path_name, description="")
-                SeqIO.write(record, out_f, "fasta")
+                    
+                    # Write segment bases while respecting FASTA line width
+                    seq_pos = 0
+                    while seq_pos < len(node_seq):
+                        remaining_in_line = FASTA_LINE_WIDTH - line_pos
+                        chunk = node_seq[seq_pos:seq_pos + remaining_in_line]
+                        out_f.write(chunk)
+                        seq_pos += len(chunk)
+                        line_pos += len(chunk)
+                        
+                        if line_pos >= FASTA_LINE_WIDTH:
+                            out_f.write('\n')
+                            line_pos = 0
+                
+                # End the last line if it was not already terminated
+                if line_pos > 0:
+                    out_f.write('\n')
 
         MSsuccess(f"FASTA written: {fasta_path}")
