@@ -1210,15 +1210,6 @@ def _validate_mutation(mut_type: MutationType, relative_start: int, length: int,
         if relative_start + length - 1 >= path_length - 1:
             return f"{mut_type.value} would affect last position"
     return None
-    
-    
-    # Merge tracking results into recap and visualizer
-    for mutation_data in mutations:
-        recap.add_mutation(**mutation_data)
-
-    # Merge tracking results into recap and visualizer
-    for mutation_data in mutations:
-        recap.add_mutation(**mutation_data)
 
 # ============================================================================
 # MAIN FUNCTION
