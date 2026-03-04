@@ -297,7 +297,7 @@ rule gfa_merge:
         echo "[gfa_merge] Initial GFA state :" > {output.polished_gfa_stats}
         vg stats -z {output.vg_raw} -t {threads} >> {output.polished_gfa_stats}
         echo "[gfa_merge] Starting to unchop"
-        vg mod -u {output.vg_raw} -t {threads} > {output.vg_unchoped}
+        vg mod -u {output.vg_raw} --remove-non-path -t {threads} > {output.vg_unchoped}
         echo "[gfa_merge] Final state :" >> {output.polished_gfa_stats}
         vg stats -z {output.vg_unchoped} -t {threads} >> {output.polished_gfa_stats}
         cat {output.polished_gfa_stats}

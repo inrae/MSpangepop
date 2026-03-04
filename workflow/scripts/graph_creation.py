@@ -24,7 +24,6 @@ Workflow:
        - For each locus (in parallel): 
            * Initialize graph from sequence
            * Apply mutations (SNP, INS, DEL, INV, DUP)
-           * Lint to remove orphan nodes
            * Assign LOCAL node IDs (starting at 1 per subgraph)
            * Save to temp file as GFA fragment
            * Free graph from memory
@@ -753,38 +752,6 @@ class Graph:
         """Adds a new node to the graph."""
         self.nodes.add(node)
 
-    def lint(self, ignore_ancestral=False, visualizer=None) -> None:
-        """
-        Removes orphan nodes from the graph.
-        
-        Orphan nodes are nodes that exist in self.nodes but are not referenced
-        by any Edge in any Path. This can happen after graph modifications like
-        deletions, bypasses, or other operations that leave unused nodes behind.
-        
-        Parameters:
-        - ignore_ancestral (bool): If True, nodes used only in the ancestral path
-                                will be considered orphans and removed
-        """
-        used_nodes = set()
-
-        for lineage, path in self.paths.items():
-            if ignore_ancestral and lineage == "Ancestral":
-                continue
-            for edge in path.path_edges:
-                used_nodes.add(edge.node1)
-                used_nodes.add(edge.node2)
-
-        if visualizer:
-            all_nodes = set(self.nodes)
-            removed_nodes = all_nodes - used_nodes
-            visualizer.record(
-                before=len(all_nodes),
-                after=len(used_nodes),
-                removed=removed_nodes
-            )
-
-        self.nodes &= used_nodes # Use set operation for efficient linting 
-
     def build_from_sequence(self, nucleotide_sequence: str, lineages: set) -> None:
         """Constructs a graph and creates the associated paths from a nucleotide sequence."""
         if not nucleotide_sequence:
@@ -983,7 +950,7 @@ class SubgraphTempFile:
 
 def process_and_save_single_subgraph(args: tuple) -> SubgraphTempFile:
     """
-    Process one subgraph: init -> apply mutations -> lint -> save to temp.
+    Process one subgraph: init -> apply mutations -> save to temp.
     Uses LOCAL node IDs (remapped to global during merge).
     
     Designed to run in a separate process (all args must be picklable).
@@ -1001,8 +968,8 @@ def process_and_save_single_subgraph(args: tuple) -> SubgraphTempFile:
     ) = args
     
     # Reconstruct SeqRecord (Bio.SeqRecord isn't picklable)
-    from Bio.Seq import Seq
-    from Bio.SeqRecord import SeqRecord
+    from Bio.Seq import Seq # type: ignore
+    from Bio.SeqRecord import SeqRecord # type: ignore
     seq_record = SeqRecord(Seq(seq_data[1]), id=seq_data[0])
     
     # Local tracking (will be merged into main recap/visualizer later)
@@ -1043,9 +1010,6 @@ def process_and_save_single_subgraph(args: tuple) -> SubgraphTempFile:
                 local_mutations=local_mutations,
                 local_variants=local_variants
             )
-    
-    # 3. Lint (remove orphan nodes)
-    graph.lint(ignore_ancestral=True)
     
     # 4. Assign LOCAL node IDs (starting at 1 for each subgraph)
     local_allocator = NodeIDAllocator(start_id=1)
