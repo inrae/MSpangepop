@@ -210,8 +210,6 @@ class MSpangepopDataHandler:
         try:
             df = pd.read_table(file_path)
             df['cumulative_pb'] = df['pb'].cumsum()
-            if not abs(df['cumulative_pb'].iloc[-1] - 1) < 1e-6:
-                print(f"⚠️ MSpangepop -> Warning: The cumulative probability of {file_path} is less than 1.")
             return df
         except Exception as e:
             raise MSerror(f"Error reading variant length file {file_path}: {e}")
