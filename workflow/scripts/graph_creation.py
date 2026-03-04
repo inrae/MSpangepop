@@ -105,9 +105,16 @@ class Node:
     def reverse_complement(self) -> str:
         """Returns the reverse complement of the DNA sequence."""
         sequence = self.__decode
-        complement_map = {'A': 'T', 'T': 'A', 'G': 'C', 'C': 'G'}
-        return ''.join(complement_map.get(base, base) for base in reversed(sequence))
-
+        complement_map = {'A': 'T', 'T': 'A', 'G': 'C', 'C': 'G',
+                          'a': 't', 't': 'a', 'g': 'c', 'c': 'g'}
+        
+        rev_comp = []
+        for base in reversed(sequence):
+            if base not in complement_map:
+                raise MSerror(f"Invalid DNA base encountered: '{base}'")
+            rev_comp.append(complement_map[base])
+            
+        return ''.join(rev_comp)
 
 class Edge:
     """
