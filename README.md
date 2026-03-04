@@ -25,7 +25,7 @@ The mirror is especially useful for people with no Renater account to submit iss
 | **1. Setup** | → Validate FASTA/YAML<br>→ Expand configs<br>→ Create index | `input_index.py`<br>`sample_ranges.py`<br>`recap.py` | setup |
 | **2. Msprime Simulation** | → Build demographic model<br>→ Run msprime<br>→ Generate visualizations | `msprime_simulation.py`<br>`visualizer_arg.py`<br>`visualizer_tree.py` | msprime_simulation <br>visualization  |
 | **3. Preprocessing** | → Split by locus<br>→ Preorder traverse trees<br>→ Define SVs type lenght and position | `coalescent_traversal.py`<br>`draw_variants.py`<br>`split_recombination.py` | coalescent_traversal<br>draw_variants<br>split_recombination |
-| **4. Graph Creation** | **Initialize:** Build locus ancestral graphs<br>**Mutate:** Apply variants using MSpangepop library<br>**Save:** Assign IDs → Merge subgraphs→ Lint → Export chopped graph | `graph_creation.py`<br>`graph_utils.py`<br>`matrix.py` | graph_creation |
+| **4. Graph Creation** | **Initialize:** Build locus ancestral graphs<br>**Mutate:** Apply variants using MSpangepop library<br>**Save:** Assign IDs → Merge subgraphs→ Lint → Export chopped graph | `graph_creation.py`<br>`graph_classes.py`<br>`graph_utils.py`<br>`matrix.py` | graph_creation |
 | **5. Unchop** | VG unchop command | - | graph_merging |
 
 ---
