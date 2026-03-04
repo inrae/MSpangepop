@@ -68,7 +68,6 @@ REQUIRED INPUTS:
 import argparse
 import os
 import shutil
-from dataclasses import dataclass
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from typing import List
 from enum import Enum
@@ -942,16 +941,26 @@ class Graph:
         # Apply replacement to each valid path
         self._apply_to_paths(affected_lineages, lambda path: path.cut_paste(a, b, replacement_nodes))
 
-@dataclass
 class SubgraphTempFile:
     """Tracks a saved subgraph temp file."""
-    index: int
-    path: str
-    node_count: int
-    local_start_id: int   # Local ID of first node (for connecting edge)
-    local_end_id: int     # Local ID of last node (for connecting edge)
-    mutations_data: list  # Collected mutation records for merging into recap
-    variants_data: list   # Collected variant records for merging into visualizer
+    __slots__ = (
+        "index", "path", "node_count",
+        "local_start_id",   # Local ID of first node (for connecting edge)
+        "local_end_id",     # Local ID of last node (for connecting edge)
+        "mutations_data",   # Collected mutation records for merging into recap
+        "variants_data"     # Collected variant records for merging into visualizer
+    )
+    
+    def __init__(self, index: int, path: str, node_count: int,
+                 local_start_id: int, local_end_id: int,
+                 mutations_data: list, variants_data: list):
+        self.index = index
+        self.path = path
+        self.node_count = node_count
+        self.local_start_id = local_start_id
+        self.local_end_id = local_end_id
+        self.mutations_data = mutations_data
+        self.variants_data = variants_data
 
 # ============================================================================
 # SUBGRAPH PROCESSING FUNCTIONS
