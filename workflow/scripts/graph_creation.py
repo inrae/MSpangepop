@@ -71,6 +71,7 @@ import shutil
 from dataclasses import dataclass
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from typing import List
+from enum import Enum
 from bitarray import bitarray  # type: ignore
 from io_handler import MSpangepopDataHandler, MSerror, MSsuccess, MScompute, MSwarning
 from graph_utils import (
@@ -80,6 +81,14 @@ from graph_utils import (
 
 # You can choose a matrix here for the SNP and insertion sequences
 from matrix import random_matrix as snp_matrix, simple_at_bias_matrix as insertion_matrix
+
+class MutationType(Enum):
+    """Enumeration of supported mutation types in the variation graph."""
+    SNP = "SNP"
+    INS = "INS"
+    DEL = "DEL"
+    INV = "INV"
+    DUP = "DUP"
 
 class Node:
     """Represents a node in the graph."""
@@ -1079,7 +1088,11 @@ def _apply_mutation_to_graph(
     local_variants: list
 ):
     """Apply a single mutation with validation and tracking (parallel-safe)."""
-    mut_type = mutation.get("type")
+    mut_type_str = mutation.get("type")
+    try:
+        mut_type = MutationType(mut_type_str) if mut_type_str is not None else None
+    except ValueError:
+        mut_type = None
     start = mutation.get("start")
     length = mutation.get("length")
     
@@ -1088,7 +1101,7 @@ def _apply_mutation_to_graph(
         local_mutations.append({
             "tree_index": tree_index,
             "node_id": node_id,
-            "type": mut_type,
+            "type": mut_type.value if mut_type is not None else None,
             "position": start,
             "length": length,
             "affected_lineages": sorted(list(lineages or affected_lineages)),
@@ -1099,9 +1112,9 @@ def _apply_mutation_to_graph(
     # Helper to record variant
     def record_variant(success: bool, lineages: set = None):
         local_variants.append({
-            "type": mut_type,
+            "type": mut_type.value if mut_type is not None else None,
             "position": start,
-            "length": length if mut_type != "SNP" else 1,
+            "length": length if mut_type != MutationType.SNP else 1,
             "success": success,
             "affected_lineages": list(lineages or affected_lineages)
         })
@@ -1148,15 +1161,15 @@ def _apply_mutation_to_graph(
     error_msg = None
     
     try:
-        if mut_type == "SNP":
+        if mut_type == MutationType.SNP:
             graph.add_snp(relative_start, valid_lineages)
-        elif mut_type == "INS":
+        elif mut_type == MutationType.INS:
             graph.add_ins(relative_start, length, valid_lineages)
-        elif mut_type == "DEL":
+        elif mut_type == MutationType.DEL:
             graph.add_del(relative_start, relative_start + length, valid_lineages)
-        elif mut_type == "INV":
+        elif mut_type == MutationType.INV:
             graph.add_inv(relative_start, relative_start + length - 1, valid_lineages)
-        elif mut_type == "DUP":
+        elif mut_type == MutationType.DUP:
             graph.add_tdup(relative_start, relative_start + length - 1, valid_lineages)
         else:
             raise MSerror(f"Unknown mutation type: {mut_type}")
@@ -1168,19 +1181,19 @@ def _apply_mutation_to_graph(
     record_variant(success, valid_lineages)
 
 
-def _validate_mutation(mut_type: str, relative_start: int, length: int, path_length: int):
+def _validate_mutation(mut_type: MutationType, relative_start: int, length: int, path_length: int):
     """Returns error string or None if valid."""
-    if mut_type == "SNP":
+    if mut_type == MutationType.SNP:
         if relative_start == 0:
             return "SNP at first position would break connectivity"
         if relative_start >= path_length - 1:
             return f"SNP at/beyond last position (pos {relative_start}, len {path_length})"
-    elif mut_type == "INS":
+    elif mut_type == MutationType.INS:
         if relative_start == 0:
             return "INS at position 0 would break connectivity"
         if relative_start >= path_length:
             return f"INS position {relative_start} >= path length {path_length}"
-    elif mut_type == "DEL":
+    elif mut_type == MutationType.DEL:
         if length is None:
             return "DEL has no length"
         if relative_start == 0:
@@ -1189,15 +1202,14 @@ def _validate_mutation(mut_type: str, relative_start: int, length: int, path_len
             return "DEL would affect last position"
         if length >= path_length - 2:
             return "DEL would leave less than 3 nodes"
-    elif mut_type in ("INV", "DUP"):
+    elif mut_type in (MutationType.INV, MutationType.DUP):
         if length is None:
-            return f"{mut_type} has no length"
+            return f"{mut_type.value} has no length"
         if relative_start == 0:
-            return f"{mut_type} at first position would break connectivity"
+            return f"{mut_type.value} at first position would break connectivity"
         if relative_start + length - 1 >= path_length - 1:
-            return f"{mut_type} would affect last position"
+            return f"{mut_type.value} would affect last position"
     return None
-
     
     
     # Merge tracking results into recap and visualizer
