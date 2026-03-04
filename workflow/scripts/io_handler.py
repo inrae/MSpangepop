@@ -237,7 +237,7 @@ class MSpangepopDataHandler:
             raise MSerror(f"Error reading FAI file {fai_file}: {e}")      
 
     @staticmethod
-    def save_subgraph_temp(graph, temp_path: str, sample: str, chromosome: str, max_workers: int = 4):
+    def save_subgraph_temp(graph, temp_path: str, sample: str, chromosome: str, max_workers: int):
         """
         Save subgraph to temp file as GFA fragment (S, L, P lines).
         Uses multithreading for larger graphs.
