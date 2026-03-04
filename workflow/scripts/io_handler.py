@@ -21,6 +21,11 @@ import sys
 import os
 import traceback
 import threading
+import json
+import gzip
+from io import StringIO
+from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 #IDF = ["A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P","Q","R","S","T","U","V","W","X","Y","Z"]
 
@@ -118,7 +123,6 @@ class MSpangepopDataHandler:
         Raises:
             FileReadError: If there is an issue reading the JSON file.
         """
-        import json
         try:
             with open(json_path, 'r') as file:
                 return json.load(file)
@@ -137,7 +141,6 @@ class MSpangepopDataHandler:
         Raises:
             FileReadError: If there is an issue saving the JSON file.
         """
-        import json
         try:
             with open(output_path, 'w') as file:
                 json.dump(data, file, indent=get_indent(readable_json)) # Set indent to none to reduce json file size
@@ -159,9 +162,7 @@ class MSpangepopDataHandler:
         Raises:
         FileReadError: If unable to read the FASTA file.
         """
-        import gzip
-        from Bio import SeqIO
-        from pathlib import Path
+        from Bio import SeqIO  # type: ignore
 
         # Convert to Path object and resolve to absolute path
         fasta_path = Path(fasta_file).resolve()
@@ -205,7 +206,7 @@ class MSpangepopDataHandler:
         Raises:
             FileReadError: If there is an issue reading the file.
         """
-        import pandas as pd
+        import pandas as pd  # type: ignore
         try:
             df = pd.read_table(file_path)
             df['cumulative_pb'] = df['pb'].cumsum()
@@ -229,7 +230,7 @@ class MSpangepopDataHandler:
         Raises:
             MSerror: If the .fai file does not exist or cannot be read.
         """
-        import pandas as pd
+        import pandas as pd  # type: ignore
         if not os.path.exists(fai_file):
             raise MSerror(f"FAI file not found: {fai_file}")
         try:
@@ -250,9 +251,6 @@ class MSpangepopDataHandler:
             chromosome (str): Chromosome identifier
             max_workers (int): Number of threads for parallel processing
         """
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-        from io import StringIO
-        
         node_count = len(graph.nodes)
 
         # For small graphs, use simple single-threaded approach
@@ -472,10 +470,9 @@ class MSpangepopDataHandler:
     @staticmethod
     def write_fasta_from_gfa(gfa_path: str,sample: str,chromosome: str,fasta_folder: str,compress: bool = True):
         """Read the final GFA and write FASTA sequences."""
-        import gzip
-        from Bio import SeqIO
-        from Bio.SeqRecord import SeqRecord
-        from Bio.Seq import Seq
+        from Bio import SeqIO  # type: ignore
+        from Bio.SeqRecord import SeqRecord  # type: ignore
+        from Bio.Seq import Seq  # type: ignore
 
         os.makedirs(fasta_folder, exist_ok=True)
         ext = ".fasta.gz" if compress else ".fasta"
