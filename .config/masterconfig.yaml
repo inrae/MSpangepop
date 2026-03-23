@@ -1,4 +1,4 @@
-# MSpangepop Simplified Configuration File
+# mspangenome Simplified Configuration File
 # 
 # This configuration only specifies which models to run and how many times.
 # All simulation parameters and ranges are stored within the demographic model JSON files.

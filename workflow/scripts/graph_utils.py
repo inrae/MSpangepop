@@ -126,7 +126,7 @@ class MutationRecap:
         """Save recap to file with inline format."""
         with open(filepath, 'w') as f:
             # Write header
-            f.write("🔹 MSpangepop Mutation Recap File\n")
+            f.write("🔹 mspangenome Mutation Recap File\n")
             f.write("This file recaps all mutations added in the graph.\n")
             f.write("-"*120+"\n")
             f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")

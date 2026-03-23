@@ -15,7 +15,7 @@ Usage : Construct a binary tree form a json file and then perform the perorder t
 from collections import defaultdict
 import argparse
 from concurrent.futures import ThreadPoolExecutor
-from io_handler import MSpangepopDataHandler, MScompute, MSsuccess, MSerror
+from io_handler import MSpangenomeDataHandler, MScompute, MSsuccess, MSerror
 
 class TreeNode:
     """Represents a node in the binary tree."""
@@ -157,7 +157,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     try:
-        json_data = MSpangepopDataHandler.read_json(args.json)
+        json_data = MSpangenomeDataHandler.read_json(args.json)
         if not isinstance(json_data, list):
             raise MSerror(f"Invalid JSON format in {args.json}: Expected a list of tree objects.")
 
@@ -167,7 +167,7 @@ if __name__ == "__main__":
             results = list(filter(None, executor.map(process_tree, json_data)))
 
         if results:
-            MSpangepopDataHandler.save_json(results, args.output_file, args.readable_json)
+            MSpangenomeDataHandler.save_json(results, args.output_file, args.readable_json)
             MSsuccess(f"Serialized traversal for chromosome {args.chromosome}")
         else:
             raise MSerror(f"No valid trees processed for chromosome {args.chromosome}. Output file not saved.")

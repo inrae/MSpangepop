@@ -17,7 +17,7 @@ from collections import defaultdict
 os.environ['MPLCONFIGDIR'] = './.config/matplotlib'
 import matplotlib.pyplot as plt
 import demesdraw
-from io_handler import MSpangepopDataHandler, MSerror, MSsuccess, MScompute, MSwarning, get_indent, process_seed
+from io_handler import MSpangenomeDataHandler, MSerror, MSsuccess, MScompute, MSwarning, get_indent, process_seed
 
 def get_chromosome_bounds(chrom_length: int) -> tuple:
     """Define the chromosome boundaries based on length."""
@@ -308,7 +308,7 @@ def get_chromosome_length(fai_file, chromosome_name):
     Retrieves the length of a specified chromosome from a FASTA index (.fai) file.
     """
 
-    chrom_lengths = MSpangepopDataHandler.read_fai(fai_file)
+    chrom_lengths = MSpangenomeDataHandler.read_fai(fai_file)
 
     if not chromosome_name.isdigit() or int(chromosome_name) - 1 >= len(chrom_lengths):
         raise MSerror(f"Invalid chromosome number: {chromosome_name}")
@@ -390,7 +390,7 @@ def simulate_chromosome_evolution(
         # Write recap file
         recap_file_path = recap
         with open(recap_file_path, "w") as recap_file:
-            recap_file.write("🔹 MSpangepop MSprime Simulation Recap \n")
+            recap_file.write("🔹 mspangenome MSprime Simulation Recap \n")
             recap_file.write("=" * 60 + "\n\n")
             
             # Basic information
@@ -488,13 +488,13 @@ def simulate_chromosome_evolution(
         MSsuccess(f"Chr {chromosome_name} msprime recap created, total runtime: {total_time/60:.2f} min.")
 
     except FileNotFoundError as e:
-        raise MSerror(f"MSpangepop -> Missing file: {e}")
+        raise MSerror(f"mspangenome -> Missing file: {e}")
 
     except ValueError as e:
-        raise MSerror(f"MSpangepop -> Invalid value encountered: {e}")
+        raise MSerror(f"mspangenome -> Invalid value encountered: {e}")
 
     except Exception as e:
-        raise MSerror(f"MSpangepop -> Unexpected error: {e}")
+        raise MSerror(f"mspangenome -> Unexpected error: {e}")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(

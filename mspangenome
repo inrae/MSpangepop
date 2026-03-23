@@ -1,22 +1,22 @@
 #!/bin/bash
 #SBATCH --cpus-per-task=2
-#SBATCH -o slurm_logs/mspangepop_slurm_log_%j.log
-#SBATCH -e slurm_logs/mspangepop_slurm_log_%j.log
+#SBATCH -o slurm_logs/mspangenome_slurm_log_%j.log
+#SBATCH -e slurm_logs/mspangenome_slurm_log_%j.log
 #SBATCH --time=80:00:00
-#SBATCH -J MSpangepop
+#SBATCH -J mspangenome
 #SBATCH --mem=5G
 #SBATCH --ntasks=1
 
 # Written by Lucien Piat at INRAe
-# Use this script to run Mspangepop on a HPC
+# Use this script to run mspangenome on a HPC
 
 # Verify arguments
 
 
 if [ $# -lt 1 ] || [ "$1" == "help" ]; then
-    echo "Use this script to run MSpangepop"
+    echo "Use this script to run mspangenome"
     echo ""
-    echo "Usage: mspangepop [dry|run|local-run|dag|rulegraph|unlock]"
+    echo "Usage: mspangenome [dry|run|local-run|dag|rulegraph|unlock]"
     echo "    dry - run in dry-run mode"
     echo "    run - run the workflow with SLURM"
     echo "    local-run - run the workflow localy (on a single node)"
@@ -26,21 +26,21 @@ if [ $# -lt 1 ] || [ "$1" == "help" ]; then
     exit 1
 fi
 
-echo "Welcome to MSpangepop! Make sure .config/masterconfig.yaml is correctly edited for this run."
+echo "Welcome to mspangenome! Make sure .config/masterconfig.yaml is correctly edited for this run."
 MEM_MB=$(free -m | awk '/^Mem:/{print $2}')
 #######################
 # Update line 48 with your cluster if not on cbib or genotoul
 #######################
-echo '🔹 MSpangepop -> Activating execution environment'
+echo '🔹 mspangenome -> Activating execution environment'
 case "${SLURM_SUBMIT_HOST:-$(hostname)}" in
     **geno**)
-        echo '🔹 MSpangepop -> Identified genotoul cluster'
+        echo '🔹 mspangenome -> Identified genotoul cluster'
         module purge
         module load containers/Apptainer/1.2.5     
         source activate wf_env                     
         ;;
     **bb8**)
-        echo '🔹 MSpangepop -> Identified cbib cluster, use the local-run on cbib'
+        echo '🔹 mspangenome -> Identified cbib cluster, use the local-run on cbib'
         module purge
         module load miniconda/3
         eval "$(conda shell.bash hook)"
@@ -48,7 +48,9 @@ case "${SLURM_SUBMIT_HOST:-$(hostname)}" in
         MEM_MB=${SLURM_MEM_PER_NODE:-204800}
         ;;
     *)
-        echo '🔹 MSpangepop -> Unkown host, or local run (if not configure this file line 48)'
+        echo '🔹 mspangenome -> Unkown host, or local run (if not configure this file line 48)'
+        source /root/miniconda3/etc/profile.d/conda.sh
+        conda activate wf_env
         ;;
 esac
 
@@ -57,7 +59,7 @@ run_snakemake() {
     shift  # Remove the first argument, keep the rest
     local extra_args="$@"  # Collect the rest of the arguments
 
-    echo '🔹 MSpangepop -> Starting Snakemake workflow'
+    echo '🔹 mspangenome -> Starting Snakemake workflow'
     case "$option" in
         dry)
             snakemake -c $(nproc) --dry-run --rerun-incomplete $extra_args
@@ -68,27 +70,27 @@ run_snakemake() {
         dag)
             snakemake -c "$(nproc)" --dag $extra_args | sed -n '/^digraph snakemake_dag {$/,$p' > dag.dot
             if [ $? -eq 0 ]; then
-                echo "✅ MSpangepop -> DAG has been successfully generated as dag.dot"
+                echo "✅ mspangenome -> DAG has been successfully generated as dag.dot"
             else
-                echo "❌ MSpangepop -> Error: Failed to generate DAG."
+                echo "❌ mspangenome -> Error: Failed to generate DAG."
                 exit 1
             fi
             ;;
         rulegraph)
             snakemake -c $(nproc) --rulegraph $extra_args | sed -n '/^digraph snakemake_dag {$/,$p' > rulegraph.dot
             if [ $? -eq 0 ]; then
-                echo "✅ MSpangepop -> Rulegraph has been successfully generated as rulegraph.dot"
+                echo "✅ mspangenome -> Rulegraph has been successfully generated as rulegraph.dot"
             else
-                echo "❌ MSpangepop -> Error: Failed to generate Rulegraph."
+                echo "❌ mspangenome -> Error: Failed to generate Rulegraph."
                 exit 1
             fi
             ;;
         unlock)
             snakemake -c $(nproc) --unlock $extra_args
             if [ $? -eq 0 ]; then
-                echo "✅ MSpangepop -> Unlocked"
+                echo "✅ mspangenome -> Unlocked"
             else
-                echo "❌ MSpangepop -> Error: Failed to Unlocked"
+                echo "❌ mspangenome -> Error: Failed to Unlocked"
                 exit 1
             fi
             ;;
@@ -97,12 +99,12 @@ run_snakemake() {
             ;;
         local-run)
             SNG_BIND=$(pwd)
-            echo "🔹 MSpangepop -> Using $MEM_MB Mb of memory"
+            echo "🔹 mspangenome -> Using $MEM_MB Mb of memory"
             snakemake --use-singularity --singularity-args "-B $SNG_BIND" -c $(nproc) --rerun-incomplete --resources mem_mb=$MEM_MB $extra_args -k -q rules
             ;;
         *)
             echo "Invalid option: $option"
-            echo "Usage: MSpangepop [dry|run|local-run|dag|rulegraph|unlock] [additional snakemake args]"
+            echo "Usage: mspangenome [dry|run|local-run|dag|rulegraph|unlock] [additional snakemake args]"
             exit 1
             ;;
     esac

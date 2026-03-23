@@ -72,7 +72,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from typing import List
 from enum import Enum
 
-from io_handler import MSpangepopDataHandler, MSerror, MSsuccess, MScompute
+from io_handler import MSpangenomeDataHandler, MSerror, MSsuccess, MScompute
 from graph_utils import (
     gather_lineages, MutationRecap, VariantSizeVisualizer, NodeIDAllocator
 )
@@ -214,7 +214,7 @@ def process_and_save_single_subgraph(args: tuple) -> SubgraphTempFile:
         local_end_id = max(1, local_allocator.current_id - 1)
     
     # 5. Save to temp file with local IDs
-    MSpangepopDataHandler.save_subgraph_temp(graph, temp_path, sample, chromosome, max_workers=io_threads)
+    MSpangenomeDataHandler.save_subgraph_temp(graph, temp_path, sample, chromosome, max_workers=io_threads)
     
     # 6. Get node count before freeing
     node_count = len(graph.nodes)
@@ -386,8 +386,8 @@ def main(splited_fasta: str, augmented_traversal: str, output_file: str,
     
     # Read inputs
     MScompute("Reading input files")
-    sequences = MSpangepopDataHandler.read_fasta(splited_fasta)
-    traversal = MSpangepopDataHandler.read_json(augmented_traversal)
+    sequences = MSpangenomeDataHandler.read_fasta(splited_fasta)
+    traversal = MSpangenomeDataHandler.read_json(augmented_traversal)
     
     reference_length = sum(len(str(record.seq)) for record in sequences)
     var_visualizer = VariantSizeVisualizer(sample, chromosome, reference_length)
@@ -505,7 +505,7 @@ def main(splited_fasta: str, augmented_traversal: str, output_file: str,
         # =====================================================================
         MScompute("Phase 2: Merging subgraphs with ID remapping")
         
-        lineage_lengths = MSpangepopDataHandler.merge_temp_files_to_gfa(
+        lineage_lengths = MSpangenomeDataHandler.merge_temp_files_to_gfa(
             temp_files=temp_files,
             id_offsets=id_offsets,
             output_path=output_file,
@@ -518,7 +518,7 @@ def main(splited_fasta: str, augmented_traversal: str, output_file: str,
         # =====================================================================
         MScompute("Phase 3: Writing FASTA")
         
-        MSpangepopDataHandler.write_fasta_from_gfa(
+        MSpangenomeDataHandler.write_fasta_from_gfa(
             gfa_path=output_file,
             sample=sample,
             chromosome=chromosome,

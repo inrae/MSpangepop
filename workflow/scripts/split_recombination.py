@@ -8,7 +8,7 @@ Usage : This script will split the sequence between recombination events simulat
 
 import argparse
 import gzip
-from io_handler import MSpangepopDataHandler, MSsuccess, MSerror, MScompute, MSwarning
+from io_handler import MSpangenomeDataHandler, MSsuccess, MSerror, MScompute, MSwarning
 
 def extract_intervals(fasta_sequences, json_data, chromosome_number, output_file):
     """
@@ -66,8 +66,8 @@ def main(json_file, fasta_file, chromosome_number, output_file):
         output_file (str): Path to the output file (will be bgzipped).
     """
 
-    fasta_sequences = MSpangepopDataHandler.read_fasta(fasta_file)
-    json_data = MSpangepopDataHandler.read_json(json_file)
+    fasta_sequences = MSpangenomeDataHandler.read_fasta(fasta_file)
+    json_data = MSpangenomeDataHandler.read_json(json_file)
 
     MScompute(f"Starting to split chr {chromosome_number} between recombination.")
     extract_intervals(fasta_sequences, json_data, chromosome_number, output_file)

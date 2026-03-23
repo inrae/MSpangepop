@@ -307,9 +307,9 @@ rule gfa_merge:
         """
 
 onsuccess:
-    print("✅ MSpangepop -> Workflow completed successfully")
+    print("✅ mspangenome -> Workflow completed successfully")
     shell("date")
 
 onerror: 
-    print("❌ MSpangepop -> Workflow failed, check logs")
+    print("❌ mspangenome -> Workflow failed, check logs")
     shell("date")

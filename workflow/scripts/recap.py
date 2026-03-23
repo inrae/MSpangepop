@@ -5,7 +5,7 @@ Author: Lucien Piat
 Institution: INRAe
 Project: PangenOak
 
-Usage: Create a recap for MSpangepop simulation
+Usage: Create a recap for mspangenome simulation
 """
 
 import os
@@ -69,7 +69,7 @@ def main():
     }
 
     with open(recap_file, "w") as f:
-        f.write(f"\U0001F539 MSpangepop Recap File for: {args.current_run}\n\n")
+        f.write(f"\U0001F539 mspangenome Recap File for: {args.current_run}\n\n")
 
         f.write("\U0001F539 Global Run Information:\n")
         f.write("-" * 40 + "\n")

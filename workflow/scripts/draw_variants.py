@@ -12,7 +12,7 @@ import os
 import time
 import json
 import concurrent.futures
-from io_handler import MSpangepopDataHandler, MSerror, MSsuccess, MScompute, MSwarning, process_seed
+from io_handler import MSpangenomeDataHandler, MSerror, MSsuccess, MScompute, MSwarning, process_seed
 
 class Selector:
     """Static methods for selecting mutation attributes."""
@@ -153,7 +153,7 @@ def load_length_files_worker(sv_length_files):
     length_files = {}
     for var_type, file_path in file_paths.items():
         if file_path and os.path.exists(file_path):
-            length_files[var_type] = MSpangepopDataHandler.read_variant_length_file(file_path)
+            length_files[var_type] = MSpangenomeDataHandler.read_variant_length_file(file_path)
     
     return length_files
 

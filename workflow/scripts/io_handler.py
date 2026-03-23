@@ -8,13 +8,13 @@ Project: PangenOak
 This script provide three type of classes :
 - MSLogger that provide a way to log each operation to stdout wit MSsuccess, MScompute and MSwarning
 - MSerror which will raise and error with a custom_traceback
-- MSpangepopDataHandler is a class that will handle repeted i/o operations across all scripts like reading or writing json files.
+- MSpangenomeDataHandler is a class that will handle repeted i/o operations across all scripts like reading or writing json files.
 
 Example : 
 > MSsuccess("Hello world")
-✅ MSpangepop -> [script_name] Hello world
+✅ mspangenome -> [script_name] Hello world
 
-> sequences = MSpangepopDataHandler.read_fasta(splited_fasta)
+> sequences = MSpangenomeDataHandler.read_fasta(splited_fasta)
 """
 
 import sys
@@ -64,8 +64,8 @@ class MSwarning(MSLogger):
         super().__init__("⚠️ ", message)
 
 class MSerror(Exception):
-    """Custom exception for MSpangepop errors with clean display."""
-    def __init__(self, message="An unknown MSpangepop error occurred."):
+    """Custom exception for mspangenome errors with clean display."""
+    def __init__(self, message="An unknown mspangenome error occurred."):
         self.clean_message = message
         super().__init__(message)  # Store original message
 
@@ -73,7 +73,7 @@ def custom_traceback():
     """Install a custom exception handler for cleaner MSerror display."""
     def handle_mserror(exc_type, exc_value, exc_traceback):
         if exc_type == MSerror:
-            print(f"❌ MSpangepop -> Error: {exc_value.clean_message}")
+            print(f"❌ mspangenome -> Error: {exc_value.clean_message}")
             tb = traceback.extract_tb(exc_traceback)
             if tb:
                 last_frame = tb[-1]
@@ -104,7 +104,7 @@ def process_seed(seed):
             raise ValueError("Seed must be either a string or an integer")
     return None
 
-class MSpangepopDataHandler:
+class MSpangenomeDataHandler:
     """
     Handles file operations and processing of variant length distributions and probabilities.
     """
@@ -253,7 +253,7 @@ class MSpangepopDataHandler:
 
         # For small graphs, use simple single-threaded approach
         if node_count < 1000 or max_workers <= 1:
-            MSpangepopDataHandler.save_subgraph_temp_simple(graph, temp_path, sample, chromosome)
+            MSpangenomeDataHandler.save_subgraph_temp_simple(graph, temp_path, sample, chromosome)
             return
 
         # Multithreaded approach for larger graphs

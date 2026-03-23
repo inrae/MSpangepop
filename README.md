@@ -1,9 +1,9 @@
-# MSpangepop 
+# mspangenome 
 
-MSpangepop is a workflow for simulating pangenome variation graphs from coalescent simulations.\
+mspangenome is a workflow for simulating pangenome variation graphs from coalescent simulations.\
 A simplified description of the algorithm can be found [here](https://lpiat-pages-cfefee.pages-forge.inrae.fr/poster_bims_lucien.pdf).
 
-The official MSpangepop repository can be found at the [INRAE forge](https://forge.inrae.fr/pangepop/MSpangepop).\
+The official mspangenome repository can be found at the [INRAE forge](https://forge.inrae.fr/pangepop/MSpangepop).\
 A GitHub mirror can be found at [INRAE GitHub](https://github.com/inrae/MSpangepop).\
 The mirror is especially useful for people with no Renater account to submit issues.
 
@@ -25,7 +25,7 @@ The mirror is especially useful for people with no Renater account to submit iss
 | **1. Setup** | → Validate FASTA/YAML<br>→ Expand configs<br>→ Create index | `input_index.py`<br>`sample_ranges.py`<br>`recap.py` | setup |
 | **2. Msprime Simulation** | → Build demographic model<br>→ Run msprime<br>→ Generate visualizations | `msprime_simulation.py`<br>`visualizer_arg.py`<br>`visualizer_tree.py` | msprime_simulation <br>visualization  |
 | **3. Preprocessing** | → Split by locus<br>→ Preorder traverse trees<br>→ Define SVs type lenght and position | `coalescent_traversal.py`<br>`draw_variants.py`<br>`split_recombination.py` | coalescent_traversal<br>draw_variants<br>split_recombination |
-| **4. Graph Creation** | **Initialize:** Build locus ancestral graphs<br>**Mutate:** Apply variants using MSpangepop library<br>**Save:** Assign IDs → Merge subgraphs→ Lint → Export chopped graph | `graph_creation.py`<br>`graph_classes.py`<br>`graph_utils.py`<br>`matrix.py` | graph_creation |
+| **4. Graph Creation** | **Initialize:** Build locus ancestral graphs<br>**Mutate:** Apply variants using mspangenome library<br>**Save:** Assign IDs → Merge subgraphs→ Lint → Export chopped graph | `graph_creation.py`<br>`graph_classes.py`<br>`graph_utils.py`<br>`matrix.py` | graph_creation |
 | **5. Unchop** | VG unchop command | - | graph_merging |
 
 ---
@@ -76,8 +76,8 @@ samples:
 #### On the cluster
 - Run the workflow :
 ```bash
-sbatch mspangepop dry # Check for warnings
-sbatch mspangepop run # Then
+sbatch mspangenome dry # Check for warnings
+sbatch mspangenome run # Then
 ```
 > **Nb :** If your account name can't be automatically determined, add it in the `.config/snakemake/profiles/slurm/config.yaml` file.
 
@@ -85,13 +85,13 @@ sbatch mspangepop run # Then
 
 #### Localy
 ```bash
-./mspangepop dry # Check for warnings
-./mspangepop local-run # Then
+./mspangenome dry # Check for warnings
+./mspangenome local-run # Then
 ```
 
 ## Other running options
 ```
-mspangepop [dry|run|local-run|dag|rulegraph|unlock|touch] [additional snakemake args]
+mspangenome [dry|run|local-run|dag|rulegraph|unlock|touch] [additional snakemake args]
     dry - run in dry-run mode
     run - run the workflow with SLURM
     local-run - run the workflow localy (on a single node)
@@ -102,9 +102,9 @@ mspangepop [dry|run|local-run|dag|rulegraph|unlock|touch] [additional snakemake 
     [additional snakemake args] - for any snakemake arg, like --until hifiasm
 ```
 
-## Path Operations in Mspangepop
+## Path Operations in mspangenome
 
-MSpangepop implements graph path operations to add variants by modifying how lineages traverse the graph. 
+mspangenome implements graph path operations to add variants by modifying how lineages traverse the graph. 
 
 **Core Features:**
 - **Multi-path targeting** - Operations apply to single or multiple lineage paths simultaneously, enabling both unique and shared variants
@@ -123,6 +123,6 @@ These operations modify paths through existing nodes rather than altering the gr
 
 ## Support and Development
 
-MSpangepop is developed at INRAE as part of the PangenOak project.
+mspangenome is developed at INRAE as part of the PangenOak project.
 
 
