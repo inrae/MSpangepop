@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Sample from parameter ranges in demographic models for MSpangepop
+Sample from parameter ranges in demographic models for mspangenome
 
 This script processes demographic models that contain parameter ranges and creates
 individual configurations by randomly sampling from these ranges for each replicate.

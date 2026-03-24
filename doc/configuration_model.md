@@ -1,4 +1,4 @@
-#  Creating a Demographic Model JSON for MSpangepop
+#  Creating a Demographic Model JSON for mspangenome
 
 **Warning:** Parameters defined in this config file are parsed and fed to MSprime. Describing all of them **exceeds** the scope of this documentation so please refer **directly** to MSprime documentation for further reference: [https://tskit.dev/msprime/docs/stable/demography.html](https://tskit.dev/msprime/docs/stable/demography.html)
 

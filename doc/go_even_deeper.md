@@ -2,7 +2,7 @@
 
 ## Readable JSON
 
-MSpangepop includes an option to output JSON files in human-readable format with proper indentation and formatting. While this makes the files larger and slower to process, it enables manual inspection and debugging.
+mspangenome includes an option to output JSON files in human-readable format with proper indentation and formatting. While this makes the files larger and slower to process, it enables manual inspection and debugging.
 
 ## Markov Matrices for Insertions
 

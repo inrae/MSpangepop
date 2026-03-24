@@ -18,7 +18,7 @@ Note:
 """
 
 import argparse
-from io_handler import MSpangepopDataHandler, MSerror, MSsuccess, MSwarning
+from io_handler import MSpangenomeDataHandler, MSerror, MSsuccess, MSwarning
 
 def validate_fasta(fasta_records, min_contigs):
     """
@@ -85,7 +85,7 @@ def main():
 
     try:
         # Read and validate FASTA
-        fasta_records = MSpangepopDataHandler.read_fasta(args.fasta_file)
+        fasta_records = MSpangenomeDataHandler.read_fasta(args.fasta_file)
         validate_fasta(fasta_records, args.min_contigs)
 
         # Generate .fai file at the location of output_file

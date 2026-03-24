@@ -2,7 +2,7 @@
 
 ## Overview
 
-The master configuration file (`.config/masterconfig.yaml`) is the entry point for running MSpangepop simulations. It defines which demographic models to run and how many replicates to generate for each.
+The master configuration file (`.config/masterconfig.yaml`) is the entry point for running mspangenome simulations. It defines which demographic models to run and how many replicates to generate for each.
 
 ## Configuration Structure
 

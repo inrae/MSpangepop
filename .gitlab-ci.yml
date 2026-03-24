@@ -50,12 +50,12 @@ test-workflow:
     # Activate the environment and run the workflow
     # Don't use conda init, use source activate instead
     - source activate wf_env
-    - ./mspangepop dry
+    - ./mspangenome dry
   rules:
     - changes:
         - dependencies/msprime_box.def
         - workflow/Snakefile
-        - mspangepop
+        - mspangenome
     - when: manual
       allow_failure: true
   artifacts:

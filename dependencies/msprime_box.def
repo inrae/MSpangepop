@@ -26,7 +26,7 @@ From: python:3.11-slim
 
 %labels
     maintainer "Lucien Piat"
-    description "This image is used for the MSpangepop workflow at INRAe."
+    description "This image is used for the mspangenome workflow at INRAe."
     version "VERSION_NUMBER"
 
 %runscript

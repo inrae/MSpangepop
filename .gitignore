@@ -21,7 +21,7 @@
 results
 **__pycache__
 .snakemake
-!mspangepop
+!mspangenome
 .config/matplotlib
 !doc/*
 .config/expanded_config.yaml

@@ -2,7 +2,7 @@
 
 ## Graph Files
 
-The primary output of MSpangepop is a GFA (Graphical Fragment Assembly) file representing the variation graph. This file contains nodes representing DNA sequences and edges representing connections between them, along with walk paths showing how each simulated individual traverses the graph.
+The primary output of mspangenome is a GFA (Graphical Fragment Assembly) file representing the variation graph. This file contains nodes representing DNA sequences and edges representing connections between them, along with walk paths showing how each simulated individual traverses the graph.
 
 ## Result folder outline : 
 ```bash

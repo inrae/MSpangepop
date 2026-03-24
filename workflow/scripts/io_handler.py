@@ -8,19 +8,24 @@ Project: PangenOak
 This script provide three type of classes :
 - MSLogger that provide a way to log each operation to stdout wit MSsuccess, MScompute and MSwarning
 - MSerror which will raise and error with a custom_traceback
-- MSpangepopDataHandler is a class that will handle repeted i/o operations across all scripts like reading or writing json files.
+- MSpangenomeDataHandler is a class that will handle repeted i/o operations across all scripts like reading or writing json files.
 
 Example : 
 > MSsuccess("Hello world")
-✅ MSpangepop -> [script_name] Hello world
+✅ mspangenome -> [script_name] Hello world
 
-> sequences = MSpangepopDataHandler.read_fasta(splited_fasta)
+> sequences = MSpangenomeDataHandler.read_fasta(splited_fasta)
 """
 
 import sys
 import os
 import traceback
 import threading
+import json
+import gzip
+from io import StringIO
+from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 #IDF = ["A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P","Q","R","S","T","U","V","W","X","Y","Z"]
 
@@ -59,8 +64,8 @@ class MSwarning(MSLogger):
         super().__init__("⚠️ ", message)
 
 class MSerror(Exception):
-    """Custom exception for MSpangepop errors with clean display."""
-    def __init__(self, message="An unknown MSpangepop error occurred."):
+    """Custom exception for mspangenome errors with clean display."""
+    def __init__(self, message="An unknown mspangenome error occurred."):
         self.clean_message = message
         super().__init__(message)  # Store original message
 
@@ -68,7 +73,7 @@ def custom_traceback():
     """Install a custom exception handler for cleaner MSerror display."""
     def handle_mserror(exc_type, exc_value, exc_traceback):
         if exc_type == MSerror:
-            print(f"❌ MSpangepop -> Error: {exc_value.clean_message}")
+            print(f"❌ mspangenome -> Error: {exc_value.clean_message}")
             tb = traceback.extract_tb(exc_traceback)
             if tb:
                 last_frame = tb[-1]
@@ -99,7 +104,7 @@ def process_seed(seed):
             raise ValueError("Seed must be either a string or an integer")
     return None
 
-class MSpangepopDataHandler:
+class MSpangenomeDataHandler:
     """
     Handles file operations and processing of variant length distributions and probabilities.
     """
@@ -118,7 +123,6 @@ class MSpangepopDataHandler:
         Raises:
             FileReadError: If there is an issue reading the JSON file.
         """
-        import json
         try:
             with open(json_path, 'r') as file:
                 return json.load(file)
@@ -137,7 +141,6 @@ class MSpangepopDataHandler:
         Raises:
             FileReadError: If there is an issue saving the JSON file.
         """
-        import json
         try:
             with open(output_path, 'w') as file:
                 json.dump(data, file, indent=get_indent(readable_json)) # Set indent to none to reduce json file size
@@ -159,9 +162,7 @@ class MSpangepopDataHandler:
         Raises:
         FileReadError: If unable to read the FASTA file.
         """
-        import gzip
-        from Bio import SeqIO
-        from pathlib import Path
+        from Bio import SeqIO  # type: ignore
 
         # Convert to Path object and resolve to absolute path
         fasta_path = Path(fasta_file).resolve()
@@ -205,12 +206,10 @@ class MSpangepopDataHandler:
         Raises:
             FileReadError: If there is an issue reading the file.
         """
-        import pandas as pd
+        import pandas as pd  # type: ignore
         try:
             df = pd.read_table(file_path)
             df['cumulative_pb'] = df['pb'].cumsum()
-            if not abs(df['cumulative_pb'].iloc[-1] - 1) < 1e-6:
-                print(f"⚠️ MSpangepop -> Warning: The cumulative probability of {file_path} is less than 1.")
             return df
         except Exception as e:
             raise MSerror(f"Error reading variant length file {file_path}: {e}")
@@ -229,7 +228,7 @@ class MSpangepopDataHandler:
         Raises:
             MSerror: If the .fai file does not exist or cannot be read.
         """
-        import pandas as pd
+        import pandas as pd  # type: ignore
         if not os.path.exists(fai_file):
             raise MSerror(f"FAI file not found: {fai_file}")
         try:
@@ -238,7 +237,7 @@ class MSpangepopDataHandler:
             raise MSerror(f"Error reading FAI file {fai_file}: {e}")      
 
     @staticmethod
-    def save_subgraph_temp(graph, temp_path: str, sample: str, chromosome: str, max_workers: int = 4):
+    def save_subgraph_temp(graph, temp_path: str, sample: str, chromosome: str, max_workers: int):
         """
         Save subgraph to temp file as GFA fragment (S, L, P lines).
         Uses multithreading for larger graphs.
@@ -250,14 +249,11 @@ class MSpangepopDataHandler:
             chromosome (str): Chromosome identifier
             max_workers (int): Number of threads for parallel processing
         """
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-        from io import StringIO
-        
         node_count = len(graph.nodes)
 
         # For small graphs, use simple single-threaded approach
         if node_count < 1000 or max_workers <= 1:
-            MSpangepopDataHandler.save_subgraph_temp_simple(graph, temp_path, sample, chromosome)
+            MSpangenomeDataHandler.save_subgraph_temp_simple(graph, temp_path, sample, chromosome)
             return
 
         # Multithreaded approach for larger graphs
@@ -400,14 +396,14 @@ class MSpangepopDataHandler:
         prev_global_end_id = None
         connecting_edges = []
         
+        write_buffer = []
+        
+        def flush_buffer(write_buffer, out_f):
+            if write_buffer:
+                out_f.write(''.join(write_buffer))
+                write_buffer.clear()
+        
         with open(output_path, 'w', buffering=8*1024*1024) as out_f:  # 8MB buffer
-            write_buffer = []
-            
-            def flush_buffer():
-                nonlocal write_buffer
-                if write_buffer:
-                    out_f.write(''.join(write_buffer))
-                    write_buffer = []
             
             for tf_idx, tf in enumerate(temp_files):
                 subgraph_idx = tf.index
@@ -450,13 +446,13 @@ class MSpangepopDataHandler:
                             paths_by_lineage[lineage].extend(remapped)
                         
                         if len(write_buffer) >= BUFFER_SIZE:
-                            flush_buffer()
+                            flush_buffer(write_buffer, out_f)
                 
                 # Progress for merge phase
                 if (tf_idx + 1) % 100 == 0 or tf_idx == len(temp_files) - 1:
                     MScompute(f"  Phase 2: merged {tf_idx + 1}/{len(temp_files)} subgraphs")
             
-            flush_buffer()
+            flush_buffer(write_buffer, out_f)
             
             # Write connecting edges
             out_f.write(''.join(connecting_edges))
@@ -472,10 +468,7 @@ class MSpangepopDataHandler:
     @staticmethod
     def write_fasta_from_gfa(gfa_path: str,sample: str,chromosome: str,fasta_folder: str,compress: bool = True):
         """Read the final GFA and write FASTA sequences."""
-        import gzip
-        from Bio import SeqIO
-        from Bio.SeqRecord import SeqRecord
-        from Bio.Seq import Seq
+        from graph_utils import reverse_complement
 
         os.makedirs(fasta_folder, exist_ok=True)
         ext = ".fasta.gz" if compress else ".fasta"
@@ -500,27 +493,38 @@ class MSpangepopDataHandler:
                     segments = parts[2]
                     paths[path_name] = segments
 
-        # Reverse complement helper
-        comp = {'A': 'T', 'T': 'A', 'G': 'C', 'C': 'G'}
+        FASTA_LINE_WIDTH = 60
 
-        def rev_comp(s):
-            return ''.join(comp.get(b, b) for b in reversed(s))
-
-        # Write FASTA
+        # Write FASTA incrementally without building full sequence in memory
         open_func = gzip.open if compress else open
         with open_func(fasta_path, 'wt') as out_f:
             for path_name, segments in paths.items():
-                seq_parts = []
+                out_f.write(f">{path_name}\n")
+                
+                line_pos = 0  # Current position in the FASTA line
+                
                 for seg in segments.split(','):
                     node_id = int(seg[:-1])
                     orient = seg[-1]
                     node_seq = node_seqs.get(node_id, "")
                     if orient == '-':
-                        node_seq = rev_comp(node_seq)
-                    seq_parts.append(node_seq)
-
-                full_seq = ''.join(seq_parts)
-                record = SeqRecord(Seq(full_seq), id=path_name, description="")
-                SeqIO.write(record, out_f, "fasta")
+                        node_seq = reverse_complement(node_seq)
+                    
+                    # Write segment bases while respecting FASTA line width
+                    seq_pos = 0
+                    while seq_pos < len(node_seq):
+                        remaining_in_line = FASTA_LINE_WIDTH - line_pos
+                        chunk = node_seq[seq_pos:seq_pos + remaining_in_line]
+                        out_f.write(chunk)
+                        seq_pos += len(chunk)
+                        line_pos += len(chunk)
+                        
+                        if line_pos >= FASTA_LINE_WIDTH:
+                            out_f.write('\n')
+                            line_pos = 0
+                
+                # End the last line if it was not already terminated
+                if line_pos > 0:
+                    out_f.write('\n')
 
         MSsuccess(f"FASTA written: {fasta_path}")
