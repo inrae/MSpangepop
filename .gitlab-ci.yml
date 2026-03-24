@@ -50,6 +50,7 @@ test-workflow:
     # Activate the environment and run the workflow
     # Don't use conda init, use source activate instead
     - source activate wf_env
+    - chmod +x mspangenome
     - ./mspangenome dry
   rules:
     - changes:
