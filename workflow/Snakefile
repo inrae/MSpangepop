@@ -13,13 +13,15 @@ import json
 # Allow overriding config paths so multiple runs can execute in parallel.
 MASTERCONFIG = os.environ.get("MASTERCONFIG", ".config/masterconfig.yaml")
 
-def _default_expanded_path(master_path):
-    if os.path.abspath(master_path) == os.path.abspath(".config/masterconfig.yaml"):
-        return ".config/expanded_config.yaml"
-    root, ext = os.path.splitext(master_path)
-    return f"{root}.expanded{ext}"
+def _resolve_expanded_path(master_path):
+    try:
+        with open(master_path) as f:
+            master = yaml.safe_load(f) or {}
+    except FileNotFoundError:
+        master = {}
+    return master.get("expanded_config", ".config/expanded_config.yaml")
 
-EXPANDED_CONFIG = os.environ.get("EXPANDED_CONFIG", _default_expanded_path(MASTERCONFIG))
+EXPANDED_CONFIG = os.environ.get("EXPANDED_CONFIG") or _resolve_expanded_path(MASTERCONFIG)
 
 # Check if we should expand ranges (can be controlled by an environment variable)
 EXPAND_RANGES = os.environ.get("EXPAND_RANGES", "true").lower() == "true"

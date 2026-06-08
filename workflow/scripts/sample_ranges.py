@@ -242,7 +242,7 @@ def main():
         description="Sample parameter ranges and write an expanded config."
     )
     parser.add_argument("config_path", nargs="?", default=".config/masterconfig.yaml")
-    parser.add_argument("--output", default=".config/expanded_config.yaml")
+    parser.add_argument("--output", default=None)
     parser.add_argument("--seed", type=int, default=None)
     args = parser.parse_args()
 
@@ -250,13 +250,16 @@ def main():
         random.seed(args.seed)
 
     config_path = args.config_path
-    output_path = args.output
 
     MScompute(f"Loading config from: {config_path}")
     if not os.path.exists(config_path):
         raise MSerror(f"Config file not found: {config_path}")
-    
+
     config = load_config(config_path)
+
+    # flag wins, otherwise the master "expanded_config" key, otherwise default.
+    output_path = args.output or config.get("expanded_config", ".config/expanded_config.yaml")
+
     expanded_samples = expand_simulations(config)
 
     expanded_config = copy.deepcopy(config)
@@ -280,7 +283,6 @@ def main():
         MSsuccess(f"Wrote updated expanded config to {output_path}.")
 
     return output_path
-
 
 if __name__ == "__main__":
     main()
