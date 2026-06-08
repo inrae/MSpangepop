@@ -10,26 +10,37 @@ import subprocess
 import sys
 import json
 
+# Allow overriding config paths so multiple runs can execute in parallel.
+MASTERCONFIG = os.environ.get("MASTERCONFIG", ".config/masterconfig.yaml")
+
+def _default_expanded_path(master_path):
+    if os.path.abspath(master_path) == os.path.abspath(".config/masterconfig.yaml"):
+        return ".config/expanded_config.yaml"
+    root, ext = os.path.splitext(master_path)
+    return f"{root}.expanded{ext}"
+
+EXPANDED_CONFIG = os.environ.get("EXPANDED_CONFIG", _default_expanded_path(MASTERCONFIG))
+
 # Check if we should expand ranges (can be controlled by an environment variable)
 EXPAND_RANGES = os.environ.get("EXPAND_RANGES", "true").lower() == "true"
 
 if EXPAND_RANGES:
     # First, sample from any parameter ranges in the config
-    result = subprocess.run([sys.executable, "workflow/scripts/sample_ranges.py", 
-                            ".config/masterconfig.yaml"], 
-                           capture_output=True, text=True)
+    result = subprocess.run([sys.executable, "workflow/scripts/sample_ranges.py",
+                             MASTERCONFIG, "--output", EXPANDED_CONFIG],
+                            capture_output=True, text=True)
     print(result.stdout)
     if result.returncode != 0:
         print(f"❌ Error sampling ranges: {result.stderr}", file=sys.stderr)
         sys.exit(1)
-    
+
     # Use the expanded config if it exists
-    if os.path.exists(".config/expanded_config.yaml"):
-        configfile: ".config/expanded_config.yaml"
+    if os.path.exists(EXPANDED_CONFIG):
+        configfile: EXPANDED_CONFIG
     else:
-        configfile: ".config/masterconfig.yaml"
+        configfile: MASTERCONFIG
 else:
-    configfile: ".config/masterconfig.yaml"
+    configfile: MASTERCONFIG
 
 
 output_dir = config.get("output_dir", "results/")
@@ -60,7 +71,7 @@ rule all:
 # This rule is used to create a recap file for the workflow
 rule setup:
     input:
-        configfile= ".config/expanded_config.yaml" if EXPAND_RANGES and os.path.exists(".config/expanded_config.yaml") else ".config/masterconfig.yaml",
+        configfile = EXPANDED_CONFIG if (EXPAND_RANGES and os.path.exists(EXPANDED_CONFIG)) else MASTERCONFIG,
         fasta=lambda wildcards: config["samples"][wildcards.sample]["fasta_gz"]
     output:
         recap_file=os.path.join(output_dir, "{sample}", simulation_data, "{sample}_global_recap.txt"),
