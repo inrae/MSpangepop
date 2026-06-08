@@ -10,20 +10,60 @@
 # Written by Lucien Piat at INRAe
 # Use this script to run mspangenome on a HPC
 
-# Verify arguments
-
-
-if [ $# -lt 1 ] || [ "$1" == "help" ]; then
+print_help() {
     echo "Use this script to run mspangenome"
     echo ""
-    echo "Usage: mspangenome [dry|run|local-run|dag|rulegraph|unlock]"
+    echo "Usage: mspangenome [dry|run|local-run|dag|rulegraph|unlock|touch] [-c|--config PATH] [additional snakemake args]"
     echo "    dry - run in dry-run mode"
     echo "    run - run the workflow with SLURM"
     echo "    local-run - run the workflow localy (on a single node)"
     echo "    dag - generate the directed acyclic graph for the workflow"
     echo "    rulegraph - generate the rulegraph for the workflow"
     echo "    unlock - Unlock the directory if snakemake crashed"
+    echo "    touch - Tell snakemake that all files are up to date"
+    echo ""
+    echo "    -c, --config PATH  - master config file to use (default: .config/masterconfig.yaml)"
+    echo "                         Use a distinct file per run to launch jobs in parallel."
+}
+
+MODE=""
+CONFIG_PATH=""
+EXTRA_ARGS=()
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -c|--config)
+            if [ -z "$2" ]; then
+                echo "❌ mspangenome -> Error: $1 requires a path argument"
+                exit 1
+            fi
+            CONFIG_PATH="$2"
+            shift 2
+            ;;
+        help|-h|--help)
+            print_help
+            exit 0
+            ;;
+        *)
+            if [ -z "$MODE" ]; then
+                MODE="$1"
+            else
+                EXTRA_ARGS+=("$1")
+            fi
+            shift
+            ;;
+    esac
+done
+
+if [ -z "$MODE" ]; then
+    print_help
     exit 1
+fi
+
+# Export the chosen config fort the Snakefile
+if [ -n "$CONFIG_PATH" ]; then
+    export MASTERCONFIG="$CONFIG_PATH"
+    echo "🔹 mspangenome -> Using master config: $MASTERCONFIG"
 fi
 
 echo "Welcome to mspangenome! Make sure .config/masterconfig.yaml is correctly edited for this run."
@@ -48,7 +88,7 @@ case "${SLURM_SUBMIT_HOST:-$(hostname)}" in
         MEM_MB=${SLURM_MEM_PER_NODE:-204800}
         ;;
     *)
-        echo '🔹 mspangenome -> Unkown host, or local run (if not configure this file line 48)'
+        echo '🔹 mspangenome -> Unkown host, or local run (if not configure this case)'
         source /root/miniconda3/etc/profile.d/conda.sh
         conda activate wf_env
         ;;
@@ -110,5 +150,4 @@ run_snakemake() {
     esac
 }
 
-run_snakemake "$@"
-
+run_snakemake "$MODE" "${EXTRA_ARGS[@]}"
