@@ -42,6 +42,12 @@ git clone https://forge.inrae.fr/pangepop/MSpangepop
 conda env create -n wf_env -f dependencies/wf_env.yaml
 ```  
 
+- Install [Apptainer](https://apptainer.org/docs/user/latest/) / Singularity
+```bash
+sudo apt-get install -y singularity-container
+```
+> **Nb :** For macOS, it is recommended to install Apptainer using Lima. On Windows, use WSL.
+
 ### 2. Configure the pipeline for your data
 
 Three elements are needed to run the simulation : 
