@@ -69,7 +69,7 @@ fi
 echo "Welcome to mspangenome! Make sure .config/masterconfig.yaml is correctly edited for this run."
 MEM_MB=$(free -m | awk '/^Mem:/{print $2}')
 #######################
-# Update line 48 with your cluster if not on cbib or genotoul
+# Update line 95 with your cluster if not on cbib or genotoul
 #######################
 echo '🔹 mspangenome -> Activating execution environment'
 case "${SLURM_SUBMIT_HOST:-$(hostname)}" in
@@ -88,9 +88,11 @@ case "${SLURM_SUBMIT_HOST:-$(hostname)}" in
         MEM_MB=${SLURM_MEM_PER_NODE:-204800}
         ;;
     *)
-        echo '🔹 mspangenome -> Unkown host, or local run (if not configure this case)'
-        source /root/miniconda3/etc/profile.d/conda.sh
-        conda activate wf_env
+        echo '🔹 mspangenome -> Unknown host or local run'
+        if ! command -v snakemake >/dev/null 2>&1; then
+            source "$(conda info --base)/etc/profile.d/conda.sh"
+            conda activate wf_env
+        fi
         ;;
 esac
 
