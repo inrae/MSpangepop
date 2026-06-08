@@ -12,6 +12,7 @@ Range notation in JSON:
 Author: Lucien Piat
 """
 
+import argparse
 import yaml
 import json
 import os
@@ -237,13 +238,21 @@ def expand_simulations(config: Dict) -> Dict:
 
 def main():
     """Main execution function."""
-    config_path = sys.argv[1] if len(sys.argv) > 1 else ".config/masterconfig.yaml"
-    
-    if len(sys.argv) > 2:
-        random.seed(int(sys.argv[2]))
-    
+    parser = argparse.ArgumentParser(
+        description="Sample parameter ranges and write an expanded config."
+    )
+    parser.add_argument("config_path", nargs="?", default=".config/masterconfig.yaml")
+    parser.add_argument("--output", default=".config/expanded_config.yaml")
+    parser.add_argument("--seed", type=int, default=None)
+    args = parser.parse_args()
+
+    if args.seed is not None:
+        random.seed(args.seed)
+
+    config_path = args.config_path
+    output_path = args.output
+
     MScompute(f"Loading config from: {config_path}")
-    
     if not os.path.exists(config_path):
         raise MSerror(f"Config file not found: {config_path}")
     
@@ -253,9 +262,7 @@ def main():
     expanded_config = copy.deepcopy(config)
     expanded_config["samples"] = expanded_samples
 
-    output_path = ".config/expanded_config.yaml"
     new_yaml = yaml.dump(expanded_config, default_flow_style=False, sort_keys=False)
-    
     if os.path.exists(output_path):
         with open(output_path, "r") as f:
             old_yaml = f.read()
@@ -265,7 +272,9 @@ def main():
     if old_yaml == new_yaml:
         MSsuccess(f"{output_path} is already up-to-date. No rewrite needed.")
     else:
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        out_dir = os.path.dirname(output_path)
+        if out_dir:
+            os.makedirs(out_dir, exist_ok=True)
         with open(output_path, "w") as f:
             f.write(new_yaml)
         MSsuccess(f"Wrote updated expanded config to {output_path}.")
