@@ -42,12 +42,6 @@ git clone https://forge.inrae.fr/pangepop/MSpangepop
 conda env create -n wf_env -f dependencies/wf_env.yaml
 ```  
 
-- Install [Apptainer](https://apptainer.org/docs/user/latest/) / Singularity
-```bash
-sudo apt-get install -y singularity-container
-```
-> **Nb :** For macOS, it is recommended to install Apptainer using Lima. On Windows, use WSL.
-
 ### 2. Configure the pipeline for your data
 
 Three elements are needed to run the simulation : 
@@ -80,6 +74,9 @@ samples:
 
 ### 3. Run the workflow 
 #### On the cluster
+
+- Activate the [Apptainer](https://apptainer.org/docs/user/latest/) / Singularity module from your cluster 
+
 - Run the workflow :
 ```bash
 sbatch mspangenome dry # Check for warnings
@@ -90,6 +87,13 @@ sbatch mspangenome run # Then
 > **Nb :** Use the command `squeue --format="%.10i %.9P %.6j %.10k %.8u %.2t %.10M %.6D %.20R" -A $user` to see job **names**
 
 #### Localy
+
+- Install [Apptainer](https://apptainer.org/docs/user/latest/) / Singularity
+```bash
+sudo apt-get install -y singularity-container
+```
+> **Nb :** For macOS, it is recommended to install Apptainer using Lima. On Windows, use WSL.
+
 ```bash
 ./mspangenome dry # Check for warnings
 ./mspangenome local-run # Then
