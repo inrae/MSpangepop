@@ -101,7 +101,7 @@ sudo apt-get install -y singularity-container
 
 ## Other running options
 ```
-mspangenome [dry|run|local-run|dag|rulegraph|unlock|touch] [additional snakemake args]
+mspangenome [dry|run|local-run|dag|rulegraph|unlock|touch] [-c|--config PATH] [additional snakemake args]
     dry - run in dry-run mode
     run - run the workflow with SLURM
     local-run - run the workflow localy (on a single node)
@@ -109,7 +109,8 @@ mspangenome [dry|run|local-run|dag|rulegraph|unlock|touch] [additional snakemake
     rulegraph - generate the rulegraph for the workflow
     unlock - Unlock the directory if snakemake crashed
     touch - Tell snakemake that all files are up to date (use with caution)
-    [additional snakemake args] - for any snakemake arg, like --until hifiasm
+    -c, --config PATH - master config file to use (default: .config/masterconfig.yaml)
+    [additional snakemake args] - for any snakemake arg, like --until coalescent_traversal
 ```
 
 ## Path Operations in mspangenome
