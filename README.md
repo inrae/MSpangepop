@@ -74,6 +74,9 @@ samples:
 
 ### 3. Run the workflow 
 #### On the cluster
+
+- Activate the [Apptainer](https://apptainer.org/docs/user/latest/) / Singularity module from your cluster 
+
 - Run the workflow :
 ```bash
 sbatch mspangenome dry # Check for warnings
@@ -84,6 +87,13 @@ sbatch mspangenome run # Then
 > **Nb :** Use the command `squeue --format="%.10i %.9P %.6j %.10k %.8u %.2t %.10M %.6D %.20R" -A $user` to see job **names**
 
 #### Localy
+
+- Install [Apptainer](https://apptainer.org/docs/user/latest/) / Singularity
+```bash
+sudo apt-get install -y singularity-container
+```
+> **Nb :** For macOS, it is recommended to install Apptainer using Lima. On Windows, use WSL.
+
 ```bash
 ./mspangenome dry # Check for warnings
 ./mspangenome local-run # Then
@@ -91,7 +101,7 @@ sbatch mspangenome run # Then
 
 ## Other running options
 ```
-mspangenome [dry|run|local-run|dag|rulegraph|unlock|touch] [additional snakemake args]
+mspangenome [dry|run|local-run|dag|rulegraph|unlock|touch] [-c|--config PATH] [additional snakemake args]
     dry - run in dry-run mode
     run - run the workflow with SLURM
     local-run - run the workflow localy (on a single node)
@@ -99,7 +109,8 @@ mspangenome [dry|run|local-run|dag|rulegraph|unlock|touch] [additional snakemake
     rulegraph - generate the rulegraph for the workflow
     unlock - Unlock the directory if snakemake crashed
     touch - Tell snakemake that all files are up to date (use with caution)
-    [additional snakemake args] - for any snakemake arg, like --until hifiasm
+    -c, --config PATH - master config file to use (default: .config/masterconfig.yaml)
+    [additional snakemake args] - for any snakemake arg, like --until coalescent_traversal
 ```
 
 ## Path Operations in mspangenome
