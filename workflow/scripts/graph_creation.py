@@ -25,33 +25,36 @@ Workflow:
            * Initialize graph from sequence
            * Apply mutations (SNP, INS, DEL, INV, DUP)
            * Assign LOCAL node IDs (starting at 1 per subgraph)
-           * Save to temp file as GFA fragment
+           * Save as a standalone GFA, unchop it with vg, drop the chopped copy
            * Free graph from memory
        - Collect mutation/variant tracking data from workers
-       - Calculate global ID offsets from node counts
     
-    3. GRAPH MERGING WITH ID REMAPPING (Phase 2):
-       - Stream through all temp files sequentially
-       - Remap local node IDs to global IDs using cumulative offsets
-       - Add connecting edges between consecutive subgraphs
-       - Concatenate paths for each lineage across all subgraphs
-       - Write final merged GFA file
-    
+    3. SUBGRAPH EXPORT (Phase 2):
+       - The already unchopped subgraphs are the output of this step; gfa_merge
+         only concatenates them and unchops the locus junctions
+         (see workflow/scripts/merge_subgraphs.py)
+       - Record the chopped node count for the gfa_merge stats file
     4. OUTPUT GENERATION (Phase 3):
-       - Read final GFA and export lineage sequences as FASTA files
+       - Stream the subgraphs in order to export lineage sequences as FASTA
        - Apply reverse complement for nodes with "-" orientation
        - Generate comprehensive visualization plots
        - Write detailed mutation recap file with statistics
     
 PARALLELIZATION:
     - Phase 1 is parallelized across subgraphs (significant speedup)
-    - Phase 2 and 3 are sequential (I/O bound)
+    - Phase 3 is sequential (I/O bound)
     - Thread scaling: --threads N → N/2 workers, each with N/(N/2) I/O threads
 
 MEMORY MANAGEMENT:
-    - Each subgraph is built, saved to temp file, then freed
+    - Each subgraph is built, saved, unchopped, then freed
     - Only metadata (SubgraphTempFile) kept in memory during Phase 1
-    - Phase 2 streams from temp files, never loads all data at once
+    - Phase 3 streams one subgraph at a time, never loads the chromosome
+
+DISK:
+    - A chopped subgraph carries one path segment per base per haplotype, so the
+      chopped form of a whole chromosome is the largest thing the workflow could
+      put on disk. Unchopping inside the worker means only the loci currently
+      being processed are ever in that form.
     
 INVERSION HANDLING:
     - Inverted nodes are marked with "-" orientation in GFA paths
