@@ -34,6 +34,7 @@ Workflow:
          only concatenates them and unchops the locus junctions
          (see workflow/scripts/merge_subgraphs.py)
        - Record the chopped node count for the gfa_merge stats file
+    
     4. OUTPUT GENERATION (Phase 3):
        - Stream the subgraphs in order to export lineage sequences as FASTA
        - Apply reverse complement for nodes with "-" orientation
@@ -66,6 +67,7 @@ REQUIRED INPUTS:
     --augmented_traversal : Path to JSON file containing the ORDERED mutation list and lineages
                            information from ARG traversal and mutation augmentation
     --threads             : Total CPU threads available (auto-scales parallelism)
+    --subgraph_dir        : Directory the per-locus GFA subgraphs are written to
 """
 
 import argparse
