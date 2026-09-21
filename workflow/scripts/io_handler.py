@@ -23,6 +23,7 @@ import traceback
 import threading
 import json
 import gzip
+import shutil
 from io import StringIO
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -293,6 +294,10 @@ class MSpangenomeDataHandler:
                 if lineage == "Ancestral":
                     continue
                 if not path.path_edges:
+                    # One-base locus: the lineage traverses the single node
+                    if graph.start_node is not None:
+                        paths_buffer.write(
+                            f"P\t{sample}#{lineage}#chr_{chromosome}\t{graph.start_node.id}+\t*\n")
                     continue
 
                 # Build path string
@@ -372,6 +377,9 @@ class MSpangenomeDataHandler:
                 if lineage == "Ancestral":
                     continue
                 if not path.path_edges:
+                    # One-base locus: the lineage traverses the single node
+                    if graph.start_node is not None:
+                        f.write(f"P\t{sample}#{lineage}#chr_{chromosome}\t{graph.start_node.id}+\t*\n")
                     continue
 
                 path_str = f"{path.path_edges[0].node1.id}+"
@@ -382,149 +390,97 @@ class MSpangenomeDataHandler:
                 f.write(f"P\t{sample}#{lineage}#chr_{chromosome}\t{path_str}\t*\n")
 
     @staticmethod
-    def merge_temp_files_to_gfa(temp_files: list, id_offsets: list, output_path: str, 
-                            sample: str, chromosome: str) -> dict:
-        """Optimized merge with buffered I/O."""
-        MScompute(f"Merging {len(temp_files)} temp files with ID remapping")
-        
-        BUFFER_SIZE = 100_000  # Lines before flush
-        
-        def remap_id(local_id: int, subgraph_idx: int) -> int:
-            return local_id + id_offsets[subgraph_idx]
-        
-        paths_by_lineage = {}
-        prev_global_end_id = None
-        connecting_edges = []
-        
-        write_buffer = []
-        
-        def flush_buffer(write_buffer, out_f):
-            if write_buffer:
-                out_f.write(''.join(write_buffer))
-                write_buffer.clear()
-        
-        with open(output_path, 'w', buffering=8*1024*1024) as out_f:  # 8MB buffer
-            
-            for tf_idx, tf in enumerate(temp_files):
-                subgraph_idx = tf.index
-                
-                global_start_id = remap_id(tf.local_start_id, subgraph_idx)
-                global_end_id = remap_id(tf.local_end_id, subgraph_idx)
-                
-                if prev_global_end_id is not None:
-                    connecting_edges.append(
-                        f"L\t{prev_global_end_id}\t+\t{global_start_id}\t+\t0M\n"
-                    )
-                prev_global_end_id = global_end_id
-                
-                with open(tf.path, 'r', buffering=4*1024*1024) as in_f:  # 4MB read buffer
-                    for line in in_f:
-                        if line.startswith('S\t'):
-                            parts = line.split('\t', 2)  # Limit splits for speed
-                            local_id = int(parts[1])
-                            global_id = remap_id(local_id, subgraph_idx)
-                            write_buffer.append(f"S\t{global_id}\t{parts[2]}")
-                            
-                        elif line.startswith('L\t'):
-                            parts = line.split('\t')
-                            global_n1 = remap_id(int(parts[1]), subgraph_idx)
-                            global_n2 = remap_id(int(parts[3]), subgraph_idx)
-                            write_buffer.append(
-                                f"L\t{global_n1}\t{parts[2]}\t{global_n2}\t{parts[4]}\t{parts[5]}"
-                            )
-                            
-                        elif line.startswith('P\t'):
-                            parts = line.split('\t')
-                            lineage = parts[1].split('#')[1]
-                            segments = parts[2].split(',')
-                            # Use list comprehension for speed
-                            remapped = [f"{int(s[:-1]) + id_offsets[subgraph_idx]}{s[-1]}" 
-                                    for s in segments]
-                            
-                            if lineage not in paths_by_lineage:
-                                paths_by_lineage[lineage] = []
-                            paths_by_lineage[lineage].extend(remapped)
-                        
-                        if len(write_buffer) >= BUFFER_SIZE:
-                            flush_buffer(write_buffer, out_f)
-                
-                # Progress for merge phase
-                if (tf_idx + 1) % 100 == 0 or tf_idx == len(temp_files) - 1:
-                    MScompute(f"  Phase 2: merged {tf_idx + 1}/{len(temp_files)} subgraphs")
-            
-            flush_buffer(write_buffer, out_f)
-            
-            # Write connecting edges
-            out_f.write(''.join(connecting_edges))
-            
-            # Write merged paths
-            for lineage, segments in paths_by_lineage.items():
-                path_name = f"{sample}#{lineage}#chr_{chromosome}"
-                out_f.write(f"P\t{path_name}\t{','.join(segments)}\t*\n")
-        
-        MSsuccess(f"Final GFA written: {output_path}")
-        return {lineage: len(segs) for lineage, segs in paths_by_lineage.items()}
+    def write_fasta_from_fragments(fragment_paths: list, sample: str, chromosome: str,
+                                   fasta_folder: str, tmp_folder: str,
+                                   compress: bool = True) -> dict:
+        """
+        Write the haplotype FASTA by streaming the subgraph fragments in order.
 
-    @staticmethod
-    def write_fasta_from_gfa(gfa_path: str,sample: str,chromosome: str,fasta_folder: str,compress: bool = True):
-        """Read the final GFA and write FASTA sequences."""
+        Only one locus is held at a time, so memory does not grow with the
+        chromosome.
+        """
         from graph_utils import reverse_complement
 
         os.makedirs(fasta_folder, exist_ok=True)
         ext = ".fasta.gz" if compress else ".fasta"
         fasta_path = os.path.join(fasta_folder, f"{sample}_chr{chromosome}{ext}")
 
-        MScompute("Building FASTA from GFA")
-
-        # Read node sequences
-        node_seqs = {}
-        paths = {}  # path_name -> segments string
-
-        with open(gfa_path, 'r') as f:
-            for line in f:
-                if line.startswith('S\t'):
-                    parts = line.strip().split('\t')
-                    node_id = int(parts[1])
-                    seq = parts[2]
-                    node_seqs[node_id] = seq
-                elif line.startswith('P\t'):
-                    parts = line.strip().split('\t')
-                    path_name = parts[1]
-                    segments = parts[2]
-                    paths[path_name] = segments
+        MScompute("Building FASTA from subgraph fragments")
 
         FASTA_LINE_WIDTH = 60
+        part_dir = os.path.join(tmp_folder, f"fasta_parts_{sample}_{chromosome}")
+        os.makedirs(part_dir, exist_ok=True)
 
-        # Write FASTA incrementally without building full sequence in memory
-        open_func = gzip.open if compress else open
-        with open_func(fasta_path, 'wt') as out_f:
-            for path_name, segments in paths.items():
-                out_f.write(f">{path_name}\n")
-                
-                line_pos = 0  # Current position in the FASTA line
-                
-                for seg in segments.split(','):
-                    node_id = int(seg[:-1])
-                    orient = seg[-1]
-                    node_seq = node_seqs.get(node_id, "")
-                    if orient == '-':
-                        node_seq = reverse_complement(node_seq)
-                    
-                    # Write segment bases while respecting FASTA line width
-                    seq_pos = 0
-                    while seq_pos < len(node_seq):
-                        remaining_in_line = FASTA_LINE_WIDTH - line_pos
-                        chunk = node_seq[seq_pos:seq_pos + remaining_in_line]
-                        out_f.write(chunk)
-                        seq_pos += len(chunk)
-                        line_pos += len(chunk)
-                        
-                        if line_pos >= FASTA_LINE_WIDTH:
-                            out_f.write('\n')
-                            line_pos = 0
-                
-                # End the last line if it was not already terminated
-                if line_pos > 0:
-                    out_f.write('\n')
+        part_paths = {}      # path name -> part file on disk
+        handles = {}         # path name -> open part file
+        line_pos = {}        # path name -> column reached in the current line
+        lineage_lengths = {}
+        order = []           # path names, in the order they first appear
+
+        try:
+            for fragment in fragment_paths:
+                node_seqs = {}
+                fragment_paths_here = []
+
+                with open(fragment, 'r', buffering=4*1024*1024) as f:
+                    for line in f:
+                        if line.startswith('S\t'):
+                            parts = line.rstrip('\n').split('\t')
+                            node_seqs[int(parts[1])] = parts[2]
+                        elif line.startswith('P\t'):
+                            parts = line.rstrip('\n').split('\t')
+                            fragment_paths_here.append((parts[1], parts[2]))
+
+                for path_name, segments in fragment_paths_here:
+                    if path_name not in handles:
+                        part_paths[path_name] = os.path.join(
+                            part_dir, f"{len(order):06d}.part")
+                        handles[path_name] = open(part_paths[path_name], 'w')
+                        line_pos[path_name] = 0
+                        order.append(path_name)
+
+                    out_f = handles[path_name]
+                    pos = line_pos[path_name]
+                    written = 0
+
+                    for seg in segments.split(','):
+                        node_seq = node_seqs.get(int(seg[:-1]), "")
+                        if seg[-1] == '-':
+                            node_seq = reverse_complement(node_seq)
+                        written += len(node_seq)
+
+                        # Keep wrapping across fragments, not just within one
+                        seq_pos = 0
+                        while seq_pos < len(node_seq):
+                            chunk = node_seq[seq_pos:seq_pos + FASTA_LINE_WIDTH - pos]
+                            out_f.write(chunk)
+                            seq_pos += len(chunk)
+                            pos += len(chunk)
+                            if pos >= FASTA_LINE_WIDTH:
+                                out_f.write('\n')
+                                pos = 0
+
+                    line_pos[path_name] = pos
+                    lineage = path_name.split('#')[1]
+                    lineage_lengths[lineage] = lineage_lengths.get(lineage, 0) + written
+
+            for path_name in order:
+                if line_pos[path_name] > 0:
+                    handles[path_name].write('\n')
+                handles[path_name].close()
+
+            open_func = gzip.open if compress else open
+            with open_func(fasta_path, 'wt') as out_f:
+                for path_name in order:
+                    out_f.write(f">{path_name}\n")
+                    with open(part_paths[path_name], 'r') as part_f:
+                        shutil.copyfileobj(part_f, out_f)
+
+        finally:
+            for handle in handles.values():
+                if not handle.closed:
+                    handle.close()
+            shutil.rmtree(part_dir, ignore_errors=True)
 
         MSsuccess(f"FASTA written: {fasta_path}")
+        return lineage_lengths
