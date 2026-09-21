@@ -82,6 +82,7 @@ from graph_utils import (
     gather_lineages, MutationRecap, VariantSizeVisualizer, NodeIDAllocator
 )
 from graph_classes import Graph
+from merge_subgraphs import run_unchop
 
 class MutationType(Enum):
     """Enumeration of supported mutation types in the variation graph."""
@@ -218,10 +219,15 @@ def process_and_save_single_subgraph(args: tuple) -> SubgraphTempFile:
     if local_end_id is None:
         local_end_id = max(1, local_allocator.current_id - 1)
     
-    # 5. Save to temp file with local IDs
-    MSpangenomeDataHandler.save_subgraph_temp(graph, temp_path, sample, chromosome, max_workers=io_threads)
+    # 5. Save with local IDs, then unchop straight away. The one-node-per-base
+    #    form only ever exists for the loci currently in flight, instead of for
+    #    the whole chromosome at once.
+    chopped_path = temp_path + ".chopped"
+    MSpangenomeDataHandler.save_subgraph_temp(graph, chopped_path, sample, chromosome, max_workers=io_threads)
+    run_unchop(chopped_path, temp_path, threads=1)
+    os.remove(chopped_path)
     
-    # 6. Get node count before freeing
+    # 6. Get node count before freeing (chopped size, for the gfa_merge stats)
     node_count = len(graph.nodes)
     del graph
     
@@ -374,7 +380,7 @@ def _validate_mutation(mut_type: MutationType, relative_start: int, length: int,
 # MAIN FUNCTION
 # ============================================================================
 
-def main(splited_fasta: str, augmented_traversal: str, output_file: str,
+def main(splited_fasta: str, augmented_traversal: str, subgraph_dir: str,
          sample: str, chromosome: str, fasta_folder: str, tmp_folder: str, 
          recap_file: str = None, variant_plot_dir: str = None, 
          threads: int = 1) -> None:
@@ -401,6 +407,7 @@ def main(splited_fasta: str, augmented_traversal: str, output_file: str,
     temp_dir = os.path.join(tmp_folder, f"pangraph_{sample}_{chromosome}")
     os.makedirs(temp_dir, exist_ok=True)
     MScompute(f"Temp directory: {temp_dir}")
+    os.makedirs(subgraph_dir, exist_ok=True)
     
     try:
         tree_lineages = gather_lineages(traversal)
@@ -419,7 +426,7 @@ def main(splited_fasta: str, augmented_traversal: str, output_file: str,
         tasks = []
         for i, (seq_record, (tree_index, lineages)) in enumerate(zip(sequences, tree_lineages)):
             seq_data = (seq_record.id, str(seq_record.seq))
-            temp_path = os.path.join(temp_dir, f"subgraph_{i:06d}.gfa.tmp")
+            temp_path = os.path.join(subgraph_dir, f"subgraph_{i:06d}.gfa")
             
             tasks.append((
                 seq_data,
@@ -495,39 +502,27 @@ def main(splited_fasta: str, augmented_traversal: str, output_file: str,
             tf.mutations_data = []
             tf.variants_data = []
         
-        # Calculate global ID offsets
-        id_offsets = [0]
-        cumulative = 0
-        for tf in temp_files:
-            cumulative += tf.node_count
-            id_offsets.append(cumulative)
-        
-        total_nodes = cumulative
+        total_nodes = sum(tf.node_count for tf in temp_files)
         MSsuccess(f"Phase 1 complete: {len(temp_files)} subgraphs, {total_nodes:,} total nodes")
         
         # =====================================================================
-        # PHASE 2: Merge temp files into final GFA with ID remapping
+        # PHASE 2: Record the chopped size for the gfa_merge stats file
         # =====================================================================
-        MScompute("Phase 2: Merging subgraphs with ID remapping")
-        
-        lineage_lengths = MSpangenomeDataHandler.merge_temp_files_to_gfa(
-            temp_files=temp_files,
-            id_offsets=id_offsets,
-            output_path=output_file,
-            sample=sample,
-            chromosome=chromosome
-        )
+        with open(os.path.join(subgraph_dir, "chopped_nodes.txt"), "w") as f:
+            f.write(f"{total_nodes}\n")
         
         # =====================================================================
-        # PHASE 3: Write FASTA from final GFA
+        # PHASE 3: Write FASTA from the subgraphs
         # =====================================================================
         MScompute("Phase 3: Writing FASTA")
         
-        MSpangenomeDataHandler.write_fasta_from_gfa(
-            gfa_path=output_file,
+        fragment_paths = [tf.path for tf in temp_files]
+        lineage_lengths = MSpangenomeDataHandler.write_fasta_from_fragments(
+            fragment_paths=fragment_paths,
             sample=sample,
             chromosome=chromosome,
-            fasta_folder=fasta_folder
+            fasta_folder=fasta_folder,
+            tmp_folder=temp_dir
         )
         
         # Set lineage lengths for plots
@@ -575,7 +570,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Create variation graph from mutations")
     parser.add_argument("--splited_fasta", required=True, help="Path to split FASTA file")
     parser.add_argument("--augmented_traversal", required=True, help="Path to augmented traversal JSON")
-    parser.add_argument("--output_file", required=True, help="Path to output GFA file")
+    parser.add_argument("--subgraph_dir", required=True, help="Directory for the subgraph GFA files")
     parser.add_argument("--sample", required=True, help="Sample name")
     parser.add_argument("--chromosome", required=True, help="Chromosome identifier")
     parser.add_argument("--fasta_folder", required=True, help="Directory to save all fasta")
@@ -590,7 +585,7 @@ if __name__ == "__main__":
     main(
         splited_fasta=args.splited_fasta,
         augmented_traversal=args.augmented_traversal,
-        output_file=args.output_file,
+        subgraph_dir=args.subgraph_dir,
         sample=args.sample,
         chromosome=args.chromosome,
         fasta_folder=args.fasta_folder,
