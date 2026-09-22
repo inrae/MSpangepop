@@ -458,7 +458,8 @@ def _validate_mutation(mut_type: MutationType, relative_start: int, length: int,
 def main(splited_fasta: str, augmented_traversal: str, subgraph_dir: str,
          sample: str, chromosome: str, fasta_folder: str, tmp_folder: str, 
          recap_file: str = None, variant_plot_dir: str = None, 
-         threads: int = 1, loci_per_file: int = 100) -> None:
+         threads: int = 1, loci_per_file: int = 100,
+         succinct: bool = False) -> None:
     """
     Main function with automatic parallel processing based on available threads.
     """
@@ -635,7 +636,7 @@ def main(splited_fasta: str, augmented_traversal: str, subgraph_dir: str,
             MSsuccess("Saved recap")
         
         # Generate plots
-        if variant_plot_dir:
+        if variant_plot_dir and not succinct:
             os.makedirs(variant_plot_dir, exist_ok=True)
             
             MScompute("Generating visualization plots")
@@ -671,6 +672,8 @@ if __name__ == "__main__":
                         help="Total CPU threads available - auto-scales parallelism (default: 4)")
     parser.add_argument("--loci_per_file", type=int, default=100,
                         help="Number of loci grouped into one subgraph GFA (default: 100)")
+    parser.add_argument("--succinct", type=lambda x: str(x).lower() == 'true',
+                        default=False, help="Skip the variant plots (True/False, default: False)")
 
     args = parser.parse_args()
 
@@ -685,5 +688,6 @@ if __name__ == "__main__":
         recap_file=args.recap_file,
         variant_plot_dir=args.variant_plot_dir,
         threads=args.threads,
-        loci_per_file=args.loci_per_file
+        loci_per_file=args.loci_per_file,
+        succinct=args.succinct
     )
