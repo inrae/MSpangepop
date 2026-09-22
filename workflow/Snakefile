@@ -203,9 +203,9 @@ rule coalescent_traversal:
     params:
         readable_json=lambda wildcards: config["samples"][wildcards.sample].get("readable_json", False) 
     resources:
-        mem_mb=lambda wildcards: int(10000 * memory_multiplier),
+        mem_mb=lambda wildcards: int(6000 * memory_multiplier),
         time="10:00:00"
-    threads: 5
+    threads: 2
     priority: 9
     benchmark:
         os.path.join(output_dir, "{sample}", "benchmark", "chr_{chromosome}", "coalescent_traversal_benchmark.txt")
@@ -213,8 +213,9 @@ rule coalescent_traversal:
         "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
     log:
         os.path.join(log_dir, "{sample}", "chr_{chromosome}", "coalescent_traversal.log")
-    shell: 
+    shell:
         """
+        exec > {log} 2>&1
         python3 workflow/scripts/coalescent_traversal.py --json {input.json} \
             --chromosome {wildcards.chromosome} \
             --output_file {output.traversal} \
@@ -230,7 +231,7 @@ rule split_recombination:
     output:
         split_fasta = os.path.join(output_dir, "{sample}", simulation_data, "chr_{chromosome}", "{sample}_chr_{chromosome}_recombinations.fasta.gz")
     resources:
-        mem_mb=lambda wildcards: int(50000 * memory_multiplier),
+        mem_mb=lambda wildcards: int(8000 * memory_multiplier),
         time="10:00:00"
     threads: 1
     benchmark:
@@ -256,10 +257,10 @@ rule draw_variants:
         demographic = lambda wildcards: config["samples"][wildcards.sample]["demographic_file"]
     output:
         augmented_traversal = os.path.join(output_dir, "{sample}", graph, "chr_{chromosome}", "traversal", "{sample}_chr_{chromosome}_augmented_traversal.json")
-    threads: 5
+    threads: 2
     priority: 8
     resources:
-        mem_mb=lambda wildcards: int(10000 * memory_multiplier),
+        mem_mb=lambda wildcards: int(32000 * memory_multiplier),
         time="10:00:00"
     container:
         "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
@@ -294,7 +295,7 @@ rule graph_creation:
         loci_per_file = loci_per_file,
         succinct = succinct
     resources:
-        mem_mb=lambda wildcards: int(400000 * memory_multiplier),
+        mem_mb=lambda wildcards: int(64000 * memory_multiplier),
         time="60:00:00"
     benchmark:
         os.path.join(output_dir, "{sample}", "benchmark", "chr_{chromosome}", "graph_creation_benchmark.txt")
@@ -332,13 +333,13 @@ rule gfa_merge:
     params:
         tmp_folder = lambda wildcards: os.path.join(output_dir, f"{wildcards.sample}", temp_dir, f"merge_chr_{wildcards.chromosome}")
     resources:
-        mem_mb=lambda wildcards: int(100000 * memory_multiplier),
+        mem_mb=lambda wildcards: int(24000 * memory_multiplier),
         time="60:00:00"
     benchmark:
         os.path.join(output_dir, "{sample}", "benchmark", "chr_{chromosome}", "gfa_merge_benchmark.txt")
     container:
         "docker://registry.forge.inrae.fr/pangepop/mspangepop/vg:v1.67.0"
-    threads: 25
+    threads: 4
     priority: 7
     log:
         os.path.join(log_dir, "{sample}", "chr_{chromosome}", "gfa_merge.log")
