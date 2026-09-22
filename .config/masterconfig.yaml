@@ -12,7 +12,9 @@ samples:
 # Global settings
 output_dir: "results/"              # Base directory for all simulation outputs
 memory_multiplier: 1                # Memory scaling factor (increase if OOM errors)
-succinct: False                     # If set to True skip, visualizations
+succinct: False                     # If set to True skip every plot and the visualization rule
+loci_per_file: 100                  # Loci grouped into one subgraph GFA (lower = less ram but high disk usage, increase if you use a high recombination_rate)
+log_dir: "logs/"                    # Per sample and replicate logs, one file per workflow step
 
 # Optional: where to write the expanded config generated from this file.
 # Defaults to .config/expanded_config.yaml when omitted.

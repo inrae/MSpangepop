@@ -84,7 +84,9 @@ samples:
 |-----------|------|-------------|---------|
 | `output_dir` | string | Base directory for all simulation outputs | `"results/"` |
 | `memory_multiplier` | float | Memory scaling factor for cluster jobs (increase if OOM errors) | `1` |
-| `succinct` | bool | If True, skip visialization rule | `False` |
+| `succinct` | bool | If True, skip every plot and drop the visualization rule from the targets | `False` |
+| `loci_per_file` | int | How many loci are grouped into one subgraph GFA, to avoid one file per recombination breakpoint | `100` |
+| `log_dir` | string | Where the per step logs go, as `<log_dir>/<sample>/chr_<n>/<rule>.log` | `"logs/"` |
 | `expanded_config` | string | Where to write the expanded config generated from this file. Set a distinct path per run to launch jobs in parallel. | `".config/expanded_config.yaml"` |
 
 
@@ -123,6 +125,8 @@ samples:
 output_dir: "results/"
 memory_multiplier: 1.5  
 succinct: False
+loci_per_file: 100
+log_dir: "logs/"
 ```
 
 ## How Replicates Work with Parameter Ranges
