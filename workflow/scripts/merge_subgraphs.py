@@ -207,6 +207,11 @@ def main(subgraph_dir: str, output_file: str, stats_file: str,
     finally:
         if os.path.exists(concatenated):
             os.remove(concatenated)
+        # The rule owns this folder, so it should not outlive the rule
+        try:
+            os.rmdir(tmp_folder)
+        except OSError:
+            pass
 
 
 if __name__ == "__main__":
