@@ -58,6 +58,13 @@ memory_multiplier = config.get("memory_multiplier", 1)
 # recombination breakpoint, which is tens of thousands of files per chromosome.
 loci_per_file = config.get("loci_per_file", 100)
 
+# Skip every plot, and with them the visualization rule itself
+succinct = config.get("succinct", False)
+
+# Per-sample, per-chromosome logs. sample_ranges names replicates "<sample>_rep<n>",
+# so each replicate of each sample gets its own directory.
+log_dir = config.get("log_dir", "logs/")
+
 # Create explicit targets
 def get_all_targets():
     targets = []
@@ -66,7 +73,10 @@ def get_all_targets():
         # Add polished GFA files
         for chr_num in range(1, chr_n + 1):
             targets.append(os.path.join(output_dir, sample, graph,f"chr_{chr_num}", f"{sample}_chr_{chr_num}_graph.gfa"))
-            targets.append(os.path.join(output_dir, sample, plot_dir, f"chr_{chr_num}", "visualization_complete.txt"))
+            # In succinct mode the visualization rule has nothing to do, so do not
+            # ask for its flag file at all rather than scheduling an empty job
+            if not succinct:
+                targets.append(os.path.join(output_dir, sample, plot_dir, f"chr_{chr_num}", "visualization_complete.txt"))
         # Add global recap
         targets.append(os.path.join(output_dir, sample, simulation_data, f"{sample}_global_recap.txt"))
     return targets
@@ -92,8 +102,11 @@ rule setup:
     container:
         "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
     priority: 10
+    log:
+        os.path.join(log_dir, "{sample}", "setup.log")
     shell:
         """
+        exec > {log} 2>&1
         python3 workflow/scripts/recap.py {input.configfile} \
             {params.out} \
             {wildcards.sample}
@@ -126,8 +139,11 @@ rule msprime_simulation:
     container:
         "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
     priority: 10
+    log:
+        os.path.join(log_dir, "{sample}", "chr_{chromosome}", "msprime_simulation.log")
     shell:
         """
+        exec > {log} 2>&1
         python3 workflow/scripts/msprime_simulation.py \
             -fai {input.fai} \
             -d {input.demographic} \
@@ -164,8 +180,11 @@ rule visualization:
     container:
         "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
     priority: 2
+    log:
+        os.path.join(log_dir, "{sample}", "chr_{chromosome}", "visualization.log")
     shell:
         """
+        exec > {log} 2>&1
         if [ "{params.succinct}" = "True" ]; then
             echo "Visualization skipped (succinct mode) at $(date)" > {output.completion_flag}
         else
@@ -192,6 +211,8 @@ rule coalescent_traversal:
         os.path.join(output_dir, "{sample}", "benchmark", "chr_{chromosome}", "coalescent_traversal_benchmark.txt")
     container:
         "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
+    log:
+        os.path.join(log_dir, "{sample}", "chr_{chromosome}", "coalescent_traversal.log")
     shell: 
         """
         python3 workflow/scripts/coalescent_traversal.py --json {input.json} \
@@ -217,8 +238,11 @@ rule split_recombination:
     priority: 8
     container:
         "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
+    log:
+        os.path.join(log_dir, "{sample}", "chr_{chromosome}", "split_recombination.log")
     shell:
         """
+        exec > {log} 2>&1
         python3 workflow/scripts/split_recombination.py --json {input.json} \
             --fasta {input.fasta} \
             --chromosome {wildcards.chromosome} \
@@ -241,8 +265,11 @@ rule draw_variants:
         "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
     benchmark:
         os.path.join(output_dir, "{sample}", "benchmark", "chr_{chromosome}", "draw_variants_benchmark.txt")
+    log:
+        os.path.join(log_dir, "{sample}", "chr_{chromosome}", "draw_variants.log")
     shell:
         """
+        exec > {log} 2>&1
         python3 workflow/scripts/draw_variants.py \
             --json {input.traversal_json} \
             --demographic {input.demographic} \
@@ -264,7 +291,8 @@ rule graph_creation:
         out_dir = lambda wildcards: os.path.join(output_dir, wildcards.sample, plot_dir, f"chr_{wildcards.chromosome}", "03_graph_plots"), 
         fasta_folder = lambda wildcards: os.path.join(output_dir, wildcards.sample, graph,  f"chr_{wildcards.chromosome}", "fasta"),
         tmp_folder = lambda wildcards: os.path.join(output_dir, f"{wildcards.sample}", temp_dir,f"chr_{wildcards.chromosome}"),
-        loci_per_file = loci_per_file
+        loci_per_file = loci_per_file,
+        succinct = succinct
     resources:
         mem_mb=lambda wildcards: int(400000 * memory_multiplier),
         time="60:00:00"
@@ -274,8 +302,11 @@ rule graph_creation:
         "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
     threads: 20
     priority: 7
+    log:
+        os.path.join(log_dir, "{sample}", "chr_{chromosome}", "graph_creation.log")
     shell:
         """
+        exec > {log} 2>&1
         python3 workflow/scripts/graph_creation.py \
             --splited_fasta {input.split_fasta} \
             --augmented_traversal {input.augmented_traversal} \
@@ -287,7 +318,8 @@ rule graph_creation:
             --fasta_folder {params.fasta_folder} \
             --tmp_folder {params.tmp_folder} \
             --threads {threads} \
-            --loci_per_file {params.loci_per_file}
+            --loci_per_file {params.loci_per_file} \
+            --succinct {params.succinct}
         """
 
 # Concatenate the (already unchopped) locus subgraphs
@@ -308,8 +340,11 @@ rule gfa_merge:
         "docker://registry.forge.inrae.fr/pangepop/mspangepop/vg:v1.67.0"
     threads: 25
     priority: 7
+    log:
+        os.path.join(log_dir, "{sample}", "chr_{chromosome}", "gfa_merge.log")
     shell:
         """
+        exec > {log} 2>&1
         echo "[gfa_merge] Unchopping each subgraph, then concatenating"
         python3 workflow/scripts/merge_subgraphs.py \
             --subgraph_dir {input.subgraph_dir} \
