@@ -54,6 +54,10 @@ graph  = "03_graph/"
 # Retrieve memory multiplier from config
 memory_multiplier = config.get("memory_multiplier", 1)
 
+# How many loci share one subgraph GFA. One file per locus means one file per
+# recombination breakpoint, which is tens of thousands of files per chromosome.
+loci_per_file = config.get("loci_per_file", 100)
+
 # Create explicit targets
 def get_all_targets():
     targets = []
@@ -259,7 +263,8 @@ rule graph_creation:
     params:
         out_dir = lambda wildcards: os.path.join(output_dir, wildcards.sample, plot_dir, f"chr_{wildcards.chromosome}", "03_graph_plots"), 
         fasta_folder = lambda wildcards: os.path.join(output_dir, wildcards.sample, graph,  f"chr_{wildcards.chromosome}", "fasta"),
-        tmp_folder = lambda wildcards: os.path.join(output_dir, f"{wildcards.sample}", temp_dir,f"chr_{wildcards.chromosome}")
+        tmp_folder = lambda wildcards: os.path.join(output_dir, f"{wildcards.sample}", temp_dir,f"chr_{wildcards.chromosome}"),
+        loci_per_file = loci_per_file
     resources:
         mem_mb=lambda wildcards: int(400000 * memory_multiplier),
         time="60:00:00"
@@ -281,7 +286,8 @@ rule graph_creation:
             --variant_plot_dir {params.out_dir} \
             --fasta_folder {params.fasta_folder} \
             --tmp_folder {params.tmp_folder} \
-            --threads {threads}
+            --threads {threads} \
+            --loci_per_file {params.loci_per_file}
         """
 
 # Concatenate the (already unchopped) locus subgraphs

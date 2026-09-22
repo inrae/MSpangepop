@@ -20,8 +20,10 @@ Workflow:
     
     2. PARALLEL MEMORY-EFFICIENT GRAPH CONSTRUCTION (Phase 1):
        - Extract lineage information from traversal data
-       - Process subgraphs in parallel using ProcessPoolExecutor
-       - For each locus (in parallel): 
+       - Process GROUPS of consecutive loci in parallel using ProcessPoolExecutor,
+         one output GFA per group (--loci_per_file), so a chromosome yields a few
+         hundred files rather than one per recombination breakpoint
+       - For each locus in the group: 
            * Initialize graph from sequence
            * Apply mutations (SNP, INS, DEL, INV, DUP)
            * Assign LOCAL node IDs (starting at 1 per subgraph)
@@ -67,7 +69,8 @@ REQUIRED INPUTS:
     --augmented_traversal : Path to JSON file containing the ORDERED mutation list and lineages
                            information from ARG traversal and mutation augmentation
     --threads             : Total CPU threads available (auto-scales parallelism)
-    --subgraph_dir        : Directory the per-locus GFA subgraphs are written to
+    --subgraph_dir        : Directory the grouped GFA subgraphs are written to
+    --loci_per_file       : How many loci share one output GFA (default 100)
 """
 
 import argparse
@@ -82,7 +85,7 @@ from graph_utils import (
     gather_lineages, MutationRecap, VariantSizeVisualizer, NodeIDAllocator
 )
 from graph_classes import Graph
-from merge_subgraphs import run_unchop
+from merge_subgraphs import run_unchop, concatenate_subgraphs
 
 class MutationType(Enum):
     """Enumeration of supported mutation types in the variation graph."""
@@ -242,6 +245,78 @@ def process_and_save_single_subgraph(args: tuple) -> SubgraphTempFile:
     )
 
 
+class SubgraphBatch:
+    """Tracks one saved group of loci."""
+    __slots__ = ("index", "path", "node_count", "locus_count",
+                 "mutations_data", "variants_data")
+
+    def __init__(self, index: int, path: str, node_count: int, locus_count: int,
+                 mutations_data: list, variants_data: list):
+        self.index = index
+        self.path = path
+        self.node_count = node_count
+        self.locus_count = locus_count
+        self.mutations_data = mutations_data
+        self.variants_data = variants_data
+
+
+def process_and_save_batch(args: tuple) -> SubgraphBatch:
+    """
+    Build a group of consecutive loci and write them as a single GFA.
+
+    One file per locus means one file per recombination breakpoint, which on a
+    real chromosome is tens of thousands of files per sample and hurts a shared
+    cluster filesystem more than it costs to avoid. Grouping is free here: the
+    loci of a group are consecutive, so they are concatenated exactly the way
+    gfa_merge concatenates the groups afterwards, and the junctions inside the
+    group are merged by the group's own unchop instead of being left to the
+    final pass.
+
+    Each locus is still built, saved and unchopped on its own, so peak memory is
+    one locus regardless of how many are grouped.
+
+    Designed to run in a separate process (all args must be picklable).
+    """
+    locus_tasks, batch_path, batch_index, work_dir = args
+
+    os.makedirs(work_dir, exist_ok=True)
+
+    locus_paths = []
+    mutations_data = []
+    variants_data = []
+    node_count = 0
+
+    for locus_args in locus_tasks:
+        result = process_and_save_single_subgraph(locus_args)
+        locus_paths.append(result.path)
+        mutations_data.extend(result.mutations_data)
+        variants_data.extend(result.variants_data)
+        node_count += result.node_count
+
+    # Concatenate the compacted loci, then unchop to merge the junctions the
+    # per-locus passes could not see.
+    concat_path = batch_path + ".concat"
+    concatenate_subgraphs(locus_paths, concat_path)
+    run_unchop(concat_path, batch_path, threads=1)
+
+    for locus_path in locus_paths:
+        os.remove(locus_path)
+    os.remove(concat_path)
+    try:
+        os.rmdir(work_dir)
+    except OSError:
+        pass
+
+    return SubgraphBatch(
+        index=batch_index,
+        path=batch_path,
+        node_count=node_count,
+        locus_count=len(locus_paths),
+        mutations_data=mutations_data,
+        variants_data=variants_data
+    )
+
+
 def _apply_mutation_to_graph(
     graph: Graph,
     mutation: dict,
@@ -383,7 +458,7 @@ def _validate_mutation(mut_type: MutationType, relative_start: int, length: int,
 def main(splited_fasta: str, augmented_traversal: str, subgraph_dir: str,
          sample: str, chromosome: str, fasta_folder: str, tmp_folder: str, 
          recap_file: str = None, variant_plot_dir: str = None, 
-         threads: int = 1) -> None:
+         threads: int = 1, loci_per_file: int = 100) -> None:
     """
     Main function with automatic parallel processing based on available threads.
     """
@@ -415,37 +490,51 @@ def main(splited_fasta: str, augmented_traversal: str, subgraph_dir: str,
         if len(sequences) != len(tree_lineages):
             raise MSerror(f"Mismatch: {len(sequences)} sequences vs {len(tree_lineages)} trees")
         
-        num_subgraphs = len(sequences)
+        num_loci = len(sequences)
         
-        # Adjust workers if more workers than subgraphs
-        actual_workers = min(num_workers, num_subgraphs)
-        
-        MScompute(f"Configuration: {actual_workers} workers, {io_threads_per_worker} I/O threads each")
-        
-        # Prepare picklable arguments
-        tasks = []
+        # Prepare picklable arguments. Each locus is still built and unchopped on
+        # its own, in a temp directory; a worker then writes a whole group of
+        # them as one GFA so the result is a few hundred files, not one per
+        # recombination breakpoint.
+        locus_tasks = []
         for i, (seq_record, (tree_index, lineages)) in enumerate(zip(sequences, tree_lineages)):
             seq_data = (seq_record.id, str(seq_record.seq))
-            temp_path = os.path.join(subgraph_dir, f"subgraph_{i:06d}.gfa")
+            locus_path = os.path.join(
+                temp_dir, f"batch_{i // loci_per_file:06d}", f"locus_{i:06d}.gfa")
             
-            tasks.append((
+            locus_tasks.append((
                 seq_data,
                 traversal[i],
                 tree_index,
                 lineages,
-                temp_path,
+                locus_path,
                 i,
                 sample,
                 chromosome,
                 io_threads_per_worker
             ))
         
-        # =====================================================================
-        # PHASE 1: Process subgraphs in parallel with progress tracking
-        # =====================================================================
-        MScompute(f"Phase 1: Processing {num_subgraphs} subgraphs")
+        tasks = []
+        for batch_index, start in enumerate(range(0, num_loci, loci_per_file)):
+            tasks.append((
+                locus_tasks[start:start + loci_per_file],
+                os.path.join(subgraph_dir, f"subgraph_{batch_index:06d}.gfa"),
+                batch_index,
+                os.path.join(temp_dir, f"batch_{batch_index:06d}")
+            ))
         
-        temp_files: List[SubgraphTempFile] = [None] * len(tasks)
+        # Adjust workers if more workers than groups
+        actual_workers = min(num_workers, len(tasks))
+        
+        MScompute(f"Configuration: {actual_workers} workers, {io_threads_per_worker} I/O threads each")
+        
+        # =====================================================================
+        # PHASE 1: Process groups in parallel with progress tracking
+        # =====================================================================
+        MScompute(f"Phase 1: Processing {num_loci} loci in {len(tasks)} groups "
+                  f"of up to {loci_per_file}")
+        
+        temp_files: List[SubgraphBatch] = [None] * len(tasks)
         completed = 0
         total = len(tasks)
         last_pct = -1
@@ -453,7 +542,7 @@ def main(splited_fasta: str, augmented_traversal: str, subgraph_dir: str,
         MScompute(f"  Progress: 0/{total} (0%)")
         
         with ProcessPoolExecutor(max_workers=actual_workers) as executor:
-            futures = {executor.submit(process_and_save_single_subgraph, task): task[5] for task in tasks}
+            futures = {executor.submit(process_and_save_batch, task): task[2] for task in tasks}
             
             for future in as_completed(futures):
                 try:
@@ -469,7 +558,7 @@ def main(splited_fasta: str, augmented_traversal: str, subgraph_dir: str,
                         
                 except Exception as e:
                     idx = futures[future]
-                    raise MSerror(f"Subgraph {idx} failed: {e}")
+                    raise MSerror(f"Subgraph group {idx} failed: {e}")
         
         # =====================================================================
         # Merge tracking data from workers into main objects
@@ -503,7 +592,8 @@ def main(splited_fasta: str, augmented_traversal: str, subgraph_dir: str,
             tf.variants_data = []
         
         total_nodes = sum(tf.node_count for tf in temp_files)
-        MSsuccess(f"Phase 1 complete: {len(temp_files)} subgraphs, {total_nodes:,} total nodes")
+        MSsuccess(f"Phase 1 complete: {num_loci} loci in {len(temp_files)} files, "
+                  f"{total_nodes:,} total nodes")
         
         # =====================================================================
         # PHASE 2: Record the chopped size for the gfa_merge stats file
@@ -579,6 +669,8 @@ if __name__ == "__main__":
     parser.add_argument("--variant_plot_dir", help="Directory to save variant size plots")
     parser.add_argument("--threads", type=int, default=4, 
                         help="Total CPU threads available - auto-scales parallelism (default: 4)")
+    parser.add_argument("--loci_per_file", type=int, default=100,
+                        help="Number of loci grouped into one subgraph GFA (default: 100)")
 
     args = parser.parse_args()
 
@@ -592,5 +684,6 @@ if __name__ == "__main__":
         tmp_folder=args.tmp_folder,
         recap_file=args.recap_file,
         variant_plot_dir=args.variant_plot_dir,
-        threads=args.threads
+        threads=args.threads,
+        loci_per_file=args.loci_per_file
     )
