@@ -469,8 +469,9 @@ class MSpangenomeDataHandler:
                     handles[path_name].write('\n')
                 handles[path_name].close()
 
-            open_func = gzip.open if compress else open
-            with open_func(fasta_path, 'wt') as out_f:
+            out_stream = (gzip.open(fasta_path, 'wt', compresslevel=6) if compress
+                          else open(fasta_path, 'wt'))
+            with out_stream as out_f:
                 for path_name in order:
                     out_f.write(f">{path_name}\n")
                     with open(part_paths[path_name], 'r') as part_f:
