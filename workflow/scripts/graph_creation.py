@@ -523,12 +523,12 @@ def main(splited_fasta: str, augmented_traversal: str, subgraph_dir: str,
                 batch_index,
                 os.path.join(temp_dir, f"batch_{batch_index:06d}")
             ))
-        
+
         # Adjust workers if more workers than groups
         actual_workers = min(num_workers, len(tasks))
-        
+
         MScompute(f"Configuration: {actual_workers} workers, {io_threads_per_worker} I/O threads each")
-        
+
         # =====================================================================
         # PHASE 1: Process groups in parallel with progress tracking
         # =====================================================================
