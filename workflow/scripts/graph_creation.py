@@ -23,7 +23,7 @@ Workflow:
        - Process GROUPS of consecutive loci in parallel using ProcessPoolExecutor,
          one output GFA per group (--loci_per_file), so a chromosome yields a few
          hundred files rather than one per recombination breakpoint
-       - For each locus in the group: 
+       - For each locus in the group:
            * Initialize graph from sequence
            * Apply mutations (SNP, INS, DEL, INV, DUP)
            * Assign LOCAL node IDs (starting at 1 per subgraph)
@@ -161,13 +161,13 @@ def process_and_save_single_subgraph(args: tuple) -> SubgraphTempFile:
         node_id = node_data.get("node")
         mutations = node_data.get("mutations", [])
         affected_nodes = set(node_data.get("affected_nodes", []))
-        
+
         if not mutations:
             continue
-        
+
         tree_lineages_set = set(tree_data.get("lineages", []))
         affected_lineages = affected_nodes.intersection(tree_lineages_set)
-        
+
         if not affected_lineages:
             continue
         
@@ -523,12 +523,12 @@ def main(splited_fasta: str, augmented_traversal: str, subgraph_dir: str,
                 batch_index,
                 os.path.join(temp_dir, f"batch_{batch_index:06d}")
             ))
-        
+
         # Adjust workers if more workers than groups
         actual_workers = min(num_workers, len(tasks))
-        
+
         MScompute(f"Configuration: {actual_workers} workers, {io_threads_per_worker} I/O threads each")
-        
+
         # =====================================================================
         # PHASE 1: Process groups in parallel with progress tracking
         # =====================================================================
