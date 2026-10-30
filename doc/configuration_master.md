@@ -85,9 +85,10 @@ samples:
 | `output_dir` | string | Base directory for all simulation outputs | `"results/"` |
 | `memory_multiplier` | float | Memory scaling factor for cluster jobs (increase if OOM errors) | `1` |
 | `succinct` | bool | If True, skip every plot and drop the visualization rule from the targets | `False` |
-| `loci_per_file` | int | How many loci are grouped into one subgraph GFA, to avoid one file per recombination breakpoint | `100` |
-| `log_dir` | string | Where the per step logs go, as `<log_dir>/<sample>/chr_<n>/<rule>.log` | `"logs/"` |
-| `expanded_config` | string | Where to write the expanded config generated from this file. Set a distinct path per run to launch jobs in parallel. | `".config/expanded_config.yaml"` |
+| `loci_per_file` | positive integer | Number of consecutive loci grouped into each subgraph GFA | `100` |
+| `log_dir` | string | Base directory for rule logs. Setup logs are under `<log_dir>/<sample>/`; chromosome-specific logs are under `<log_dir>/<sample>/chr_<n>/` | `"logs/"` |
+| `expanded_config` | string | Path for the expanded YAML file. A distinct path separates these YAML files, but generated demographic JSON files still share a directory; see the parallel-run note below. | `".config/expanded_config.yaml"` |
+| `tempfile_location` | string | Name of the temporary-work directory inside each sample output directory | `"00_temp/"` |
 
 
 ## Complete Example
@@ -134,19 +135,22 @@ log_dir: "logs/"
 When your demographic model contains parameter ranges (see [Demographic Model Configuration](configuration_model.md)):
 
 1. **Fixed parameters**: All replicates use identical values
-2. **Range parameters**: Each replicate randomly samples from the specified ranges
+2. **Range parameters**: Each replicate randomly samples from supported range fields in the demographic model (see [Demographic Model Configuration](configuration_model.md)). The workflow does not currently pass a seed to this expansion step.
 3. **Mixed models**: Fixed parameters stay constant, ranges are sampled
 
 Example: If `Model_With_Ranges.json` contains:
 ```json
 {
   "evolutionary_params": {
-    "mutation_rate": {"min": 1e-8, "max": 1e-6},  // Range
-    "recombination_rate": 1e-8,                    // Fixed
-    "generation_time": 25                          // Fixed
+    "mutation_rate": {"min": 1e-8, "max": 1e-6},
+    "recombination_rate": 1e-8,
+    "generation_time": 25
   }
 }
 ```
+
+Here, `mutation_rate` is sampled from its range for each replicate; the other two values
+remain fixed.
 
 With `replicates: 10`, you'll get:
 - 10 simulations with the SAME recombination rate (1e-8) and generation time (25)
@@ -179,9 +183,12 @@ The master config is selected at runtime with the `-c` / `--config` flag:
 ```
 
 The expanded config location is read from the `expanded_config` key inside the master
-config. If the key is omitted it defaults to `.config/expanded_config.yaml`. Pointing each
-master config to its own `expanded_config` lets several runs proceed in parallel without
-clobbering each other.
+config. If the key is omitted it defaults to `.config/expanded_config.yaml`. This separates
+the expanded YAML files, but generated demographic JSON files are still written under the
+shared `.config/expanded_demographics/` directory using sample names as filenames. Runs
+with overlapping sample names can therefore overwrite one another's demographic files.
+Use distinct sample names and output directories for concurrent runs; a distinct
+`expanded_config` path alone does not make overlapping runs safe.
 
 ```yaml
 # .config/run1.yaml
