@@ -26,3 +26,5 @@ results
 !doc/*
 .config/expanded_config.yaml
 .config/expanded*
+audit/
+!test/*
