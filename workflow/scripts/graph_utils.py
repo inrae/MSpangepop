@@ -16,22 +16,37 @@ import numpy as np
 from collections import defaultdict
 from scipy.stats import gaussian_kde
 
-_COMPLEMENT_MAP = {
-    'A': 'T', 'T': 'A', 'G': 'C', 'C': 'G',
-    'a': 't', 't': 'a', 'g': 'c', 'c': 'g'
+_IUPAC_COMPLEMENT = {
+    'A': 'T', 'T': 'A', 'G': 'C', 'C': 'G', 'U': 'A', 'N': 'N',
+    'R': 'Y', 'Y': 'R', 'S': 'S', 'W': 'W', 'K': 'M', 'M': 'K',
+    'B': 'V', 'V': 'B', 'D': 'H', 'H': 'D',
 }
+_COMPLEMENT_MAP = {
+    **_IUPAC_COMPLEMENT,
+    **{base.lower(): comp.lower() for base, comp in _IUPAC_COMPLEMENT.items()},
+}
+
+# Unknown characters are mapped to None so translate() drops them
+_COMPLEMENT_TABLE = {code: None for code in range(256)}
+_COMPLEMENT_TABLE.update({ord(base): comp for base, comp in _COMPLEMENT_MAP.items()})
 
 def reverse_complement(sequence: str) -> str:
     """Returns the reverse complement of a DNA sequence string."""
-    rev_comp = []
-    for base in reversed(sequence):
-        if base not in _COMPLEMENT_MAP:
-            raise MSerror(f"Invalid DNA base encountered: '{base}'")
-        rev_comp.append(_COMPLEMENT_MAP[base])
-    return ''.join(rev_comp)
+    complemented = sequence.translate(_COMPLEMENT_TABLE)
+    if len(complemented) != len(sequence):
+        invalid = sorted({base for base in sequence if base not in _COMPLEMENT_MAP})
+        raise MSerror(
+            f"Invalid DNA base encountered: {', '.join(repr(b) for b in invalid)}")
+    return complemented[::-1]
 
 def mutate_base(original_base: str, traition_matrix: dict) -> str:
     """Uses the provided transition matrix to determine the mutated base."""
+    if original_base not in traition_matrix:
+        # An assembly gap has no defined ancestral base, so the caller rolls the variant
+        # back and records the reason in the recap.
+        raise MSerror(
+            f"Cannot place a SNP on base '{original_base}': "
+            f"not one of {', '.join(sorted(traition_matrix))}")
     return random.choices(
         population=list(traition_matrix[original_base].keys()),
         weights=list(traition_matrix[original_base].values()),

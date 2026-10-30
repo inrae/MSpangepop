@@ -25,8 +25,8 @@ The mirror is especially useful for people with no Renater account to submit iss
 | **1. Setup** | → Validate FASTA/YAML<br>→ Expand configs<br>→ Create index | `input_index.py`<br>`sample_ranges.py`<br>`recap.py` | setup |
 | **2. Msprime Simulation** | → Build demographic model<br>→ Run msprime<br>→ Generate visualizations | `msprime_simulation.py`<br>`visualizer_arg.py`<br>`visualizer_tree.py` | msprime_simulation <br>visualization  |
 | **3. Preprocessing** | → Split by locus<br>→ Preorder traverse trees<br>→ Define SVs type lenght and position | `coalescent_traversal.py`<br>`draw_variants.py`<br>`split_recombination.py` | coalescent_traversal<br>draw_variants<br>split_recombination |
-| **4. Graph Creation** | **Initialize:** Build locus ancestral graphs<br>**Mutate:** Apply variants using mspangenome library<br>**Save:** Assign IDs → Merge subgraphs→ Lint → Export chopped graph | `graph_creation.py`<br>`graph_classes.py`<br>`graph_utils.py`<br>`matrix.py` | graph_creation |
-| **5. Unchop** | VG unchop command | - | graph_merging |
+| **4. Graph Creation** | **Initialize:** Build locus ancestral graphs<br>**Mutate:** Apply variants using mspangenome library<br>**Save:** Assign IDs → VG unchop the locus → Export one GFA per locus | `graph_creation.py`<br>`graph_classes.py`<br>`graph_utils.py`<br>`matrix.py` | graph_creation |
+| **5. Merge** | Concatenate the locus graphs → VG unchop the locus junctions | `merge_subgraphs.py` | gfa_merge |
 
 ---
 ## How to Use 
@@ -74,6 +74,9 @@ samples:
 
 ### 3. Run the workflow 
 #### On the cluster
+
+- Activate the [Apptainer](https://apptainer.org/docs/user/latest/) / Singularity module from your cluster
+
 - Run the workflow :
 ```bash
 sbatch mspangenome dry # Check for warnings
@@ -84,6 +87,13 @@ sbatch mspangenome run # Then
 > **Nb :** Use the command `squeue --format="%.10i %.9P %.6j %.10k %.8u %.2t %.10M %.6D %.20R" -A $user` to see job **names**
 
 #### Localy
+
+- Install [Apptainer](https://apptainer.org/docs/user/latest/) / Singularity
+```bash
+sudo apt-get install -y singularity-container
+```
+> **Nb :** For macOS, it is recommended to install Apptainer using Lima. On Windows, use WSL.
+
 ```bash
 ./mspangenome dry # Check for warnings
 ./mspangenome local-run # Then
@@ -91,7 +101,7 @@ sbatch mspangenome run # Then
 
 ## Other running options
 ```
-mspangenome [dry|run|local-run|dag|rulegraph|unlock|touch] [additional snakemake args]
+mspangenome [dry|run|local-run|dag|rulegraph|unlock|touch] [-c|--config PATH] [additional snakemake args]
     dry - run in dry-run mode
     run - run the workflow with SLURM
     local-run - run the workflow localy (on a single node)
@@ -99,7 +109,8 @@ mspangenome [dry|run|local-run|dag|rulegraph|unlock|touch] [additional snakemake
     rulegraph - generate the rulegraph for the workflow
     unlock - Unlock the directory if snakemake crashed
     touch - Tell snakemake that all files are up to date (use with caution)
-    [additional snakemake args] - for any snakemake arg, like --until hifiasm
+    -c, --config PATH - master config file to use (default: .config/masterconfig.yaml)
+    [additional snakemake args] - for any snakemake arg, like --until coalescent_traversal
 ```
 
 ## Path Operations in mspangenome

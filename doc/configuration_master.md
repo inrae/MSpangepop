@@ -84,7 +84,10 @@ samples:
 |-----------|------|-------------|---------|
 | `output_dir` | string | Base directory for all simulation outputs | `"results/"` |
 | `memory_multiplier` | float | Memory scaling factor for cluster jobs (increase if OOM errors) | `1` |
-| `succinct` | bool | If True, skip visialization rule | `False` |
+| `succinct` | bool | If True, skip every plot and drop the visualization rule from the targets | `False` |
+| `loci_per_file` | int | How many loci are grouped into one subgraph GFA, to avoid one file per recombination breakpoint | `100` |
+| `log_dir` | string | Where the per step logs go, as `<log_dir>/<sample>/chr_<n>/<rule>.log` | `"logs/"` |
+| `expanded_config` | string | Where to write the expanded config generated from this file. Set a distinct path per run to launch jobs in parallel. | `".config/expanded_config.yaml"` |
 
 
 ## Complete Example
@@ -122,6 +125,8 @@ samples:
 output_dir: "results/"
 memory_multiplier: 1.5  
 succinct: False
+loci_per_file: 100
+log_dir: "logs/"
 ```
 
 ## How Replicates Work with Parameter Ranges
@@ -164,6 +169,29 @@ When you run the workflow:
 3. **Output organization**: Results are saved to named directories
    - Single replicate: `results/sample_name/`
    - Multiple replicates: `results/sample_name_rep1/`, `results/sample_name_rep2/`, etc.
+
+## Choosing config file locations
+
+The master config is selected at runtime with the `-c` / `--config` flag:
+
+```bash
+./mspangenome local-run -c .config/run1.yaml
+```
+
+The expanded config location is read from the `expanded_config` key inside the master
+config. If the key is omitted it defaults to `.config/expanded_config.yaml`. Pointing each
+master config to its own `expanded_config` lets several runs proceed in parallel without
+clobbering each other.
+
+```yaml
+# .config/run1.yaml
+output_dir: "results/run1/"
+expanded_config: ".config/run1_expanded.yaml"
+samples:
+  run1:
+    model: "simulation_data/Panmictic_Model.json"
+    replicates: 1
+```
 
 
 ## Troubleshooting

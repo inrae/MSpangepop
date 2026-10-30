@@ -10,26 +10,39 @@ import subprocess
 import sys
 import json
 
+# Allow overriding config paths so multiple runs can execute in parallel.
+MASTERCONFIG = os.environ.get("MASTERCONFIG", ".config/masterconfig.yaml")
+
+def _resolve_expanded_path(master_path):
+    try:
+        with open(master_path) as f:
+            master = yaml.safe_load(f) or {}
+    except FileNotFoundError:
+        master = {}
+    return master.get("expanded_config", ".config/expanded_config.yaml")
+
+EXPANDED_CONFIG = os.environ.get("EXPANDED_CONFIG") or _resolve_expanded_path(MASTERCONFIG)
+
 # Check if we should expand ranges (can be controlled by an environment variable)
 EXPAND_RANGES = os.environ.get("EXPAND_RANGES", "true").lower() == "true"
 
 if EXPAND_RANGES:
     # First, sample from any parameter ranges in the config
-    result = subprocess.run([sys.executable, "workflow/scripts/sample_ranges.py", 
-                            ".config/masterconfig.yaml"], 
-                           capture_output=True, text=True)
+    result = subprocess.run([sys.executable, "workflow/scripts/sample_ranges.py",
+                             MASTERCONFIG, "--output", EXPANDED_CONFIG],
+                            capture_output=True, text=True)
     print(result.stdout)
     if result.returncode != 0:
         print(f"❌ Error sampling ranges: {result.stderr}", file=sys.stderr)
         sys.exit(1)
-    
+
     # Use the expanded config if it exists
-    if os.path.exists(".config/expanded_config.yaml"):
-        configfile: ".config/expanded_config.yaml"
+    if os.path.exists(EXPANDED_CONFIG):
+        configfile: EXPANDED_CONFIG
     else:
-        configfile: ".config/masterconfig.yaml"
+        configfile: MASTERCONFIG
 else:
-    configfile: ".config/masterconfig.yaml"
+    configfile: MASTERCONFIG
 
 
 output_dir = config.get("output_dir", "results/")
@@ -41,6 +54,17 @@ graph  = "03_graph/"
 # Retrieve memory multiplier from config
 memory_multiplier = config.get("memory_multiplier", 1)
 
+# How many loci share one subgraph GFA. One file per locus means one file per
+# recombination breakpoint, which is tens of thousands of files per chromosome.
+loci_per_file = config.get("loci_per_file", 100)
+
+# Skip every plot, and with them the visualization rule itself
+succinct = config.get("succinct", False)
+
+# Per-sample, per-chromosome logs. sample_ranges names replicates "<sample>_rep<n>",
+# so each replicate of each sample gets its own directory.
+log_dir = config.get("log_dir", "logs/")
+
 # Create explicit targets
 def get_all_targets():
     targets = []
@@ -49,7 +73,10 @@ def get_all_targets():
         # Add polished GFA files
         for chr_num in range(1, chr_n + 1):
             targets.append(os.path.join(output_dir, sample, graph,f"chr_{chr_num}", f"{sample}_chr_{chr_num}_graph.gfa"))
-            targets.append(os.path.join(output_dir, sample, plot_dir, f"chr_{chr_num}", "visualization_complete.txt"))
+            # In succinct mode the visualization rule has nothing to do, so do not
+            # ask for its flag file at all rather than scheduling an empty job
+            if not succinct:
+                targets.append(os.path.join(output_dir, sample, plot_dir, f"chr_{chr_num}", "visualization_complete.txt"))
         # Add global recap
         targets.append(os.path.join(output_dir, sample, simulation_data, f"{sample}_global_recap.txt"))
     return targets
@@ -60,7 +87,7 @@ rule all:
 # This rule is used to create a recap file for the workflow
 rule setup:
     input:
-        configfile= ".config/expanded_config.yaml" if EXPAND_RANGES and os.path.exists(".config/expanded_config.yaml") else ".config/masterconfig.yaml",
+        configfile = EXPANDED_CONFIG if (EXPAND_RANGES and os.path.exists(EXPANDED_CONFIG)) else MASTERCONFIG,
         fasta=lambda wildcards: config["samples"][wildcards.sample]["fasta_gz"]
     output:
         recap_file=os.path.join(output_dir, "{sample}", simulation_data, "{sample}_global_recap.txt"),
@@ -75,8 +102,11 @@ rule setup:
     container:
         "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
     priority: 10
+    log:
+        os.path.join(log_dir, "{sample}", "setup.log")
     shell:
         """
+        exec > {log} 2>&1
         python3 workflow/scripts/recap.py {input.configfile} \
             {params.out} \
             {wildcards.sample}
@@ -109,8 +139,11 @@ rule msprime_simulation:
     container:
         "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
     priority: 10
+    log:
+        os.path.join(log_dir, "{sample}", "chr_{chromosome}", "msprime_simulation.log")
     shell:
         """
+        exec > {log} 2>&1
         python3 workflow/scripts/msprime_simulation.py \
             -fai {input.fai} \
             -d {input.demographic} \
@@ -147,8 +180,11 @@ rule visualization:
     container:
         "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
     priority: 2
+    log:
+        os.path.join(log_dir, "{sample}", "chr_{chromosome}", "visualization.log")
     shell:
         """
+        exec > {log} 2>&1
         if [ "{params.succinct}" = "True" ]; then
             echo "Visualization skipped (succinct mode) at $(date)" > {output.completion_flag}
         else
@@ -167,16 +203,19 @@ rule coalescent_traversal:
     params:
         readable_json=lambda wildcards: config["samples"][wildcards.sample].get("readable_json", False) 
     resources:
-        mem_mb=lambda wildcards: int(10000 * memory_multiplier),
+        mem_mb=lambda wildcards: int(6000 * memory_multiplier),
         time="10:00:00"
-    threads: 5
+    threads: 2
     priority: 9
     benchmark:
         os.path.join(output_dir, "{sample}", "benchmark", "chr_{chromosome}", "coalescent_traversal_benchmark.txt")
     container:
         "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
-    shell: 
+    log:
+        os.path.join(log_dir, "{sample}", "chr_{chromosome}", "coalescent_traversal.log")
+    shell:
         """
+        exec > {log} 2>&1
         python3 workflow/scripts/coalescent_traversal.py --json {input.json} \
             --chromosome {wildcards.chromosome} \
             --output_file {output.traversal} \
@@ -192,7 +231,7 @@ rule split_recombination:
     output:
         split_fasta = os.path.join(output_dir, "{sample}", simulation_data, "chr_{chromosome}", "{sample}_chr_{chromosome}_recombinations.fasta.gz")
     resources:
-        mem_mb=lambda wildcards: int(50000 * memory_multiplier),
+        mem_mb=lambda wildcards: int(8000 * memory_multiplier),
         time="10:00:00"
     threads: 1
     benchmark:
@@ -200,8 +239,11 @@ rule split_recombination:
     priority: 8
     container:
         "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
+    log:
+        os.path.join(log_dir, "{sample}", "chr_{chromosome}", "split_recombination.log")
     shell:
         """
+        exec > {log} 2>&1
         python3 workflow/scripts/split_recombination.py --json {input.json} \
             --fasta {input.fasta} \
             --chromosome {wildcards.chromosome} \
@@ -215,17 +257,20 @@ rule draw_variants:
         demographic = lambda wildcards: config["samples"][wildcards.sample]["demographic_file"]
     output:
         augmented_traversal = os.path.join(output_dir, "{sample}", graph, "chr_{chromosome}", "traversal", "{sample}_chr_{chromosome}_augmented_traversal.json")
-    threads: 5
+    threads: 2
     priority: 8
     resources:
-        mem_mb=lambda wildcards: int(10000 * memory_multiplier),
+        mem_mb=lambda wildcards: int(32000 * memory_multiplier),
         time="10:00:00"
     container:
         "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
     benchmark:
         os.path.join(output_dir, "{sample}", "benchmark", "chr_{chromosome}", "draw_variants_benchmark.txt")
+    log:
+        os.path.join(log_dir, "{sample}", "chr_{chromosome}", "draw_variants.log")
     shell:
         """
+        exec > {log} 2>&1
         python3 workflow/scripts/draw_variants.py \
             --json {input.traversal_json} \
             --demographic {input.demographic} \
@@ -241,14 +286,16 @@ rule graph_creation:
         split_fasta=rules.split_recombination.output.split_fasta,
         augmented_traversal = rules.draw_variants.output.augmented_traversal,
     output:
-        chopped_gfa = temp(os.path.join(output_dir, "{sample}", temp_dir, "{sample}_chr_{chromosome}_unmergeg_graph.gfa")),
+        subgraph_dir = temp(directory(os.path.join(output_dir, "{sample}", temp_dir, "{sample}_chr_{chromosome}_subgraphs"))),
         recap = os.path.join(output_dir, "{sample}", simulation_data, "chr_{chromosome}","{sample}_chr_{chromosome}_graph_creation_recap.txt")
     params:
         out_dir = lambda wildcards: os.path.join(output_dir, wildcards.sample, plot_dir, f"chr_{wildcards.chromosome}", "03_graph_plots"), 
         fasta_folder = lambda wildcards: os.path.join(output_dir, wildcards.sample, graph,  f"chr_{wildcards.chromosome}", "fasta"),
-        tmp_folder = lambda wildcards: os.path.join(output_dir, f"{wildcards.sample}", temp_dir,f"chr_{wildcards.chromosome}")
+        tmp_folder = lambda wildcards: os.path.join(output_dir, f"{wildcards.sample}", temp_dir,f"chr_{wildcards.chromosome}"),
+        loci_per_file = loci_per_file,
+        succinct = succinct
     resources:
-        mem_mb=lambda wildcards: int(400000 * memory_multiplier),
+        mem_mb=lambda wildcards: int(64000 * memory_multiplier),
         time="60:00:00"
     benchmark:
         os.path.join(output_dir, "{sample}", "benchmark", "chr_{chromosome}", "graph_creation_benchmark.txt")
@@ -256,54 +303,58 @@ rule graph_creation:
         "oras://registry.forge.inrae.fr/pangepop/mspangepop/msprime_box:latest"
     threads: 20
     priority: 7
+    log:
+        os.path.join(log_dir, "{sample}", "chr_{chromosome}", "graph_creation.log")
     shell:
         """
+        exec > {log} 2>&1
         python3 workflow/scripts/graph_creation.py \
             --splited_fasta {input.split_fasta} \
             --augmented_traversal {input.augmented_traversal} \
-            --output_file {output.chopped_gfa} \
+            --subgraph_dir {output.subgraph_dir} \
             --sample {wildcards.sample} \
             --chromosome {wildcards.chromosome} \
             --recap_file {output.recap} \
             --variant_plot_dir {params.out_dir} \
             --fasta_folder {params.fasta_folder} \
             --tmp_folder {params.tmp_folder} \
-            --threads {threads}
+            --threads {threads} \
+            --loci_per_file {params.loci_per_file} \
+            --succinct {params.succinct}
         """
 
-# This merges the nodes that can be merged in the GFA file using VG
+# Concatenate the (already unchopped) locus subgraphs
 rule gfa_merge:
     input:
-        chopped_gfa = rules.graph_creation.output.chopped_gfa
+        subgraph_dir = rules.graph_creation.output.subgraph_dir
     output:
         polished_gfa = os.path.join(output_dir, "{sample}", graph, "chr_{chromosome}", "{sample}_chr_{chromosome}_graph.gfa"),
-        polished_gfa_stats = os.path.join(output_dir, "{sample}", graph, "chr_{chromosome}", "{sample}_chr_{chromosome}_graph_stats.txt"),
-        vg_raw = temp(os.path.join(output_dir, "{sample}", temp_dir, "{sample}_chr_{chromosome}_raw.vg")),
-        vg_unchoped = temp(os.path.join(output_dir, "{sample}", temp_dir, "{sample}_chr_{chromosome}_unchoped.vg"))
+        polished_gfa_stats = os.path.join(output_dir, "{sample}", graph, "chr_{chromosome}", "{sample}_chr_{chromosome}_graph_stats.txt")
+    params:
+        tmp_folder = lambda wildcards: os.path.join(output_dir, f"{wildcards.sample}", temp_dir, f"merge_chr_{wildcards.chromosome}")
     resources:
-        mem_mb=lambda wildcards: int(400000 * memory_multiplier),
+        mem_mb=lambda wildcards: int(24000 * memory_multiplier),
         time="60:00:00"
     benchmark:
         os.path.join(output_dir, "{sample}", "benchmark", "chr_{chromosome}", "gfa_merge_benchmark.txt")
     container:
         "docker://registry.forge.inrae.fr/pangepop/mspangepop/vg:v1.67.0"
-    threads: 25
+    threads: 4
     priority: 7
+    log:
+        os.path.join(log_dir, "{sample}", "chr_{chromosome}", "gfa_merge.log")
     shell:
         """
-        echo "[gfa_merge] Starting to clean the GFA file using VG"
-        echo "[gfa_merge] Importing GFA to VG format..."
-        vg convert -g {input.chopped_gfa} -t {threads} -p > {output.vg_raw}
-        echo "[gfa_merge] Initial GFA state :" > {output.polished_gfa_stats}
-        vg stats -z {output.vg_raw} -t {threads} >> {output.polished_gfa_stats}
-        echo "[gfa_merge] Starting to unchop"
-        vg mod -u {output.vg_raw} --remove-non-path -t {threads} > {output.vg_unchoped}
-        echo "[gfa_merge] Final state :" >> {output.polished_gfa_stats}
-        vg stats -z {output.vg_unchoped} -t {threads} >> {output.polished_gfa_stats}
+        exec > {log} 2>&1
+        echo "[gfa_merge] Unchopping each subgraph, then concatenating"
+        python3 workflow/scripts/merge_subgraphs.py \
+            --subgraph_dir {input.subgraph_dir} \
+            --output_file {output.polished_gfa} \
+            --stats_file {output.polished_gfa_stats} \
+            --tmp_folder {params.tmp_folder} \
+            --threads {threads}
         cat {output.polished_gfa_stats}
-        echo "[gfa_merge] Saving final GFA"
-        vg convert -fW {output.vg_unchoped} > {output.polished_gfa}
-        echo "✅ Final GFA @ {output.polished_gfa}"
+        echo "Final GFA @ {output.polished_gfa}"
         """
 
 onsuccess:

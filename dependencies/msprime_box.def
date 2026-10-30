@@ -20,6 +20,11 @@ From: python:3.11-slim
     pip install --upgrade pip
     pip install msprime tskit pandas h5py numpy matplotlib ipython pyyaml biopython pytest bitarray tskit-arg-visualizer psutil networkx scipy seaborn demesdraw
 
+    apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
+    && curl -fsSL -o /usr/local/bin/vg https://github.com/vgteam/vg/releases/download/v1.67.0/vg \
+    && chmod +x /usr/local/bin/vg \
+    && rm -rf /var/lib/apt/lists/*
+
 %environment
     export PYTHONUNBUFFERED=1
     export MPLBACKEND=Agg
