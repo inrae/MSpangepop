@@ -1,7 +1,7 @@
 executor: slurm
 jobs: 30 #Reduce on small HPC, increace if you can run more jobs at a time 
 use-singularity: true
-singularity-args: "--bind $(pwd)"
+singularity-args: "--bind $(pwd)"   # the launcher overrides this, see mspangenome --bind
 keep-going: True
 
 default-resources:

@@ -86,6 +86,13 @@ sbatch mspangenome run # Then
 
 > **Nb :** Use the command `squeue --format="%.10i %.9P %.6j %.10k %.8u %.2t %.10M %.6D %.20R" -A $user` to see job **names**
 
+> **Nb :** The working directory is mounted in the containers automatically. A genome
+> or an output directory living somewhere else needs `--bind`, otherwise the rule that
+> reads it fails with a missing file :
+> ```bash
+> sbatch mspangenome run --bind /work/refs,/scratch/$USER
+> ```
+
 #### Locally
 
 - Install Apptainer by following the [official installation instructions](https://apptainer.org/docs/admin/main/installation.html). On macOS, use a supported Linux virtual machine such as Lima; on Windows, use WSL.
@@ -97,7 +104,7 @@ sbatch mspangenome run # Then
 
 ## Other running options
 ```
-mspangenome [dry|run|local-run|dag|rulegraph|unlock|touch] [-c|--config PATH] [additional snakemake args]
+mspangenome [dry|run|local-run|dag|rulegraph|unlock|touch] [-c|--config PATH] [--bind PATHS] [additional snakemake args]
     dry - run in dry-run mode
     run - run the workflow with SLURM
     local-run - run the workflow locally (on a single node)
@@ -106,6 +113,7 @@ mspangenome [dry|run|local-run|dag|rulegraph|unlock|touch] [-c|--config PATH] [a
     unlock - Unlock the directory if snakemake crashed
     touch - Tell snakemake that all files are up to date (use with caution)
     -c, --config PATH - master config file to use (default: .config/masterconfig.yaml)
+    --bind PATHS - extra paths to mount in the containers, comma separated, repeatable
     [additional snakemake args] - for any snakemake arg, like --until coalescent_traversal
 ```
 
