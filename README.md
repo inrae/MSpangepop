@@ -16,6 +16,7 @@ The mirror is especially useful for people with no Renater account to submit iss
 | **[Master Configuration](doc/configuration_master.md)** | How to set up configuration files and parameters |
 | **[Demographic model](doc/configuration_model.md)** | Adapt or create a model |
 | **[Output Files](doc/output_files.md)** | Description of generated results and outputs |
+| **[Mutation log](doc/mutation_log.md)** | Format of the per chromosome registry of applied mutations |
 | **[Advanced Topics](doc/go_even_deeper.md)** | In-depth information for power users |
 
 ### Workflow Stages
