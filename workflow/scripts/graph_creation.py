@@ -343,6 +343,9 @@ def _apply_mutation_to_graph(
             "node_id": node_id,
             "type": mut_type.value if mut_type is not None else None,
             "position": start,
+            # position is a chromosome coordinate; the graph engine works in
+            # coordinates local to the locus, so record both
+            "locus_offset": None if start is None else start - tree_start,
             "length": length,
             "affected_lineages": sorted(list(lineages or affected_lineages)),
             "success": success,
@@ -573,6 +576,7 @@ def main(splited_fasta: str, augmented_traversal: str, subgraph_dir: str,
                     node_id=mut_record["node_id"],
                     mutation_type=mut_record["type"],
                     position=mut_record["position"],
+                    locus_offset=mut_record.get("locus_offset"),
                     length=mut_record["length"],
                     affected_lineages=set(mut_record["affected_lineages"]),
                     success=mut_record["success"],
