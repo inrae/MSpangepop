@@ -2,7 +2,7 @@
 
 Every `graph_creation` run writes one registry per chromosome:
 
-    results/<sample>/simulation_data/chr_<N>/<sample>_chr_<N>_graph_creation_recap.txt
+    results/<sample>/simulation_data/chr_<N>/<sample>_chr_<N>_graph_creation_recap.tsv
 
 It records every mutation the simulator attempted, in the order it was applied.
 
