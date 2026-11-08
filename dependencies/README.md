@@ -1,4 +1,5 @@
-This folder contains the dependencies for mspangenome. 
-If updated and pushed the image in the registry will be updated with the CI/CD pipeline. 
+This folder contains the workflow environment definition and the Apptainer image recipe.
+Changes to `msprime_box.def` trigger the GitLab CI job that builds and pushes an updated
+image to the registry. The workflow currently refers to the `latest` image tag.
 
 Lucien

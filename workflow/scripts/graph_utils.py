@@ -16,22 +16,37 @@ import numpy as np
 from collections import defaultdict
 from scipy.stats import gaussian_kde
 
-_COMPLEMENT_MAP = {
-    'A': 'T', 'T': 'A', 'G': 'C', 'C': 'G',
-    'a': 't', 't': 'a', 'g': 'c', 'c': 'g'
+_IUPAC_COMPLEMENT = {
+    'A': 'T', 'T': 'A', 'G': 'C', 'C': 'G', 'U': 'A', 'N': 'N',
+    'R': 'Y', 'Y': 'R', 'S': 'S', 'W': 'W', 'K': 'M', 'M': 'K',
+    'B': 'V', 'V': 'B', 'D': 'H', 'H': 'D',
 }
+_COMPLEMENT_MAP = {
+    **_IUPAC_COMPLEMENT,
+    **{base.lower(): comp.lower() for base, comp in _IUPAC_COMPLEMENT.items()},
+}
+
+# Unknown characters are mapped to None so translate() drops them
+_COMPLEMENT_TABLE = {code: None for code in range(256)}
+_COMPLEMENT_TABLE.update({ord(base): comp for base, comp in _COMPLEMENT_MAP.items()})
 
 def reverse_complement(sequence: str) -> str:
     """Returns the reverse complement of a DNA sequence string."""
-    rev_comp = []
-    for base in reversed(sequence):
-        if base not in _COMPLEMENT_MAP:
-            raise MSerror(f"Invalid DNA base encountered: '{base}'")
-        rev_comp.append(_COMPLEMENT_MAP[base])
-    return ''.join(rev_comp)
+    complemented = sequence.translate(_COMPLEMENT_TABLE)
+    if len(complemented) != len(sequence):
+        invalid = sorted({base for base in sequence if base not in _COMPLEMENT_MAP})
+        raise MSerror(
+            f"Invalid DNA base encountered: {', '.join(repr(b) for b in invalid)}")
+    return complemented[::-1]
 
 def mutate_base(original_base: str, traition_matrix: dict) -> str:
     """Uses the provided transition matrix to determine the mutated base."""
+    if original_base not in traition_matrix:
+        # An assembly gap has no defined ancestral base, so the caller rolls the variant
+        # back and records the reason in the recap.
+        raise MSerror(
+            f"Cannot place a SNP on base '{original_base}': "
+            f"not one of {', '.join(sorted(traition_matrix))}")
     return random.choices(
         population=list(traition_matrix[original_base].keys()),
         weights=list(traition_matrix[original_base].values()),
@@ -90,15 +105,16 @@ class MutationRecap:
             "by_type": {}
         }
     
-    def add_mutation(self, tree_index: int, node_id: int, mutation_type: str, 
-                     position: int, length: int, affected_lineages: set, 
-                     success: bool, error_msg: str = None):
+    def add_mutation(self, tree_index: int, node_id: int, mutation_type: str,
+                     position: int, length: int, affected_lineages: set,
+                     success: bool, error_msg: str = None, locus_offset: int = None):
         """Record a mutation attempt."""
         self.mutations.append({
             "tree_index": tree_index,
             "node_id": node_id,
             "type": mutation_type,
             "position": position,
+            "locus_offset": locus_offset,
             "length": length,
             "affected_lineages": sorted(list(affected_lineages)),
             "success": success,
@@ -123,75 +139,54 @@ class MutationRecap:
             self.summary["by_type"][mutation_type]["failed"] += 1
     
     def save_recap(self, filepath: str):
-        """Save recap to file with inline format."""
-        with open(filepath, 'w') as f:
-            # Write header
-            f.write("🔹 mspangenome Mutation Recap File\n")
-            f.write("This file recaps all mutations added in the graph.\n")
-            f.write("-"*120+"\n")
-            f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-            f.write(f"Sample: {self.sample}\n")
-            f.write(f"Chromosome: {self.chromosome}\n")
-            f.write(f"Processing Duration: {datetime.now() - self.start_time}\n")
-            f.write("-"*120+"\n")
-            
-            # Write summary
-            f.write("SUMMARY\n")
-            f.write(f"Total Mutations Attempted: {self.summary['total_attempted']}\n")
-            f.write(f"Total Successful: {self.summary['total_successful']}\n")
-            f.write(f"Total Failed: {self.summary['total_failed']}\n")
-            if self.summary['total_attempted'] > 0:
-                success_rate = self.summary['total_successful'] / self.summary['total_attempted'] * 100
-                f.write(f"Success Rate: {success_rate:.2f}%\n\n")
-            else:
-                f.write("Success Rate: N/A\n\n")
-            
-            f.write("-"*120+"\n")
-            # Summary by type
-            f.write("By Mutation Type:\n")
-            for mut_type, stats in sorted(self.summary["by_type"].items(), key=lambda x: (x[0] is None, x[0] or "")):
-                success_rate = stats['successful'] / max(1, stats['attempted']) * 100
-                type_display = mut_type if mut_type is not None else "SKIPPED"
-                f.write(f"{type_display:8} - Attempted: {stats['attempted']:4d}, "
-                       f"Successful: {stats['successful']:4d}, "
-                       f"Failed: {stats['failed']:4d} "
-                       f"(Success Rate: {success_rate:6.2f}%)\n")
-            f.write("\n")
-            f.write("-"*120+"\n")
-            # Write column headers for mutations
-            f.write("DETAILED MUTATION LOG\n")
-            f.write("-" * 120 + "\n")
-            f.write(f"{'Mutation #':<12}\t{'Tree Index':<12}\t{'Tree Node':<12}\t"
-                   f"{'Type':<8}\t{'Position':<10}\t{'Length':<8}\t"
-                   f"{'Lineages':<30}\t{'Status':<10}\n")
-            f.write("-" * 120 + "\n")
-            
-            # Write mutations in inline format
-            for i, mut in enumerate(self.mutations, 1):
-                lineages_str = ','.join(map(str, mut['affected_lineages']))
-                if len(lineages_str) > 30:
-                    lineages_str = lineages_str[:27] + "..."
-                
-                # Handle None values properly
-                tree_index_str = str(mut['tree_index']) if mut['tree_index'] is not None else "N/A"
-                node_id_str = str(mut['node_id']) if mut['node_id'] is not None else "N/A"
-                type_str = str(mut['type']) if mut['type'] is not None else "N/A"
-                position_str = str(mut['position']) if mut['position'] is not None else "N/A"
-                length_str = str(mut['length']) if mut['length'] is not None else "N/A"
-                status = 'SUCCESS' if mut['success'] else 'FAILED'
-                
-                f.write(f"{i:<12}\t{tree_index_str:<12}\t{node_id_str:<12}\t"
-                       f"{type_str:<8}\t{position_str:<10}\t{length_str:<8}\t"
-                       f"{lineages_str:<30}\t{status:<10}")
-                
-                # Add error message on the same line if failed
-                if mut['error'] and not mut['success']:
-                    f.write(f"\t# {mut['error']}")
-                
-                f.write("\n")
-            
-            f.write("-" * 120 + "\n")
-            f.write(f"End of recap - Total mutations: {len(self.mutations)}\n")
+        """
+        Write the mutation registry as a TSV.
+
+        One row per mutation attempt, in the order they were applied, which is
+        chronological within a locus. Metadata sits in leading `#` lines, so
+        `pandas.read_csv(path, sep="\\t", comment="#")` or
+        `read.delim(path, comment.char="#")` read the table directly. Missing
+        values are empty. Nothing is truncated: `lineages` carries every
+        affected lineage, which is what makes the file usable as ground truth.
+        """
+        columns = ["order", "tree_index", "tree_node", "type", "position",
+                   "locus_offset", "length", "lineages", "status", "error"]
+
+        def field(value):
+            return "" if value is None else str(value)
+
+        with open(filepath, "w") as f:
+            f.write("#format\tmspangenome-mutation-log/1\n")
+            f.write(f"#sample\t{self.sample}\n")
+            f.write(f"#chromosome\t{self.chromosome}\n")
+            f.write(f"#generated\t{datetime.now().isoformat(timespec='seconds')}\n")
+            f.write(f"#duration\t{datetime.now() - self.start_time}\n")
+            f.write(f"#attempted\t{self.summary['total_attempted']}\n")
+            f.write(f"#successful\t{self.summary['total_successful']}\n")
+            f.write(f"#failed\t{self.summary['total_failed']}\n")
+            for mut_type, stats in sorted(self.summary["by_type"].items(),
+                                          key=lambda x: (x[0] is None, x[0] or "")):
+                name = mut_type if mut_type is not None else "SKIPPED"
+                f.write(f"#type\t{name}\t{stats['attempted']}\t"
+                        f"{stats['successful']}\t{stats['failed']}\n")
+            if "fatal_error" in self.summary:
+                f.write(f"#fatal_error\t{self.summary['fatal_error']}\n")
+
+            f.write("\t".join(columns) + "\n")
+
+            for order, mut in enumerate(self.mutations, 1):
+                f.write("\t".join([
+                    str(order),
+                    field(mut["tree_index"]),
+                    field(mut["node_id"]),
+                    field(mut["type"]),
+                    field(mut["position"]),
+                    field(mut.get("locus_offset")),
+                    field(mut["length"]),
+                    ",".join(map(str, mut["affected_lineages"])),
+                    "OK" if mut["success"] else "FAILED",
+                    field(mut["error"]).replace("\t", " ").replace("\n", " "),
+                ]) + "\n")
 
 class VariantSizeVisualizer:
     """Creates visualization graphs for variant sizes from mutation data."""
