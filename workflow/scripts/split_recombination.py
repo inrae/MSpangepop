@@ -34,7 +34,7 @@ def extract_intervals(fasta_sequences, json_data, chromosome_number, output_file
     bgzip_output_file = output_file if output_file.endswith(".gz") else output_file + ".gz"
 
     try:
-        with gzip.open(bgzip_output_file, "wt") as out:  # Open file in text mode for writing
+        with gzip.open(bgzip_output_file, "wt", compresslevel=6) as out:
             i = 0
             for entry in json_data:
                 try:

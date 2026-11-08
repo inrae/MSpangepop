@@ -13,7 +13,7 @@
 print_help() {
     echo "Use this script to run mspangenome"
     echo ""
-    echo "Usage: mspangenome [dry|run|local-run|dag|rulegraph|unlock|touch] [-c|--config PATH] [additional snakemake args]"
+    echo "Usage: mspangenome [dry|run|local-run|dag|rulegraph|unlock|touch] [-c|--config PATH] [--bind PATHS] [additional snakemake args]"
     echo "    dry - run in dry-run mode"
     echo "    run - run the workflow with SLURM"
     echo "    local-run - run the workflow localy (on a single node)"
@@ -24,11 +24,28 @@ print_help() {
     echo ""
     echo "    -c, --config PATH  - master config file to use (default: .config/masterconfig.yaml)"
     echo "                         Use a distinct file per run to launch jobs in parallel."
+    echo "    --bind PATHS       - extra paths to mount inside the containers, comma separated."
+    echo "                         Repeatable. The working directory is always bound; anything"
+    echo "                         the containers read or write elsewhere has to be listed,"
+    echo "                         a reference genome or an output directory on another mount."
+    echo "                         Accepts src or src:dest."
 }
 
 MODE=""
 CONFIG_PATH=""
 EXTRA_ARGS=()
+
+# The working directory is always bound, --bind adds to it.
+SNG_BIND="$(pwd)"
+add_bind() {
+    for path in ${1//,/ }; do
+        if [ ! -e "${path%%:*}" ]; then
+            echo "❌ mspangenome -> bind path does not exist: ${path%%:*}"
+            exit 1
+        fi
+        SNG_BIND="$SNG_BIND,$path"
+    done
+}
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -39,6 +56,18 @@ while [ $# -gt 0 ]; do
             fi
             CONFIG_PATH="$2"
             shift 2
+            ;;
+        --bind)
+            if [ -z "$2" ]; then
+                echo "❌ mspangenome -> Error: $1 requires a path argument"
+                exit 1
+            fi
+            add_bind "$2"
+            shift 2
+            ;;
+        --bind=*)
+            add_bind "${1#*=}"
+            shift
             ;;
         help|-h|--help)
             print_help
@@ -137,10 +166,12 @@ run_snakemake() {
             fi
             ;;
         run)
-            snakemake --workflow-profile ./.config/snakemake/profiles/slurm --rerun-incomplete $extra_args
+            echo "🔹 mspangenome -> Binding: $SNG_BIND"
+            snakemake --workflow-profile ./.config/snakemake/profiles/slurm \
+                --singularity-args "-B $SNG_BIND" --rerun-incomplete $extra_args
             ;;
         local-run)
-            SNG_BIND=$(pwd)
+            echo "🔹 mspangenome -> Binding: $SNG_BIND"
             echo "🔹 mspangenome -> Using $MEM_MB Mb of memory"
             snakemake --use-singularity --singularity-args "-B $SNG_BIND" -c $(nproc) --rerun-incomplete --resources mem_mb=$MEM_MB $extra_args -k -q rules
             ;;
