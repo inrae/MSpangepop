@@ -24,7 +24,7 @@ results/
     │       ├── sample_name_chr_1_full_ancestry_ts.trees
     │       ├── sample_name_chr_1_mutated_ts.trees
     │       ├── sample_name_chr_1_msprime_recap.txt
-    │       └── sample_name_chr_1_graph_creation_recap.txt
+    │       └── sample_name_chr_1_graph_creation_recap.tsv
     ├── 03_graph/
     │   └── chr_1/
     │       ├── sample_name_chr_1_graph.gfa
