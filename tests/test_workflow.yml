@@ -1,0 +1,8 @@
+- name: test_mspangenome_integration
+  # La commande Snakemake à lancer (avec un nombre de cœurs restreint à 1)
+  command: snakemake --cores 1 --configfile .config/masterconfig.yaml
+  
+  # La liste des fichiers que le pipeline DOIT obligatoirement produire
+  files:
+    - path: results/sampleA/sims/sampleA_global_recap.txt
+    - path: results/sampleA/graphs/chr_1/sampleA_chr_1_graph.gfa
