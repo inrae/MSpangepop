@@ -21,6 +21,12 @@ The mirror is especially useful for people with no Renater account to submit iss
 | **4. Graph Creation** | **Initialize:** Build locus ancestral graphs<br>**Mutate:** Apply variants using the MSpangenome library<br>**Save:** Assign IDs → VG unchop each locus → Group loci into subgraph GFAs (100 loci per file by default) | `graph_creation.py`<br>`graph_classes.py`<br>`graph_utils.py`<br>`matrix.py` | graph_creation |
 | **5. Merge** | Concatenate the subgraph GFAs → VG unchop the junctions between groups | `merge_subgraphs.py` | gfa_merge |
 
+## Citation
+
+If you use MSpangenome in your research, please cite:
+
+Piat, L., Denni, S., Dubois, S., Linard, B., & Duvaux, L. (2026). Simulating population pangenomes under coalescent demographic models with MSpangenome. *bioRxiv*, 2026.06.29.735168 (preprint). https://doi.org/10.64898/2026.06.29.735168
+
 ## Guides and references
 
 |  |  |
@@ -166,8 +172,27 @@ mspangenome [dry|run|local-run|dag|rulegraph|unlock|touch] [-c|--config PATH] [-
     [additional snakemake args] - for any snakemake arg, like --until coalescent_traversal
 ```
 
-## Support and Development
+## Authors
 
-MSpangenome is developed at INRAE as part of the PangenOak project.
+- Lucien Piat
+- Sukanya Denni
+- Siegfried Dubois
+- Jean-Marc Frigerio
+- Ludovic Duvaux
 
+## Contact
 
+ludovic.duvaux@inrae.fr
+
+## Aknowledgements
+
+- Christophe Klopp
+- Claire Lemaitre
+- Benjamin Linard
+- Camille Marchet
+- Jean Monlong
+- Networks:
+  - AgroDiv pangenome working group
+  - Get-A-Pan ([site](https://pangenomes.mathnum.inrae.fr/) and [repo awesome_pangenomes_inrae](https://forge.inrae.fr/get-a-pan/awesome_pangenome_in_inrae))
+  - PANANNOT
+  - GraPanPhy
