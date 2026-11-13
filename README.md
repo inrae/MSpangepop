@@ -30,6 +30,47 @@ The mirror is especially useful for people with no Renater account to submit iss
 | **5. Merge** | Concatenate the subgraph GFAs → VG unchop the junctions between groups | `merge_subgraphs.py` | gfa_merge |
 
 ---
+## Prerequisites
+
+The workflow requires Conda and Apptainer. The following versions have been tested successfully:
+
+- Conda 25.7.0 (Miniforge is recommended)
+- Apptainer 1.5.4
+
+### On an HPC cluster
+
+These prerequisites may already be available as environment modules. Check with your sysadmin or consult your cluster documentation.
+
+### On a Linux PC
+
+#### 1. Install Conda
+
+We recommend using Miniforge, a lightweight Conda distribution based on the community-maintained conda-forge channel.
+
+If available, install Miniforge through your Linux distribution's package manager.
+
+If Miniforge is not available or is outdated in your distribution's repositories, follow the installation instructions provided in the official Miniforge documentation:
+
+https://github.com/conda-forge/miniforge
+
+Once installed, check that Conda is available:
+`conda --version`
+
+#### 2. Install Apptainer
+
+Install Apptainer using your Linux distribution's package manager, if available. Installation instructions for different Linux distributions are provided in the official Apptainer 1.5 documentation:
+
+https://apptainer.org/docs/admin/1.5/installation.html
+
+Once installed, check that it is available:
+`apptainer --version`
+
+### On a macOS or Windows PC
+
+This workflow requires a Linux environment. On macOS, use a supported Linux virtual machine (e.g. [Lima](https://lima-vm.io/)). On Windows, use [Windows Subsystem for Linux (WSL)](https://learn.microsoft.com/en-us/windows/wsl/).
+
+Install Conda and Apptainer inside the Linux environment, following the instructions above.
+
 ## How to Use 
 ### 1. Set up
 
@@ -96,7 +137,7 @@ sbatch mspangenome run # Then
 
 #### Locally
 
-- Install Apptainer by following the [official installation instructions](https://apptainer.org/docs/admin/main/installation.html). On macOS, use a supported Linux virtual machine such as Lima; on Windows, use WSL.
+Once the [prerequisites](#prerequisites) are installed, run:
 
 ```bash
 ./mspangenome dry # Check for warnings
