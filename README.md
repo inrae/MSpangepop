@@ -1,15 +1,27 @@
-# mspangenome 
+# MSpangenome 
 
-mspangenome is a workflow for simulating pangenome variation graphs from coalescent simulations.\
+MSpangenome is a workflow for simulating pangenome variation graphs from coalescent simulations.\
 A simplified description of the algorithm can be found [here](https://lpiat-pages-cfefee.pages-forge.inrae.fr/poster_bims_lucien.pdf).
 
-The official mspangenome repository can be found at the [INRAE forge](https://forge.inrae.fr/pangepop/MSpangepop).\
+The official MSpangenome repository can be found at the [INRAE forge](https://forge.inrae.fr/pangepop/MSpangepop).\
 A GitHub mirror can be found at [INRAE GitHub](https://github.com/inrae/MSpangepop).\
 The mirror is especially useful for people with no Renater account to submit issues.
 
 <img src="doc/pipe.png">
 
-### Documentation
+[[_TOC_]]
+
+## Workflow overview
+
+| Stage | Process | Scripts (dev reference) | smk rules (dev reference) |
+|-------|---------|---------|--------|
+| **1. Setup** | → Validate FASTA/YAML<br>→ Expand configs<br>→ Create index | `input_index.py`<br>`sample_ranges.py`<br>`recap.py` | setup |
+| **2. Msprime Simulation** | → Build demographic model<br>→ Run msprime<br>→ Generate visualizations | `msprime_simulation.py`<br>`visualizer_arg.py`<br>`visualizer_tree.py` | msprime_simulation <br>visualization  |
+| **3. Preprocessing** | → Split by locus<br>→ Preorder traverse trees<br>→ Assign SV type, length and position | `coalescent_traversal.py`<br>`draw_variants.py`<br>`split_recombination.py` | coalescent_traversal<br>draw_variants<br>split_recombination |
+| **4. Graph Creation** | **Initialize:** Build locus ancestral graphs<br>**Mutate:** Apply variants using the MSpangenome library<br>**Save:** Assign IDs → VG unchop each locus → Group loci into subgraph GFAs (100 loci per file by default) | `graph_creation.py`<br>`graph_classes.py`<br>`graph_utils.py`<br>`matrix.py` | graph_creation |
+| **5. Merge** | Concatenate the subgraph GFAs → VG unchop the junctions between groups | `merge_subgraphs.py` | gfa_merge |
+
+## Guides and references
 
 |  |  |
 |-------|-------------|
@@ -19,17 +31,48 @@ The mirror is especially useful for people with no Renater account to submit iss
 | **[Mutation log](doc/mutation_log.md)** | Format of the per chromosome registry of applied mutations |
 | **[Advanced Topics](doc/go_even_deeper.md)** | In-depth information for power users |
 
-### Workflow Stages
-
-| Stage | Process | Scripts | Rules |
-|-------|---------|---------|--------|
-| **1. Setup** | → Validate FASTA/YAML<br>→ Expand configs<br>→ Create index | `input_index.py`<br>`sample_ranges.py`<br>`recap.py` | setup |
-| **2. Msprime Simulation** | → Build demographic model<br>→ Run msprime<br>→ Generate visualizations | `msprime_simulation.py`<br>`visualizer_arg.py`<br>`visualizer_tree.py` | msprime_simulation <br>visualization  |
-| **3. Preprocessing** | → Split by locus<br>→ Preorder traverse trees<br>→ Assign SV type, length and position | `coalescent_traversal.py`<br>`draw_variants.py`<br>`split_recombination.py` | coalescent_traversal<br>draw_variants<br>split_recombination |
-| **4. Graph Creation** | **Initialize:** Build locus ancestral graphs<br>**Mutate:** Apply variants using the mspangenome library<br>**Save:** Assign IDs → VG unchop each locus → Group loci into subgraph GFAs (100 loci per file by default) | `graph_creation.py`<br>`graph_classes.py`<br>`graph_utils.py`<br>`matrix.py` | graph_creation |
-| **5. Merge** | Concatenate the subgraph GFAs → VG unchop the junctions between groups | `merge_subgraphs.py` | gfa_merge |
-
 ---
+## Prerequisites
+
+The workflow requires Conda and Apptainer. The following versions have been tested successfully:
+
+- Conda 25.7.0 (Miniforge is recommended)
+- Apptainer 1.5.4
+
+### On an HPC cluster
+
+These prerequisites may already be available as environment modules. Check with your sysadmin or consult your cluster documentation.
+
+### On a Linux PC
+
+#### Install Conda
+
+We recommend using Miniforge, a lightweight Conda distribution based on the community-maintained conda-forge channel.
+
+If available, install Miniforge through your Linux distribution's package manager.
+
+If Miniforge is not available or is outdated in your distribution's repositories, follow the installation instructions provided in the official Miniforge documentation:
+
+https://github.com/conda-forge/miniforge
+
+Once installed, check that Conda is available:
+`conda --version`
+
+#### Install Apptainer
+
+Install Apptainer using your Linux distribution's package manager, if available. Installation instructions for different Linux distributions are provided in the official Apptainer 1.5 documentation:
+
+https://apptainer.org/docs/admin/1.5/installation.html
+
+Once installed, check that it is available:
+`apptainer --version`
+
+### On a macOS or Windows PC
+
+This workflow requires a Linux environment. On macOS, use a supported Linux virtual machine (e.g. [Lima](https://lima-vm.io/)). On Windows, use [Windows Subsystem for Linux (WSL)](https://learn.microsoft.com/en-us/windows/wsl/).
+
+Install Conda and Apptainer inside the Linux environment, following the instructions above.
+
 ## How to Use 
 ### 1. Set up
 
@@ -42,6 +85,11 @@ git clone https://forge.inrae.fr/pangepop/MSpangepop
 ```bash
 conda env create -n wf_env -f dependencies/wf_env.yaml
 ```  
+
+Activate the environment before running the workflow:
+```bash
+conda activate wf_env
+```
 
 ### 2. Configure the pipeline for your data
 
@@ -96,7 +144,7 @@ sbatch mspangenome run # Then
 
 #### Locally
 
-- Install Apptainer by following the [official installation instructions](https://apptainer.org/docs/admin/main/installation.html). On macOS, use a supported Linux virtual machine such as Lima; on Windows, use WSL.
+Once the [prerequisites](#prerequisites) are installed, run:
 
 ```bash
 ./mspangenome dry # Check for warnings
@@ -118,27 +166,8 @@ mspangenome [dry|run|local-run|dag|rulegraph|unlock|touch] [-c|--config PATH] [-
     [additional snakemake args] - for any snakemake arg, like --until coalescent_traversal
 ```
 
-## Path Operations in mspangenome
-
-mspangenome implements graph path operations to add variants by modifying how lineages traverse the graph. 
-
-**Core Features:**
-- **Multi-path targeting** - Operations apply to single or multiple lineage paths simultaneously, enabling both unique and shared variants
-- **Orientation-aware** - All operations preserve node directionality using edges that track exit and entry node sides, creating orientation-aware links (++, +-, -+, --)
-- **Composable** - Operations can be nested and overlapping (e.g., deletion within inversion), representing complex compound variants
-
-These operations modify paths through existing nodes rather than altering the graph structure, maintaining shared sequences while creating alternative routes for different lineages.  New nodes (e.g., for insertions) are generated using an order 1 Markov model to produce realistic sequences.
-
-| Operation | Function | Used For | Path Change |
-|-----------|----------|----------|-------------|
-| `bypass(a,b)` | Skip nodes a to b | Deletions | Creates shortcut edge |
-| `loop(a,b)` | Duplicate nodes a to b | Tandem duplications | Adds loop-back + repeat |
-| `invert(a,b)` | Reverse nodes a to b | Inversions | Flips path direction |
-| `swap(a,node)` | Replace node at position a | SNPs | Substitutes single node |
-| `paste(a,a+1,nodes)` | Insert between adjacent nodes | Insertions | Adds new node sequence |
-
 ## Support and Development
 
-mspangenome is developed at INRAE as part of the PangenOak project.
+MSpangenome is developed at INRAE as part of the PangenOak project.
 
 

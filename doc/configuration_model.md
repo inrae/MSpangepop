@@ -1,4 +1,4 @@
-#  Creating a Demographic Model JSON for mspangenome
+#  Creating a Demographic Model JSON for MSpangenome
 
 Population structure, demographic events, and mutation/recombination rates are translated
 into msprime inputs. `generation_time` is recorded as metadata; simulation times and rates
