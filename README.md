@@ -38,7 +38,7 @@ Scripts to run the paper's analyses can be found [here](https://github.com/Lucie
 | **[Demographic model](doc/configuration_model.md)** | Adapt or create a demographic model |
 | **[Output Files](doc/output_files.md)** | Description of generated results and outputs |
 | **[Mutation log](doc/mutation_log.md)** | Format of the per chromosome registry of applied mutations |
-| **[Advanced Topics](doc/go_even_deeper.md)** | In-depth information for power users |
+| **[Advanced Topics](doc/go_even_deeper.md)** | [Advanced flowchart](doc/workflow_flowchart.png) & in-depth information for power users |
 
 ---
 ## Prerequisites

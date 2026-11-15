@@ -1,5 +1,10 @@
 # Going Even Deeper
 
+[[_TOC_]]
+
+## Flowchart
+<img src="workflow_flowchart.png" alt="MSpangenome workflow" width="1200">
+
 ## Readable JSON
 
 MSpangenome includes an option to output JSON files in human-readable format with proper indentation and formatting. While this makes the files larger and slower to process, it enables manual inspection and debugging.
