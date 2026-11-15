@@ -1,13 +1,14 @@
-# MSpangenome 
+# MSpangenome
 
-MSpangenome is a workflow for simulating pangenome variation graphs from coalescent simulations.\
-A simplified description of the algorithm can be found [here](https://lpiat-pages-cfefee.pages-forge.inrae.fr/poster_bims_lucien.pdf).
+<img src="doc/pipe.png">
+
+MSpangenome is a workflow for simulating pangenome variation graphs from coalescent simulations. A description of the algorithm is available in the [BioRxiv preprint (2026)](https://doi.org/10.64898/2026.06.29.735168) and the [JOBIM poster (2025)](https://lpiat-pages-cfefee.pages-forge.inrae.fr/poster_bims_lucien.pdf).
+
+A selection of graph construction examples illustrating different parameter combinations is available [here](https://mspangenome.example.lucienpiat.fr/) (use the arrows in the top-right corner to navigate through the construction steps as locus mutations are progressively incorporated into the variation graph).
 
 The official MSpangenome repository can be found at the [INRAE forge](https://forge.inrae.fr/pangepop/MSpangepop).\
 A GitHub mirror can be found at [INRAE GitHub](https://github.com/inrae/MSpangepop).\
-The mirror is especially useful for people with no Renater account to submit issues.
-
-<img src="doc/pipe.png">
+The mirror is particularly useful for users without a Renater account who wish to submit issues.
 
 [[_TOC_]]
 
@@ -27,12 +28,14 @@ If you use MSpangenome in your research, please cite:
 
 Piat, L., Denni, S., Dubois, S., Linard, B., & Duvaux, L. (2026). Simulating population pangenomes under coalescent demographic models with MSpangenome. *bioRxiv*, 2026.06.29.735168 (preprint). https://doi.org/10.64898/2026.06.29.735168
 
+Scripts to run the paper's analyses can be found [here](https://github.com/Lucien-Piat/MSpangenome_methods).
+
 ## Guides and references
 
 |  |  |
 |-------|-------------|
 | **[Master Configuration](doc/configuration_master.md)** | How to set up configuration files and parameters |
-| **[Demographic model](doc/configuration_model.md)** | Adapt or create a model |
+| **[Demographic model](doc/configuration_model.md)** | Adapt or create a demographic model |
 | **[Output Files](doc/output_files.md)** | Description of generated results and outputs |
 | **[Mutation log](doc/mutation_log.md)** | Format of the per chromosome registry of applied mutations |
 | **[Advanced Topics](doc/go_even_deeper.md)** | In-depth information for power users |
@@ -99,12 +102,12 @@ conda activate wf_env
 
 ### 2. Configure the pipeline for your data
 
-Three elements are needed to run the simulation : 
+[Three elements](doc/pipe.png) are needed to run the simulation :
 - The `masterconfig` -> **[Master Configuration](doc/configuration_master.md)**
 - The `demographic_file`  -> **[Demographic model configuration](doc/configuration_model.md)**
 - A reference FASTA specified by `fasta_gz` (plain or gzip-compressed). The workflow uses the first `chr_n` contigs in the file; one contig is enough for a small test run.
 
-#### To do a quick test : 
+#### To do a quick test :
 
 Edit the `masterconfig` file in the `.config/` directory with your sample information. (**[Master Configuration](doc/configuration_master.md)**)
 
@@ -121,11 +124,9 @@ samples:
 ```
 - `model` is the demographic scenario the simulation will run on. You can create your own or tailor the ones in `./simulation_data` (**[Demographic model configuration](doc/configuration_model.md)**)
 
-
-- **⚠️ Don't want to create your own model?⚠️** Use the provided `Panmictic_Model.json` - simply edit it to specify your genome (`fasta_gz`), then adjust `mutation_rate` and `recombination_rate` (start with low values)
-
-
-
+- **⚠️ Don't want to create your own model?⚠️** 
+  - Use the provided `Panmictic_Model.json` - simply edit it to specify your genome (`fasta_gz`), then adjust `mutation_rate` and `recombination_rate` (start with low values).
+  - Alternatively, pick a model that has been rigorously reviewed and validated by multiple authors. Such models are available in the PopSim Consortium catalogs: [stdpopsim](https://popsim-consortium.github.io/stdpopsim-docs/stable/index.html) and the [Demes model gallery](https://popsim-consortium.github.io/demes-spec-docs/main/gallery.html).
 
 ### 3. Run the workflow 
 #### On the cluster
@@ -137,16 +138,18 @@ samples:
 sbatch mspangenome dry # Check for warnings
 sbatch mspangenome run # Then
 ```
-> **Nb :** If your account name can't be automatically determined, add it in the `.config/snakemake/profiles/slurm/config.yaml` file.
+> **Nb :** The Snakemake SLURM executor tries to infer the SLURM account when submitting workflow jobs. If your cluster requires an account and it cannot be inferred, set `slurm_account` under `default-resources` in `.config/snakemake/profiles/slurm/config.yaml`.
 
 > **Nb :** Use the command `squeue --format="%.10i %.9P %.6j %.10k %.8u %.2t %.10M %.6D %.20R" -A $user` to see job **names**
 
-> **Nb :** The working directory is mounted in the containers automatically. A genome
-> or an output directory living somewhere else needs `--bind`, otherwise the rule that
-> reads it fails with a missing file :
+> **Nb :** The working directory is automatically mounted inside the containers. However, files and directories located elsewhere on the host system (e.g. reference genomes or output directories) may not be accessible from within the containers. In such cases, use `--bind` to explicitly mount the required directories; otherwise, workflow rules attempting to access them will fail with a "file not found" error.
+>
+> For example:
+>
 > ```bash
 > sbatch mspangenome run --bind /work/refs,/scratch/$USER
 > ```
+
 
 #### Locally
 
@@ -158,18 +161,24 @@ Once the [prerequisites](#prerequisites) are installed, run:
 ```
 
 ## Other running options
-```
-mspangenome [dry|run|local-run|dag|rulegraph|unlock|touch] [-c|--config PATH] [--bind PATHS] [additional snakemake args]
-    dry - run in dry-run mode
-    run - run the workflow with SLURM
-    local-run - run the workflow locally (on a single node)
-    dag - generate the directed acyclic graph for the workflow
-    rulegraph - generate the rulegraph for the workflow
-    unlock - Unlock the directory if snakemake crashed
-    touch - Tell snakemake that all files are up to date (use with caution)
-    -c, --config PATH - master config file to use (default: .config/masterconfig.yaml)
-    --bind PATHS - extra paths to mount in the containers, comma separated, repeatable
-    [additional snakemake args] - for any snakemake arg, like --until coalescent_traversal
+```text
+Usage: mspangenome [COMMAND] [OPTIONS] [SNAKEMAKE_ARGS]
+
+Commands:
+  dry           Run in dry-run mode
+  run           Run the workflow with SLURM
+  local-run     Run the workflow locally (on a single node)
+  dag           Generate the directed acyclic graph for the workflow
+  rulegraph     Generate the rulegraph for the workflow
+  unlock        Unlock the working directory if Snakemake crashed
+  touch         Tell Snakemake that all files are up to date (use with caution)
+
+Options:
+  -c, --config PATH    Master config file (default: .config/masterconfig.yaml)
+  --bind PATHS         Extra paths to mount in containers (comma-separated, repeatable)
+
+Additional arguments:
+  SNAKEMAKE_ARGS       Any additional Snakemake arguments (e.g. --until coalescent_traversal)
 ```
 
 ## Authors
