@@ -1,33 +1,44 @@
-# mspangenome 
-
-mspangenome is a workflow for simulating pangenome variation graphs from coalescent simulations.\
-A simplified description of the algorithm can be found [here](https://lpiat-pages-cfefee.pages-forge.inrae.fr/poster_bims_lucien.pdf).
-
-The official mspangenome repository can be found at the [INRAE forge](https://forge.inrae.fr/pangepop/MSpangepop).\
-A GitHub mirror can be found at [INRAE GitHub](https://github.com/inrae/MSpangepop).\
-The mirror is especially useful for people with no Renater account to submit issues.
+# MSpangenome
 
 <img src="doc/pipe.png">
 
-### Documentation
+MSpangenome is a workflow for simulating pangenome variation graphs from coalescent simulations. A description of the algorithm is available in the [BioRxiv preprint (2026)](https://doi.org/10.64898/2026.06.29.735168) and the [JOBIM poster (2025)](https://lpiat-pages-cfefee.pages-forge.inrae.fr/poster_bims_lucien.pdf).
 
-|  |  |
-|-------|-------------|
-| **[Master Configuration](doc/configuration_master.md)** | How to set up configuration files and parameters |
-| **[Demographic model](doc/configuration_model.md)** | Adapt or create a model |
-| **[Output Files](doc/output_files.md)** | Description of generated results and outputs |
-| **[Mutation log](doc/mutation_log.md)** | Format of the per chromosome registry of applied mutations |
-| **[Advanced Topics](doc/go_even_deeper.md)** | In-depth information for power users |
+A selection of graph construction examples illustrating different parameter combinations is available [here](https://mspangenome.example.lucienpiat.fr/) (use the arrows in the top-right corner to navigate through the construction steps as locus mutations are progressively incorporated into the variation graph).
 
-### Workflow Stages
+The official MSpangenome repository can be found at the [INRAE forge](https://forge.inrae.fr/pangepop/MSpangepop).\
+A GitHub mirror can be found at [INRAE GitHub](https://github.com/inrae/MSpangepop).\
+The mirror is particularly useful for users without a Renater account who wish to submit issues.
 
-| Stage | Process | Scripts | Rules |
+[[_TOC_]]
+
+## Workflow overview
+
+| Stage | Process | Scripts (dev reference) | smk rules (dev reference) |
 |-------|---------|---------|--------|
 | **1. Setup** | → Validate FASTA/YAML<br>→ Expand configs<br>→ Create index | `input_index.py`<br>`sample_ranges.py`<br>`recap.py` | setup |
 | **2. Msprime Simulation** | → Build demographic model<br>→ Run msprime<br>→ Generate visualizations | `msprime_simulation.py`<br>`visualizer_arg.py`<br>`visualizer_tree.py` | msprime_simulation <br>visualization  |
 | **3. Preprocessing** | → Split by locus<br>→ Preorder traverse trees<br>→ Assign SV type, length and position | `coalescent_traversal.py`<br>`draw_variants.py`<br>`split_recombination.py` | coalescent_traversal<br>draw_variants<br>split_recombination |
-| **4. Graph Creation** | **Initialize:** Build locus ancestral graphs<br>**Mutate:** Apply variants using the mspangenome library<br>**Save:** Assign IDs → VG unchop each locus → Group loci into subgraph GFAs (100 loci per file by default) | `graph_creation.py`<br>`graph_classes.py`<br>`graph_utils.py`<br>`matrix.py` | graph_creation |
+| **4. Graph Creation** | **Initialize:** Build locus ancestral graphs<br>**Mutate:** Apply variants using the MSpangenome library<br>**Save:** Assign IDs → VG unchop each locus → Group loci into subgraph GFAs (100 loci per file by default) | `graph_creation.py`<br>`graph_classes.py`<br>`graph_utils.py`<br>`matrix.py` | graph_creation |
 | **5. Merge** | Concatenate the subgraph GFAs → VG unchop the junctions between groups | `merge_subgraphs.py` | gfa_merge |
+
+## Citation
+
+If you use MSpangenome in your research, please cite:
+
+Piat, L., Denni, S., Dubois, S., Linard, B., & Duvaux, L. (2026). Simulating population pangenomes under coalescent demographic models with MSpangenome. *bioRxiv*, 2026.06.29.735168 (preprint). https://doi.org/10.64898/2026.06.29.735168
+
+Scripts to run the paper's analyses can be found [here](https://github.com/Lucien-Piat/MSpangenome_methods).
+
+## Guides and references
+
+|  |  |
+|-------|-------------|
+| **[Master Configuration](doc/configuration_master.md)** | How to set up configuration files and parameters |
+| **[Demographic model](doc/configuration_model.md)** | Adapt or create a demographic model |
+| **[Output Files](doc/output_files.md)** | Description of generated results and outputs |
+| **[Mutation log](doc/mutation_log.md)** | Format of the per chromosome registry of applied mutations |
+| **[Advanced Topics](doc/go_even_deeper.md)** | [Advanced flowchart](doc/workflow_flowchart.png) & in-depth information for power users |
 
 ---
 ## Prerequisites
@@ -43,7 +54,7 @@ These prerequisites may already be available as environment modules. Check with 
 
 ### On a Linux PC
 
-#### 1. Install Conda
+#### Install Conda
 
 We recommend using Miniforge, a lightweight Conda distribution based on the community-maintained conda-forge channel.
 
@@ -56,7 +67,7 @@ https://github.com/conda-forge/miniforge
 Once installed, check that Conda is available:
 `conda --version`
 
-#### 2. Install Apptainer
+#### Install Apptainer
 
 Install Apptainer using your Linux distribution's package manager, if available. Installation instructions for different Linux distributions are provided in the official Apptainer 1.5 documentation:
 
@@ -84,14 +95,19 @@ git clone https://forge.inrae.fr/pangepop/MSpangepop
 conda env create -n wf_env -f dependencies/wf_env.yaml
 ```  
 
+Activate the environment before running the workflow:
+```bash
+conda activate wf_env
+```
+
 ### 2. Configure the pipeline for your data
 
-Three elements are needed to run the simulation : 
+[Three elements](doc/pipe.png) are needed to run the simulation :
 - The `masterconfig` -> **[Master Configuration](doc/configuration_master.md)**
 - The `demographic_file`  -> **[Demographic model configuration](doc/configuration_model.md)**
 - A reference FASTA specified by `fasta_gz` (plain or gzip-compressed). The workflow uses the first `chr_n` contigs in the file; one contig is enough for a small test run.
 
-#### To do a quick test : 
+#### To do a quick test :
 
 Edit the `masterconfig` file in the `.config/` directory with your sample information. (**[Master Configuration](doc/configuration_master.md)**)
 
@@ -108,11 +124,9 @@ samples:
 ```
 - `model` is the demographic scenario the simulation will run on. You can create your own or tailor the ones in `./simulation_data` (**[Demographic model configuration](doc/configuration_model.md)**)
 
-
-- **⚠️ Don't want to create your own model?⚠️** Use the provided `Panmictic_Model.json` - simply edit it to specify your genome (`fasta_gz`), then adjust `mutation_rate` and `recombination_rate` (start with low values)
-
-
-
+- **⚠️ Don't want to create your own model?⚠️** 
+  - Use the provided `Panmictic_Model.json` - simply edit it to specify your genome (`fasta_gz`), then adjust `mutation_rate` and `recombination_rate` (start with low values).
+  - Alternatively, pick a model that has been rigorously reviewed and validated by multiple authors. Such models are available in the PopSim Consortium catalogs: [stdpopsim](https://popsim-consortium.github.io/stdpopsim-docs/stable/index.html) and the [Demes model gallery](https://popsim-consortium.github.io/demes-spec-docs/main/gallery.html).
 
 ### 3. Run the workflow 
 #### On the cluster
@@ -124,16 +138,18 @@ samples:
 sbatch mspangenome dry # Check for warnings
 sbatch mspangenome run # Then
 ```
-> **Nb :** If your account name can't be automatically determined, add it in the `.config/snakemake/profiles/slurm/config.yaml` file.
+> **Nb :** The Snakemake SLURM executor tries to infer the SLURM account when submitting workflow jobs. If your cluster requires an account and it cannot be inferred, set `slurm_account` under `default-resources` in `.config/snakemake/profiles/slurm/config.yaml`.
 
 > **Nb :** Use the command `squeue --format="%.10i %.9P %.6j %.10k %.8u %.2t %.10M %.6D %.20R" -A $user` to see job **names**
 
-> **Nb :** The working directory is mounted in the containers automatically. A genome
-> or an output directory living somewhere else needs `--bind`, otherwise the rule that
-> reads it fails with a missing file :
+> **Nb :** The working directory is automatically mounted inside the containers. However, files and directories located elsewhere on the host system (e.g. reference genomes or output directories) may not be accessible from within the containers. In such cases, use `--bind` to explicitly mount the required directories; otherwise, workflow rules attempting to access them will fail with a "file not found" error.
+>
+> For example:
+>
 > ```bash
 > sbatch mspangenome run --bind /work/refs,/scratch/$USER
 > ```
+
 
 #### Locally
 
@@ -145,41 +161,47 @@ Once the [prerequisites](#prerequisites) are installed, run:
 ```
 
 ## Other running options
+```text
+Usage: mspangenome [COMMAND] [OPTIONS] [SNAKEMAKE_ARGS]
+
+Commands:
+  dry           Run in dry-run mode
+  run           Run the workflow with SLURM
+  local-run     Run the workflow locally (on a single node)
+  dag           Generate the directed acyclic graph for the workflow
+  rulegraph     Generate the rulegraph for the workflow
+  unlock        Unlock the working directory if Snakemake crashed
+  touch         Tell Snakemake that all files are up to date (use with caution)
+
+Options:
+  -c, --config PATH    Master config file (default: .config/masterconfig.yaml)
+  --bind PATHS         Extra paths to mount in containers (comma-separated, repeatable)
+
+Additional arguments:
+  SNAKEMAKE_ARGS       Any additional Snakemake arguments (e.g. --until coalescent_traversal)
 ```
-mspangenome [dry|run|local-run|dag|rulegraph|unlock|touch] [-c|--config PATH] [--bind PATHS] [additional snakemake args]
-    dry - run in dry-run mode
-    run - run the workflow with SLURM
-    local-run - run the workflow locally (on a single node)
-    dag - generate the directed acyclic graph for the workflow
-    rulegraph - generate the rulegraph for the workflow
-    unlock - Unlock the directory if snakemake crashed
-    touch - Tell snakemake that all files are up to date (use with caution)
-    -c, --config PATH - master config file to use (default: .config/masterconfig.yaml)
-    --bind PATHS - extra paths to mount in the containers, comma separated, repeatable
-    [additional snakemake args] - for any snakemake arg, like --until coalescent_traversal
-```
 
-## Path Operations in mspangenome
+## Authors
 
-mspangenome implements graph path operations to add variants by modifying how lineages traverse the graph. 
+- Lucien Piat
+- Sukanya Denni
+- Siegfried Dubois
+- Jean-Marc Frigerio
+- Ludovic Duvaux
 
-**Core Features:**
-- **Multi-path targeting** - Operations apply to single or multiple lineage paths simultaneously, enabling both unique and shared variants
-- **Orientation-aware** - All operations preserve node directionality using edges that track exit and entry node sides, creating orientation-aware links (++, +-, -+, --)
-- **Composable** - Operations can be nested and overlapping (e.g., deletion within inversion), representing complex compound variants
+## Contact
 
-These operations modify paths through existing nodes rather than altering the graph structure, maintaining shared sequences while creating alternative routes for different lineages.  New nodes (e.g., for insertions) are generated using an order 1 Markov model to produce realistic sequences.
+ludovic.duvaux@inrae.fr
 
-| Operation | Function | Used For | Path Change |
-|-----------|----------|----------|-------------|
-| `bypass(a,b)` | Skip nodes a to b | Deletions | Creates shortcut edge |
-| `loop(a,b)` | Duplicate nodes a to b | Tandem duplications | Adds loop-back + repeat |
-| `invert(a,b)` | Reverse nodes a to b | Inversions | Flips path direction |
-| `swap(a,node)` | Replace node at position a | SNPs | Substitutes single node |
-| `paste(a,a+1,nodes)` | Insert between adjacent nodes | Insertions | Adds new node sequence |
+## Aknowledgements
 
-## Support and Development
-
-mspangenome is developed at INRAE as part of the PangenOak project.
-
-
+- Christophe Klopp
+- Claire Lemaitre
+- Benjamin Linard
+- Camille Marchet
+- Jean Monlong
+- Networks:
+  - AgroDiv pangenome working group
+  - Get-A-Pan ([site](https://pangenomes.mathnum.inrae.fr/) and [repo awesome_pangenomes_inrae](https://forge.inrae.fr/get-a-pan/awesome_pangenome_in_inrae))
+  - PANANNOT
+  - GraPanPhy

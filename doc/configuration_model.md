@@ -1,12 +1,13 @@
-#  Creating a Demographic Model JSON for mspangenome
+#  Creating a Demographic Model JSON for MSpangenome
 
 Population structure, demographic events, and mutation/recombination rates are translated
-into msprime inputs. `generation_time` is recorded as metadata; simulation times and rates
+into msprime inputs. `generation_time` is recorded as metadata, simulation times and rates
 are interpreted per generation. The `simulation_params` section contains settings for the
 MSpangenome workflow itself. For details about the demographic concepts supported by
 msprime, see the [msprime demography documentation](https://tskit.dev/msprime/docs/stable/demography.html).
 
-If you don't want to delve into the **lengthy** MSprime documentation, please stick with the default **Panmictic** Model, adapt mutation rate, recombination_rate and sample_size with your values.
+If you don't want to delve into the **lengthy** MSprime documentation, please stick with the default **Panmictic** Model, adapt mutation rate, recombination_rate and sample_size with your values.\
+Alternatively, <font color=red><b>you can pick a model that has been rigorously reviewed and validated by multiple authors</b></font>. Such models are available in the PopSim Consortium catalogs: [stdpopsim](https://popsim-consortium.github.io/stdpopsim-docs/stable/index.html) and the [Demes model gallery](https://popsim-consortium.github.io/demes-spec-docs/main/gallery.html).
 
 
 
@@ -405,6 +406,7 @@ The following population structure illustrates a split from `POP_A` into `POP_B`
 }
 ```
 <img src="demo.png">
+Note that the red and blue populations represent paraphyletic and monophyletic genetic groups, respectively. This difference results from the much smaller effective population size of the blue population, which led to stronger genetic drift and more efficient lineage sorting.
 
 ---
 
